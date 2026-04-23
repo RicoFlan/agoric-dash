@@ -1,0 +1,31 @@
+import {
+  date,
+  pgTable,
+  primaryKey,
+  varchar,
+  bigint,
+  timestamp,
+  numeric,
+} from "drizzle-orm/pg-core";
+
+/** Singleton indexer cursor */
+export const indexerState = pgTable("indexer_state", {
+  id: varchar("id", { length: 32 }).primaryKey().default("singleton"),
+  lastIndexedHeight: bigint("last_indexed_height", { mode: "bigint" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Daily rolled-up counters / sums. dimension empty string = series total without breakdown.
+ * value stored as numeric string for bigint-safe coin amounts.
+ */
+export const dailyMetrics = pgTable(
+  "daily_metrics",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    series: varchar("series", { length: 64 }).notNull(),
+    dimension: varchar("dimension", { length: 512 }).notNull().default(""),
+    value: numeric("value", { precision: 78, scale: 0 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.series, t.dimension] })]
+);
