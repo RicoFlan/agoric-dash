@@ -1,5 +1,6 @@
 /**
- * Standalone indexer: polls RPC for block + block_results, updates daily_metrics.
+ * Standalone indexer: polls RPC for block + block_results, updates daily_metrics
+ * and hourly_metrics (same dimensions; hour bucket from block time UTC).
  * Run: DATABASE_URL=... RPC_URL=... tsx scripts/indexer.ts
  */
 import "dotenv/config";
@@ -40,6 +41,8 @@ if (!DATABASE_URL) {
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
 
+const { dailyMetrics, hourlyMetrics } = schema;
+
 function dayUtc(isoTime: string): string {
   const d = new Date(isoTime);
   const y = d.getUTCFullYear();
@@ -48,11 +51,26 @@ function dayUtc(isoTime: string): string {
   return `${y}-${m}-${day}`;
 }
 
-async function upsertDelta(day: string, series: string, dimension: string, delta: bigint) {
+/** Truncate block time to the UTC hour for hourly_metrics */
+function hourStartUtcFromIso(isoTime: string): Date {
+  const d = new Date(isoTime);
+  d.setUTCMilliseconds(0);
+  d.setUTCSeconds(0);
+  d.setUTCMinutes(0);
+  return d;
+}
+
+async function upsertDelta(
+  day: string,
+  hour: Date,
+  series: string,
+  dimension: string,
+  delta: bigint
+) {
   if (delta === BigInt(0)) return;
   const dStr = delta.toString();
   await db
-    .insert(schema.dailyMetrics)
+    .insert(dailyMetrics)
     .values({
       day,
       series,
@@ -60,13 +78,23 @@ async function upsertDelta(day: string, series: string, dimension: string, delta
       value: dStr,
     })
     .onConflictDoUpdate({
-      target: [
-        schema.dailyMetrics.day,
-        schema.dailyMetrics.series,
-        schema.dailyMetrics.dimension,
-      ],
+      target: [dailyMetrics.day, dailyMetrics.series, dailyMetrics.dimension],
       set: {
-        value: sql`${schema.dailyMetrics.value} + ${sql.raw("excluded.value")}`,
+        value: sql`${dailyMetrics.value} + ${sql.raw("excluded.value")}`,
+      },
+    });
+  await db
+    .insert(hourlyMetrics)
+    .values({
+      hour,
+      series,
+      dimension,
+      value: dStr,
+    })
+    .onConflictDoUpdate({
+      target: [hourlyMetrics.hour, hourlyMetrics.series, hourlyMetrics.dimension],
+      set: {
+        value: sql`${hourlyMetrics.value} + ${sql.raw("excluded.value")}`,
       },
     });
 }
@@ -114,6 +142,7 @@ async function indexBlock(height: bigint): Promise<void> {
 
   const iso = block.block.header.time;
   const day = dayUtc(iso);
+  const hour = hourStartUtcFromIso(iso);
   const txsB64 = block.block.data?.txs ?? [];
   const txResults = results.txs_results ?? [];
   const eventsPerTx = asEventKV(txResults);
@@ -129,16 +158,16 @@ async function indexBlock(height: bigint): Promise<void> {
     const tr = txResults[i];
     const ok = tr.code === TX_SUCCESS_CODE;
 
-    await upsertDelta(day, ok ? SERIES.TX_SUCCESS : SERIES.TX_FAILED, "", BigInt(1));
+    await upsertDelta(day, hour, ok ? SERIES.TX_SUCCESS : SERIES.TX_FAILED, "", BigInt(1));
 
     const gas = BigInt(tr.gas_used ?? "0");
-    await upsertDelta(day, SERIES.GAS_USED, "", gas);
+    await upsertDelta(day, hour, SERIES.GAS_USED, "", gas);
 
     if (!ok) continue;
 
     const fees = extractPaidFeesFromEvents(eventsPerTx[i] ?? []);
     for (const [denom, amt] of fees) {
-      await upsertDelta(day, SERIES.FEE_PAID, denom, amt);
+      await upsertDelta(day, hour, SERIES.FEE_PAID, denom, amt);
     }
 
     let decoded;
@@ -152,7 +181,7 @@ async function indexBlock(height: bigint): Promise<void> {
     const msgs = decoded.body.messages;
     if (MESSAGE_ATTRIBUTION === "first_message" && msgs.length > 0) {
       const first = msgs[0]!;
-      await upsertDelta(day, SERIES.MSG_TYPE, first.typeUrl, BigInt(1));
+      await upsertDelta(day, hour, SERIES.MSG_TYPE, first.typeUrl, BigInt(1));
     }
 
     for (const msg of msgs) {
@@ -161,13 +190,13 @@ async function indexBlock(height: bigint): Promise<void> {
 
       if (!TRANSFER_MSG_TYPES.has(typeUrl)) {
         if (typeUrl === MSG_RECV_PACKET) {
-          await upsertDelta(day, SERIES.IBC_TRANSFER_IN_COUNT, "", BigInt(1));
+          await upsertDelta(day, hour, SERIES.IBC_TRANSFER_IN_COUNT, "", BigInt(1));
           for (const ev of eventsPerTx[i] ?? []) {
             if (ev.type !== "coin_received" && ev.type !== "transfer") continue;
             for (const a of ev.attributes) {
               if (a.key !== "amount") continue;
               for (const [denom, amt] of parseCoinsAmounts(a.value)) {
-                await upsertDelta(day, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
+                await upsertDelta(day, hour, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
               }
             }
           }
@@ -184,26 +213,28 @@ async function indexBlock(height: bigint): Promise<void> {
 
         if (typeUrl.includes("MsgSend")) {
           for (const c of decodedMsg.amount ?? []) {
-            await upsertDelta(day, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
+            await upsertDelta(day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
           }
         }
         if (typeUrl.includes("MsgMultiSend")) {
           for (const o of decodedMsg.outputs ?? []) {
             for (const c of o.coins ?? []) {
-              await upsertDelta(day, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
+              await upsertDelta(day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
             }
           }
         }
         if (typeUrl === MSG_IBC_TRANSFER && decodedMsg.token) {
           await upsertDelta(
             day,
+            hour,
             SERIES.TRANSFER_VOLUME,
             decodedMsg.token.denom,
             BigInt(decodedMsg.token.amount)
           );
-          await upsertDelta(day, SERIES.IBC_TRANSFER_OUT_COUNT, "", BigInt(1));
+          await upsertDelta(day, hour, SERIES.IBC_TRANSFER_OUT_COUNT, "", BigInt(1));
           await upsertDelta(
             day,
+            hour,
             SERIES.IBC_TRANSFER_AMOUNT_OUT,
             decodedMsg.token.denom,
             BigInt(decodedMsg.token.amount)

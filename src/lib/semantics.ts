@@ -5,6 +5,9 @@
 
 export const CHAIN_ID = "agoric-3";
 
+/** Default fee / staking token minimal denom on agoric-3 (for human “BLD” line items). */
+export const FEE_DENOM_UBLB = "ubld";
+
 export const DEFAULT_RPC = "https://main.rpc.agoric.net";
 
 /** Successful inclusion: ABCI tx result code 0 */
@@ -50,6 +53,9 @@ Metrics use on-chain data indexed from Agoric mainnet (agoric-3). Addresses are 
 Transaction volume counts included transactions; primary KPI uses successful txs (ABCI code 0) unless noted.
 Fees are paid fees taken from transaction result events (e.g. tx/fee attributes), not the declared max fee cap in the signed tx.
 Transfer values sum bank and IBC transfer message amounts in native minimal units per denom—contract-internal flows may be absent.
+In-tx “value moving” is multi-asset: each token (including IBC hashes) is a separate line; uBLD is not a proxy for all activity. Add each asset you care about to src/config/denoms.json for display symbols. Optional spot USD in tooltips is from CoinGecko for rough cross-asset comparison only, not a mark price.
+The value charts show the two largest transfer denoms in the range (by sum) and, separately, the IBC in/out amount leaders; you cannot add across denoms to get a single total.
+Gas is ABCI gas units, not a token. Fees in uBLD are shown as BLD; other fee denoms appear in the fee table.
 IBC direction is chain-relative (out = MsgTransfer from this chain; in = packet receive handling where indexed).
 Period-over-period compares the prior window of equal length ending at the start of the selected range.
 `;

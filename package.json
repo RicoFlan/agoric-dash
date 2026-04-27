@@ -2,6 +2,7 @@
   "name": "agoric-dash",
   "version": "0.1.0",
   "private": true,
+  "description": "Agoric L1 (agoric-3) activity dashboard: indexed metrics, denoms.json display map, optional CoinGecko for transfer-side USD. See README.md.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +11,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "indexer": "tsx scripts/indexer.ts"
+    "indexer": "tsx scripts/indexer.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@cosmjs/cosmwasm-stargate": "^0.33.1",
@@ -38,6 +41,7 @@
     "eslint-config-next": "^15.1.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
   }
 }

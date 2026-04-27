@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enrichMetricsForDisplay } from "@/lib/metricsEnrichment";
 import { buildMetricsPayload, type Granularity } from "@/lib/metricsQuery";
 
 export async function GET(req: NextRequest) {
@@ -14,11 +15,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const granularity: Granularity = g === "week" ? "week" : "day";
+  const granularity: Granularity =
+    g === "week" ? "week" : g === "hour" ? "hour" : "day";
 
   try {
     const payload = await buildMetricsPayload(from, to, granularity);
-    return NextResponse.json(payload);
+    const display = await enrichMetricsForDisplay(payload);
+    return NextResponse.json({ ...payload, display });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

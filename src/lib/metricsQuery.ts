@@ -1,9 +1,9 @@
 import { and, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/db/client";
-import { dailyMetrics, indexerState } from "@/db/schema";
-import { SERIES } from "@/lib/semantics";
+import { dailyMetrics, hourlyMetrics, indexerState } from "@/db/schema";
+import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
 
-export type Granularity = "day" | "week";
+export type Granularity = "hour" | "day" | "week";
 
 function parseDay(s: string): string {
   return s.slice(0, 10);
@@ -31,6 +31,15 @@ export async function getIndexerStatus() {
   };
 }
 
+type BucketKey = string;
+
+type FlatMetric = {
+  bucket: BucketKey;
+  series: string;
+  dimension: string;
+  value: string;
+};
+
 async function fetchMetricsRange(fromDay: string, toDay: string) {
   return db
     .select()
@@ -38,17 +47,51 @@ async function fetchMetricsRange(fromDay: string, toDay: string) {
     .where(and(gte(dailyMetrics.day, fromDay), lte(dailyMetrics.day, toDay)));
 }
 
-function bucketByGranularity(
+function dailyRowsToFlat(
   rows: { day: string; series: string; dimension: string; value: string }[],
-  granularity: Granularity
+  granularity: "day" | "week"
+): FlatMetric[] {
+  return rows.map((r) => {
+    const d = parseDay(r.day);
+    const bucket = granularity === "day" ? d : mondayBucket(d);
+    return { bucket, series: r.series, dimension: r.dimension, value: r.value };
+  });
+}
+
+function mapHourlyDbToFlat(
+  rows: { hour: Date; series: string; dimension: string; value: string }[]
+): FlatMetric[] {
+  return rows.map((r) => ({
+    bucket: hourKeyFromDate(r.hour),
+    series: r.series,
+    dimension: r.dimension,
+    value: r.value,
+  }));
+}
+
+function hourKeyFromDate(d: Date): string {
+  const x = new Date(d);
+  x.setUTCMilliseconds(0);
+  x.setUTCSeconds(0, 0);
+  x.setUTCMinutes(0, 0);
+  return x.toISOString();
+}
+
+async function fetchHourlyRange(fromInclusive: Date, toInclusive: Date) {
+  return db
+    .select()
+    .from(hourlyMetrics)
+    .where(and(gte(hourlyMetrics.hour, fromInclusive), lte(hourlyMetrics.hour, toInclusive)));
+}
+
+/** Collapse per-day (or per-week) rows from daily_metrics into bucket keys, then sum. */
+function aggregateFlatRows(
+  flat: FlatMetric[]
 ): Map<string, Map<string, Map<string, bigint>>> {
-  /** bucket -> series -> dimension -> sum */
   const out = new Map<string, Map<string, Map<string, bigint>>>();
-  for (const r of rows) {
-    const bucket =
-      granularity === "day" ? parseDay(r.day) : mondayBucket(parseDay(r.day));
-    if (!out.has(bucket)) out.set(bucket, new Map());
-    const sm = out.get(bucket)!;
+  for (const r of flat) {
+    if (!out.has(r.bucket)) out.set(r.bucket, new Map());
+    const sm = out.get(r.bucket)!;
     if (!sm.has(r.series)) sm.set(r.series, new Map());
     const dm = sm.get(r.series)!;
     const cur = dm.get(r.dimension) ?? BigInt(0);
@@ -83,25 +126,20 @@ function seriesOverTime(
   }));
 }
 
-function movingAverage(
-  points: { bucket: string; value: string }[],
-  window: number
-): { bucket: string; ma: string }[] {
-  const out: { bucket: string; ma: string }[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const start = Math.max(0, i - window + 1);
-    let s = BigInt(0);
-    let n = 0;
-    for (let j = start; j <= i; j++) {
-      s += BigInt(points[j].value);
-      n += 1;
+/** Per-bucket sum of several series (same dimension) — e.g. success+failed, or IBC out+in */
+function sumSeriesOverTime(
+  bucketMap: Map<string, Map<string, Map<string, bigint>>>,
+  seriesNames: readonly string[],
+  dimension = ""
+): { bucket: string; value: string }[] {
+  const keys = [...bucketMap.keys()].sort();
+  return keys.map((bucket) => {
+    let t = BigInt(0);
+    for (const s of seriesNames) {
+      t += bucketMap.get(bucket)?.get(s)?.get(dimension) ?? BigInt(0);
     }
-    out.push({
-      bucket: points[i].bucket,
-      ma: (s / BigInt(n)).toString(),
-    });
-  }
-  return out;
+    return { bucket, value: t.toString() };
+  });
 }
 
 function pctChange(current: bigint, previous: bigint): number | null {
@@ -126,13 +164,35 @@ export async function buildMetricsPayload(
   const prevFromDay = new Date(prevFromMs).toISOString().slice(0, 10);
   const prevToDay = new Date(prevToMs).toISOString().slice(0, 10);
 
-  const [currentRows, prevRows] = await Promise.all([
-    fetchMetricsRange(fromDay, toDay),
-    fetchMetricsRange(prevFromDay, prevToDay),
-  ]);
+  let curBuckets: Map<string, Map<string, Map<string, bigint>>>;
+  let prevBuckets: Map<string, Map<string, Map<string, bigint>>>;
+  let comparisonWindow: { from: string; to: string };
 
-  const curBuckets = bucketByGranularity(currentRows, granularity);
-  const prevBuckets = bucketByGranularity(prevRows, granularity);
+  if (granularity === "hour") {
+    const fromStart = new Date(fromDay + "T00:00:00.000Z");
+    const toEnd = new Date(toDay + "T23:00:00.000Z");
+    const nHours = (toEnd.getTime() - fromStart.getTime()) / 3_600_000 + 1;
+    const prevTo = new Date(fromStart.getTime() - 3_600_000);
+    const prevFrom = new Date(fromStart.getTime() - nHours * 3_600_000);
+    const [curH, prevH] = await Promise.all([
+      fetchHourlyRange(fromStart, toEnd),
+      fetchHourlyRange(prevFrom, prevTo),
+    ]);
+    curBuckets = aggregateFlatRows(mapHourlyDbToFlat(curH));
+    prevBuckets = aggregateFlatRows(mapHourlyDbToFlat(prevH));
+    comparisonWindow = { from: prevFrom.toISOString(), to: prevTo.toISOString() };
+  } else {
+    const [currentRows, prevRows] = await Promise.all([
+      fetchMetricsRange(fromDay, toDay),
+      fetchMetricsRange(prevFromDay, prevToDay),
+    ]);
+    const g = granularity;
+    const curFlat = dailyRowsToFlat(currentRows, g);
+    const prevFlat = dailyRowsToFlat(prevRows, g);
+    curBuckets = aggregateFlatRows(curFlat);
+    prevBuckets = aggregateFlatRows(prevFlat);
+    comparisonWindow = { from: prevFromDay, to: prevToDay };
+  }
 
   const txSuccessCur = sumSeries(curBuckets, SERIES.TX_SUCCESS);
   const txSuccessPrev = sumSeries(prevBuckets, SERIES.TX_SUCCESS);
@@ -156,38 +216,67 @@ export async function buildMetricsPayload(
 
   const feeCur = sumAllFees(curBuckets);
   const feePrev = sumAllFees(prevBuckets);
+  const feeUbldCur = sumSeries(curBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
+  const feeUbldPrev = sumSeries(prevBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
 
-  const txSeries = seriesOverTime(curBuckets, SERIES.TX_SUCCESS);
-  const txMa7 = movingAverage(
-    txSeries.map((p) => ({ bucket: p.bucket, value: p.value })),
-    Math.min(7, txSeries.length || 1)
-  );
+  const txTotal = sumSeriesOverTime(curBuckets, [SERIES.TX_SUCCESS, SERIES.TX_FAILED]);
+  const ibcMsgCombined = sumSeriesOverTime(curBuckets, [
+    SERIES.IBC_TRANSFER_OUT_COUNT,
+    SERIES.IBC_TRANSFER_IN_COUNT,
+  ]);
+  const ibcOutSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
+  const ibcInSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_IN_COUNT);
 
   const feeByDenomCurrent = feeDenomBreakdown(curBuckets);
-  const feeSeriesTopDenom = (() => {
-    let top = "";
-    let max = BigInt(0);
-    for (const [d, v] of feeByDenomCurrent) {
-      if (BigInt(v) > max) {
-        max = BigInt(v);
-        top = d;
-      }
-    }
-    if (!top) return [];
-    return seriesOverTime(curBuckets, SERIES.FEE_PAID, top).map((p) => ({
-      bucket: p.bucket,
-      denom: top,
-      value: p.value,
-    }));
-  })();
 
   const composition = compositionFromBuckets(curBuckets, SERIES.MSG_TYPE);
 
   const transferByDenom = denomBreakdown(curBuckets, SERIES.TRANSFER_VOLUME);
+  const feePaidByDenomPrevious = Object.fromEntries(feeDenomBreakdown(prevBuckets));
+  const transferSums = aggregateDenomSeries(curBuckets, SERIES.TRANSFER_VOLUME);
+  const ibcInSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN);
+  const ibcOutSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT);
+
+  const transferTops = topNByVolume(transferSums, 2);
+  const inTops = topNByVolume(ibcInSums, 1);
+  const outTops = topNByVolume(ibcOutSums, 1);
+
+  let largestTransfer: { denom: string; amount: string } | null = null;
+  for (const [d, a] of Object.entries(transferByDenom)) {
+    if (!a) continue;
+    const b = BigInt(a);
+    if (b === 0n) continue;
+    if (!largestTransfer || b > BigInt(largestTransfer.amount)) {
+      largestTransfer = { denom: d, amount: a };
+    }
+  }
+
+  const transfer1Denom = transferTops[0] ?? null;
+  const transfer2Denom = transferTops[1] ?? null;
+  const transferValueTop1 =
+    transfer1Denom != null
+      ? { denom: transfer1Denom, data: seriesOverTime(curBuckets, SERIES.TRANSFER_VOLUME, transfer1Denom) }
+      : { denom: "" as const, data: [] as { bucket: string; value: string }[] };
+  const transferValueTop2: { denom: string; data: { bucket: string; value: string }[] } | null =
+    transfer2Denom != null
+      ? { denom: transfer2Denom, data: seriesOverTime(curBuckets, SERIES.TRANSFER_VOLUME, transfer2Denom) }
+      : null;
+
+  const inDenom = inTops[0] ?? null;
+  const outDenom = outTops[0] ?? null;
+  const ibcValueIn =
+    inDenom != null
+      ? { denom: inDenom, data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN, inDenom) }
+      : { denom: "" as const, data: [] as { bucket: string; value: string }[] };
+  const ibcValueOut: { denom: string; data: { bucket: string; value: string }[] } | null =
+    outDenom != null
+      ? { denom: outDenom, data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT, outDenom) }
+      : null;
 
   return {
+    granularity,
     range: { from: fromDay, to: toDay },
-    comparisonWindow: { from: prevFromDay, to: prevToDay },
+    comparisonWindow,
     kpis: {
       txSuccess: {
         current: txSuccessCur.toString(),
@@ -214,15 +303,28 @@ export async function buildMetricsPayload(
         previous: feePrev.toString(),
         pctChange: pctChange(feeCur, feePrev),
       },
+      /** Paid fee total in uBLD minimal units (human = BLD). Other fee denoms in feePaidByDenom. */
+      feePaidUbld: {
+        current: feeUbldCur.toString(),
+        previous: feeUbldPrev.toString(),
+        pctChange: pctChange(feeUbldCur, feeUbldPrev),
+      },
     },
+    largestTransfer,
     series: {
-      txSuccess: txSeries,
-      txSuccessMa7: txMa7,
-      feesPaidByTopDenom: feeSeriesTopDenom,
+      txTotal,
+      ibcMsgCombined,
+      ibcTransferOut: ibcOutSeries,
+      ibcTransferIn: ibcInSeries,
+      transferValueTop1,
+      transferValueTop2,
+      ibcValueIn,
+      ibcValueOut,
     },
     composition,
     transferVolumeByDenom: transferByDenom,
     feePaidByDenom: Object.fromEntries(feeByDenomCurrent),
+    feePaidByDenomPrevious,
     indexer: await getIndexerStatus(),
   };
 }
@@ -246,6 +348,15 @@ function feeDenomBreakdown(
   bucketMap: Map<string, Map<string, Map<string, bigint>>>
 ): Map<string, string> {
   return aggregateDenomSeries(bucketMap, SERIES.FEE_PAID);
+}
+
+/** Top N denoms by aggregate on-chain amount (string bigint), descending. */
+function topNByVolume(sums: Map<string, string>, n: number): string[] {
+  return [...sums.entries()]
+    .filter(([, v]) => BigInt(v) > BigInt(0))
+    .sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : BigInt(b[1]) < BigInt(a[1]) ? -1 : 0))
+    .slice(0, n)
+    .map(([d]) => d);
 }
 
 function denomBreakdown(

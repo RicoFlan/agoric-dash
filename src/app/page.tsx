@@ -8,8 +8,7 @@ export default function Home() {
           Agoric L1 activity
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Mainnet <code className="text-[var(--accent)]">agoric-3</code> — native
-          units; paid fees from tx results
+          Mainnet <code className="text-[var(--accent)]">agoric-3</code>
         </p>
       </header>
       <Dashboard />

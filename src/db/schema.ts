@@ -29,3 +29,18 @@ export const dailyMetrics = pgTable(
   },
   (t) => [primaryKey({ columns: [t.day, t.series, t.dimension] })]
 );
+
+/**
+ * UTC hour start (e.g. from block time), same series/dimensions as daily_metrics.
+ * Used for hour-granularity charts; populated alongside daily by the indexer.
+ */
+export const hourlyMetrics = pgTable(
+  "hourly_metrics",
+  {
+    hour: timestamp("hour", { withTimezone: true, mode: "date" }).notNull(),
+    series: varchar("series", { length: 64 }).notNull(),
+    dimension: varchar("dimension", { length: 512 }).notNull().default(""),
+    value: numeric("value", { precision: 78, scale: 0 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.hour, t.series, t.dimension] })]
+);
