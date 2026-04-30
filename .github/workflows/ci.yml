@@ -1,0 +1,21 @@
+# Lint, unit tests, and production build on every push / PR.
+name: CI
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run verify
+      - name: Production server smoke (next start + GET /)
+        run: node scripts/smoke-server.mjs

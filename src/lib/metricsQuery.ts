@@ -237,10 +237,6 @@ export async function buildMetricsPayload(
   const ibcInSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN);
   const ibcOutSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT);
 
-  const transferTops = topNByVolume(transferSums, 2);
-  const inTops = topNByVolume(ibcInSums, 1);
-  const outTops = topNByVolume(ibcOutSums, 1);
-
   let largestTransfer: { denom: string; amount: string } | null = null;
   for (const [d, a] of Object.entries(transferByDenom)) {
     if (!a) continue;
@@ -251,27 +247,32 @@ export async function buildMetricsPayload(
     }
   }
 
-  const transfer1Denom = transferTops[0] ?? null;
-  const transfer2Denom = transferTops[1] ?? null;
-  const transferValueTop1 =
-    transfer1Denom != null
-      ? { denom: transfer1Denom, data: seriesOverTime(curBuckets, SERIES.TRANSFER_VOLUME, transfer1Denom) }
-      : { denom: "" as const, data: [] as { bucket: string; value: string }[] };
-  const transferValueTop2: { denom: string; data: { bucket: string; value: string }[] } | null =
-    transfer2Denom != null
-      ? { denom: transfer2Denom, data: seriesOverTime(curBuckets, SERIES.TRANSFER_VOLUME, transfer2Denom) }
-      : null;
+  /** All denoms with in-range transfer volume, sorted by total descending (legend / draw order). */
+  const transferDenomsSorted = [...transferSums.entries()]
+    .filter(([, v]) => BigInt(v) > BigInt(0))
+    .sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : BigInt(b[1]) < BigInt(a[1]) ? -1 : 0))
+    .map(([d]) => d);
+  const transferVolumeSeries = transferDenomsSorted.map((denom) => ({
+    denom,
+    data: seriesOverTime(curBuckets, SERIES.TRANSFER_VOLUME, denom),
+  }));
 
-  const inDenom = inTops[0] ?? null;
-  const outDenom = outTops[0] ?? null;
-  const ibcValueIn =
-    inDenom != null
-      ? { denom: inDenom, data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN, inDenom) }
-      : { denom: "" as const, data: [] as { bucket: string; value: string }[] };
-  const ibcValueOut: { denom: string; data: { bucket: string; value: string }[] } | null =
-    outDenom != null
-      ? { denom: outDenom, data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT, outDenom) }
-      : null;
+  const ibcInDenomsSorted = [...ibcInSums.entries()]
+    .filter(([, v]) => BigInt(v) > BigInt(0))
+    .sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : BigInt(b[1]) < BigInt(a[1]) ? -1 : 0))
+    .map(([d]) => d);
+  const ibcOutDenomsSorted = [...ibcOutSums.entries()]
+    .filter(([, v]) => BigInt(v) > BigInt(0))
+    .sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : BigInt(b[1]) < BigInt(a[1]) ? -1 : 0))
+    .map(([d]) => d);
+  const ibcAmountInSeries = ibcInDenomsSorted.map((denom) => ({
+    denom,
+    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN, denom),
+  }));
+  const ibcAmountOutSeries = ibcOutDenomsSorted.map((denom) => ({
+    denom,
+    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT, denom),
+  }));
 
   return {
     granularity,
@@ -316,10 +317,9 @@ export async function buildMetricsPayload(
       ibcMsgCombined,
       ibcTransferOut: ibcOutSeries,
       ibcTransferIn: ibcInSeries,
-      transferValueTop1,
-      transferValueTop2,
-      ibcValueIn,
-      ibcValueOut,
+      transferVolumeSeries,
+      ibcAmountInSeries,
+      ibcAmountOutSeries,
     },
     composition,
     transferVolumeByDenom: transferByDenom,
@@ -348,15 +348,6 @@ function feeDenomBreakdown(
   bucketMap: Map<string, Map<string, Map<string, bigint>>>
 ): Map<string, string> {
   return aggregateDenomSeries(bucketMap, SERIES.FEE_PAID);
-}
-
-/** Top N denoms by aggregate on-chain amount (string bigint), descending. */
-function topNByVolume(sums: Map<string, string>, n: number): string[] {
-  return [...sums.entries()]
-    .filter(([, v]) => BigInt(v) > BigInt(0))
-    .sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : BigInt(b[1]) < BigInt(a[1]) ? -1 : 0))
-    .slice(0, n)
-    .map(([d]) => d);
 }
 
 function denomBreakdown(

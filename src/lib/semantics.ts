@@ -53,8 +53,8 @@ Metrics use on-chain data indexed from Agoric mainnet (agoric-3). Addresses are 
 Transaction volume counts included transactions; primary KPI uses successful txs (ABCI code 0) unless noted.
 Fees are paid fees taken from transaction result events (e.g. tx/fee attributes), not the declared max fee cap in the signed tx.
 Transfer values sum bank and IBC transfer message amounts in native minimal units per denom—contract-internal flows may be absent.
-In-tx “value moving” is multi-asset: each token (including IBC hashes) is a separate line; uBLD is not a proxy for all activity. Add each asset you care about to src/config/denoms.json for display symbols. Optional spot USD in tooltips is from CoinGecko for rough cross-asset comparison only, not a mark price.
-The value charts show the two largest transfer denoms in the range (by sum) and, separately, the IBC in/out amount leaders; you cannot add across denoms to get a single total.
+In-tx “value moving” is multi-asset: each token (including IBC hashes) is a separate line; uBLD is not a proxy for all activity. Add each asset you care about to src/config/denoms.json for display symbols and decimals.
+The in-tx transfer volume and IBC amount flow charts plot every denom with non-zero volume in the range (one line per asset per direction where applicable); Y-axes use human units per asset when mapped in denoms.json—do not add across denoms to get a single economic total.
 Gas is ABCI gas units, not a token. Fees in uBLD are shown as BLD; other fee denoms appear in the fee table.
 IBC direction is chain-relative (out = MsgTransfer from this chain; in = packet receive handling where indexed).
 Period-over-period compares the prior window of equal length ending at the start of the selected range.

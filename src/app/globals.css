@@ -1,19 +1,56 @@
 @import "tailwindcss";
 
+/**
+ * Design tokens: docs/style-guide.md (Base UI Kit — dark theme).
+ */
 :root {
-  --bg: #0c0e14;
-  --surface: #141824;
-  --border: #252a3a;
-  --text: #e8eaf0;
-  --muted: #8b93a7;
-  --accent: #6ee7b7;
+  --color-bg-primary: #0b0f14;
+  --color-bg-secondary: #121821;
+  /* Lifted vs guide default so panels read clearly on page bg */
+  --color-surface: #1e2b3c;
+  --color-border: #2a3648;
+  /* Lifted for readability on --color-surface panels */
+  --color-text-primary: #f2f6fa;
+  --color-text-secondary: #c8d2de;
+  --color-text-muted: #94a1b2;
+  --color-accent: #2ed3b7;
+  --color-accent-hover: #26bfa5;
+  --color-accent-active: #1fa38c;
+  --color-accent-subtle: #123c3a;
+  --color-success: #2ecc71;
+  --color-warning: #f5a623;
+  --color-error: #e0565b;
+
+  /* Aliases used across components */
+  --bg: var(--color-bg-primary);
+  --surface: var(--color-surface);
+  --border: var(--color-border);
+  --text: var(--color-text-primary);
+  --muted: var(--color-text-muted);
+  --accent: var(--color-accent);
+  --accent-on: #0b0f14;
+
+  --radius-default: 6px;
+  --radius-card: 8px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.25);
+
+  /* Heading colors: use in CSS only; in React use Tailwind e.g. text-[var(--color-accent)] (see style guide). */
+  --heading-section: var(--color-accent);
+  --heading-card: var(--color-text-primary);
+  --heading-label: var(--color-text-secondary);
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family:
-    ui-sans-serif,
-    system-ui,
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial,
     sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+code,
+.font-mono,
+.font-mono * {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
 }

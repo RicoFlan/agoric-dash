@@ -32,6 +32,15 @@ const POLL_MS = Number(process.env.INDEXER_POLL_MS ?? "20000");
 const BATCH = Number(process.env.INDEXER_BATCH ?? "25");
 const LAG = Number(process.env.INDEXER_LAG ?? "3");
 const INITIAL_WINDOW = BigInt(process.env.INDEXER_INITIAL_WINDOW ?? "500");
+const START_DATE_ISO = process.env.INDEXER_START_DATE ?? "2026-01-01T00:00:00Z";
+const CATCHUP_BATCH = Number(process.env.INDEXER_CATCHUP_BATCH ?? "2000");
+const CATCHUP_POLL_MS = Number(process.env.INDEXER_CATCHUP_POLL_MS ?? "100");
+const CATCHUP_THRESHOLD_BLOCKS = BigInt(process.env.INDEXER_CATCHUP_THRESHOLD_BLOCKS ?? "20000");
+/** Parallel block fetches in catch-up mode (each height still does block + block_results). */
+const CATCHUP_CONCURRENCY = Math.max(
+  1,
+  Math.min(128, Number(process.env.INDEXER_CATCHUP_CONCURRENCY ?? "24"))
+);
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL required");
@@ -42,6 +51,12 @@ const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
 
 const { dailyMetrics, hourlyMetrics } = schema;
+
+const START_DATE_MS = new Date(START_DATE_ISO).getTime();
+if (!Number.isFinite(START_DATE_MS)) {
+  console.error("INDEXER_START_DATE must be a valid ISO datetime, e.g. 2026-01-01T00:00:00Z");
+  process.exit(1);
+}
 
 function dayUtc(isoTime: string): string {
   const d = new Date(isoTime);
@@ -60,7 +75,16 @@ function hourStartUtcFromIso(isoTime: string): Date {
   return d;
 }
 
-async function upsertDelta(
+const ROLLUP_KEY_DELIM = "\0";
+
+function bumpRollupMap(m: Map<string, bigint>, key: string, delta: bigint) {
+  if (delta === BigInt(0)) return;
+  m.set(key, (m.get(key) ?? BigInt(0)) + delta);
+}
+
+function addRollupDelta(
+  daily: Map<string, bigint>,
+  hourly: Map<string, bigint>,
   day: string,
   hour: Date,
   series: string,
@@ -68,35 +92,39 @@ async function upsertDelta(
   delta: bigint
 ) {
   if (delta === BigInt(0)) return;
-  const dStr = delta.toString();
-  await db
-    .insert(dailyMetrics)
-    .values({
-      day,
-      series,
-      dimension,
-      value: dStr,
-    })
-    .onConflictDoUpdate({
-      target: [dailyMetrics.day, dailyMetrics.series, dailyMetrics.dimension],
-      set: {
-        value: sql`${dailyMetrics.value} + ${sql.raw("excluded.value")}`,
-      },
-    });
-  await db
-    .insert(hourlyMetrics)
-    .values({
-      hour,
-      series,
-      dimension,
-      value: dStr,
-    })
-    .onConflictDoUpdate({
-      target: [hourlyMetrics.hour, hourlyMetrics.series, hourlyMetrics.dimension],
-      set: {
-        value: sql`${hourlyMetrics.value} + ${sql.raw("excluded.value")}`,
-      },
-    });
+  bumpRollupMap(daily, [day, series, dimension].join(ROLLUP_KEY_DELIM), delta);
+  bumpRollupMap(hourly, [hour.toISOString(), series, dimension].join(ROLLUP_KEY_DELIM), delta);
+}
+
+async function flushRollupMaps(daily: Map<string, bigint>, hourly: Map<string, bigint>) {
+  if (daily.size === 0 && hourly.size === 0) return;
+  await db.transaction(async (tx) => {
+    for (const [key, delta] of daily) {
+      if (delta === BigInt(0)) continue;
+      const [day, series, dimension] = key.split(ROLLUP_KEY_DELIM);
+      const dStr = delta.toString();
+      await tx
+        .insert(dailyMetrics)
+        .values({ day, series, dimension, value: dStr })
+        .onConflictDoUpdate({
+          target: [dailyMetrics.day, dailyMetrics.series, dailyMetrics.dimension],
+          set: { value: sql`${dailyMetrics.value} + ${sql.raw("excluded.value")}` },
+        });
+    }
+    for (const [key, delta] of hourly) {
+      if (delta === BigInt(0)) continue;
+      const [iso, series, dimension] = key.split(ROLLUP_KEY_DELIM);
+      const hour = new Date(iso);
+      const dStr = delta.toString();
+      await tx
+        .insert(hourlyMetrics)
+        .values({ hour, series, dimension, value: dStr })
+        .onConflictDoUpdate({
+          target: [hourlyMetrics.hour, hourlyMetrics.series, hourlyMetrics.dimension],
+          set: { value: sql`${hourlyMetrics.value} + ${sql.raw("excluded.value")}` },
+        });
+    }
+  });
 }
 
 async function getCursor(): Promise<bigint> {
@@ -133,13 +161,25 @@ function asEventKV(
   );
 }
 
-async function indexBlock(height: bigint): Promise<void> {
+async function fetchBlockPair(height: bigint): Promise<{
+  block: RpcBlockResponse;
+  results: RpcBlockResultsResponse;
+}> {
   const hStr = height.toString();
-  const block = await rpcCall<RpcBlockResponse>(RPC_URL, "block", { height: hStr });
-  const results = await rpcCall<RpcBlockResultsResponse>(RPC_URL, "block_results", {
-    height: hStr,
-  });
+  const [block, results] = await Promise.all([
+    rpcCall<RpcBlockResponse>(RPC_URL, "block", { height: hStr }),
+    rpcCall<RpcBlockResultsResponse>(RPC_URL, "block_results", { height: hStr }),
+  ]);
+  return { block, results };
+}
 
+function accumulateBlock(
+  block: RpcBlockResponse,
+  results: RpcBlockResultsResponse,
+  daily: Map<string, bigint>,
+  hourly: Map<string, bigint>
+) {
+  const hStr = block.block.header.height;
   const iso = block.block.header.time;
   const day = dayUtc(iso);
   const hour = hourStartUtcFromIso(iso);
@@ -154,20 +194,20 @@ async function indexBlock(height: bigint): Promise<void> {
   const n = Math.min(txsB64.length, txResults.length);
 
   for (let i = 0; i < n; i++) {
-    const raw = fromBase64(txsB64[i]);
-    const tr = txResults[i];
+    const raw = fromBase64(txsB64[i]!);
+    const tr = txResults[i]!;
     const ok = tr.code === TX_SUCCESS_CODE;
 
-    await upsertDelta(day, hour, ok ? SERIES.TX_SUCCESS : SERIES.TX_FAILED, "", BigInt(1));
+    addRollupDelta(daily, hourly, day, hour, ok ? SERIES.TX_SUCCESS : SERIES.TX_FAILED, "", BigInt(1));
 
     const gas = BigInt(tr.gas_used ?? "0");
-    await upsertDelta(day, hour, SERIES.GAS_USED, "", gas);
+    addRollupDelta(daily, hourly, day, hour, SERIES.GAS_USED, "", gas);
 
     if (!ok) continue;
 
     const fees = extractPaidFeesFromEvents(eventsPerTx[i] ?? []);
     for (const [denom, amt] of fees) {
-      await upsertDelta(day, hour, SERIES.FEE_PAID, denom, amt);
+      addRollupDelta(daily, hourly, day, hour, SERIES.FEE_PAID, denom, amt);
     }
 
     let decoded;
@@ -181,7 +221,7 @@ async function indexBlock(height: bigint): Promise<void> {
     const msgs = decoded.body.messages;
     if (MESSAGE_ATTRIBUTION === "first_message" && msgs.length > 0) {
       const first = msgs[0]!;
-      await upsertDelta(day, hour, SERIES.MSG_TYPE, first.typeUrl, BigInt(1));
+      addRollupDelta(daily, hourly, day, hour, SERIES.MSG_TYPE, first.typeUrl, BigInt(1));
     }
 
     for (const msg of msgs) {
@@ -190,13 +230,13 @@ async function indexBlock(height: bigint): Promise<void> {
 
       if (!TRANSFER_MSG_TYPES.has(typeUrl)) {
         if (typeUrl === MSG_RECV_PACKET) {
-          await upsertDelta(day, hour, SERIES.IBC_TRANSFER_IN_COUNT, "", BigInt(1));
+          addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_IN_COUNT, "", BigInt(1));
           for (const ev of eventsPerTx[i] ?? []) {
             if (ev.type !== "coin_received" && ev.type !== "transfer") continue;
             for (const a of ev.attributes) {
               if (a.key !== "amount") continue;
               for (const [denom, amt] of parseCoinsAmounts(a.value)) {
-                await upsertDelta(day, hour, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
+                addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
               }
             }
           }
@@ -213,26 +253,30 @@ async function indexBlock(height: bigint): Promise<void> {
 
         if (typeUrl.includes("MsgSend")) {
           for (const c of decodedMsg.amount ?? []) {
-            await upsertDelta(day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
+            addRollupDelta(daily, hourly, day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
           }
         }
         if (typeUrl.includes("MsgMultiSend")) {
           for (const o of decodedMsg.outputs ?? []) {
             for (const c of o.coins ?? []) {
-              await upsertDelta(day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
+              addRollupDelta(daily, hourly, day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
             }
           }
         }
         if (typeUrl === MSG_IBC_TRANSFER && decodedMsg.token) {
-          await upsertDelta(
+          addRollupDelta(
+            daily,
+            hourly,
             day,
             hour,
             SERIES.TRANSFER_VOLUME,
             decodedMsg.token.denom,
             BigInt(decodedMsg.token.amount)
           );
-          await upsertDelta(day, hour, SERIES.IBC_TRANSFER_OUT_COUNT, "", BigInt(1));
-          await upsertDelta(
+          addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_OUT_COUNT, "", BigInt(1));
+          addRollupDelta(
+            daily,
+            hourly,
             day,
             hour,
             SERIES.IBC_TRANSFER_AMOUNT_OUT,
@@ -252,39 +296,146 @@ async function latestHeight(): Promise<bigint> {
   return BigInt(st.sync_info.latest_block_height);
 }
 
-async function loop() {
+async function blockTimeMsAtHeight(height: bigint): Promise<number> {
+  const block = await rpcCall<RpcBlockResponse>(RPC_URL, "block", { height: height.toString() });
+  const ms = new Date(block.block.header.time).getTime();
+  if (!Number.isFinite(ms)) throw new Error(`Invalid block time at height ${height.toString()}`);
+  return ms;
+}
+
+async function blockTimeMsAtHeightOrNull(height: bigint): Promise<number | null> {
+  try {
+    return await blockTimeMsAtHeight(height);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Some RPC providers prune older heights and return errors for low blocks.
+ * Find the earliest height still queryable on this RPC.
+ */
+async function findEarliestQueryableHeight(tip: bigint): Promise<bigint> {
+  let lo = BigInt(1);
+  let hi = tip;
+  while (lo < hi) {
+    const mid = (lo + hi) / BigInt(2);
+    const ok = (await blockTimeMsAtHeightOrNull(mid)) !== null;
+    if (ok) {
+      hi = mid;
+    } else {
+      lo = mid + BigInt(1);
+    }
+  }
+  return lo;
+}
+
+/**
+ * Find first block height with time >= START_DATE.
+ * Uses binary search over block heights to avoid scanning from genesis.
+ */
+async function findStartHeightByTime(targetMs: number, tip: bigint): Promise<bigint> {
+  const earliestQueryable = await findEarliestQueryableHeight(tip);
+  const earliestQueryableMs = await blockTimeMsAtHeight(earliestQueryable);
+  if (targetMs <= earliestQueryableMs) return earliestQueryable;
+
+  const tipMs = await blockTimeMsAtHeight(tip);
+  if (targetMs > tipMs) return tip + BigInt(1);
+
+  let lo = earliestQueryable;
+  let hi = tip;
+  while (lo < hi) {
+    const mid = (lo + hi) / BigInt(2);
+    const midMs = await blockTimeMsAtHeight(mid);
+    if (midMs < targetMs) {
+      lo = mid + BigInt(1);
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+function minBigint(a: bigint, b: bigint): bigint {
+  return a < b ? a : b;
+}
+
+async function loop(startFloorHeight: bigint) {
   let cursor = await getCursor();
   const tip = await latestHeight();
-  const target = tip - BigInt(LAG);
+  const target = tip > BigInt(LAG) ? tip - BigInt(LAG) : BigInt(0);
 
   let next: bigint;
   if (cursor === BigInt(0)) {
-    next =
-      target > INITIAL_WINDOW ? target - INITIAL_WINDOW + BigInt(1) : BigInt(1);
+    next = startFloorHeight;
+    if (!process.env.INDEXER_START_DATE) {
+      const windowStart = target > INITIAL_WINDOW ? target - INITIAL_WINDOW + BigInt(1) : BigInt(1);
+      next = windowStart > startFloorHeight ? windowStart : startFloorHeight;
+    }
   } else {
     next = cursor + BigInt(1);
   }
 
+  if (next < startFloorHeight) next = startFloorHeight;
+
+  const backlog = target >= next ? target - next + BigInt(1) : BigInt(0);
+  const inCatchup = backlog > CATCHUP_THRESHOLD_BLOCKS;
+  const batchSize = inCatchup ? CATCHUP_BATCH : BATCH;
+  const parallel = inCatchup ? BigInt(CATCHUP_CONCURRENCY) : BigInt(1);
+
   let processed = 0;
-  while (next <= target && processed < BATCH) {
-    await indexBlock(next);
-    await setCursor(next);
-    cursor = next;
-    next += BigInt(1);
-    processed += 1;
+  while (next <= target && processed < batchSize) {
+    const remaining = target - next + BigInt(1);
+    const room = BigInt(batchSize - processed);
+    const chunk = minBigint(minBigint(remaining, parallel), room);
+    if (chunk <= BigInt(0)) break;
+
+    const chunkN = Number(chunk);
+    const heights: bigint[] = [];
+    for (let i = 0; i < chunkN; i++) {
+      heights.push(next + BigInt(i));
+    }
+
+    const pairs = await Promise.all(heights.map((h) => fetchBlockPair(h)));
+    const daily = new Map<string, bigint>();
+    const hourly = new Map<string, bigint>();
+    for (const p of pairs) {
+      accumulateBlock(p.block, p.results, daily, hourly);
+    }
+    await flushRollupMaps(daily, hourly);
+
+    const lastH = heights[heights.length - 1]!;
+    await setCursor(lastH);
+    cursor = lastH;
+    next = lastH + BigInt(1);
+    processed += chunkN;
   }
 
   if (processed > 0) {
-    console.log(`Indexer: processed ${processed} blocks, cursor=${cursor}, tip=${tip}`);
+    console.log(
+      `Indexer: processed ${processed} blocks, cursor=${cursor}, tip=${tip}, mode=${inCatchup ? "catchup" : "tail"}, concurrency=${inCatchup ? CATCHUP_CONCURRENCY : 1}`
+    );
   }
+
+  return { processed, inCatchup };
 }
 
 async function main() {
-  console.log(`Indexer RPC=${RPC_URL} poll=${POLL_MS}ms`);
-  await loop();
-  setInterval(() => {
-    void loop().catch((e) => console.error(e));
-  }, POLL_MS);
+  const tip = await latestHeight();
+  const startFloorHeight = await findStartHeightByTime(START_DATE_MS, tip);
+
+  console.log(
+    `Indexer RPC=${RPC_URL} startDate=${START_DATE_ISO} startHeight=${startFloorHeight.toString()} tailPoll=${POLL_MS}ms catchupPoll=${CATCHUP_POLL_MS}ms catchupConcurrency=${CATCHUP_CONCURRENCY}`
+  );
+
+  for (;;) {
+    const { inCatchup } = await loop(startFloorHeight);
+    await sleep(inCatchup ? CATCHUP_POLL_MS : POLL_MS);
+  }
 }
 
 main().catch((e) => {

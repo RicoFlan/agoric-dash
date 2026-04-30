@@ -1,23 +1,19 @@
-import denomsConfig from "@/config/denoms.json";
+import denoms from "@/config/denoms.json";
 
-type Entry = { match: string; displaySymbol: string; decimals: number; coingeckoId?: string };
+type Entry = { match: string; displaySymbol: string; decimals: number };
 
-export type DenomMeta = {
+export type ResolvedDenom = {
   displaySymbol: string;
   decimals: number;
-  coingeckoId: string;
 };
 
-const entries: Entry[] = (denomsConfig as { entries: Entry[] }).entries;
-
-/** Resolve chain/IBC denom to display metadata. Unknown denoms = null. */
-export function resolveDenom(denom: string): DenomMeta | null {
+export function resolveDenom(onChainDenom: string): ResolvedDenom | null {
+  const entries = denoms.entries as Entry[];
   for (const e of entries) {
-    if (e.match === denom) {
+    if (e.match === onChainDenom) {
       return {
         displaySymbol: e.displaySymbol,
         decimals: e.decimals,
-        coingeckoId: e.coingeckoId ?? "",
       };
     }
   }

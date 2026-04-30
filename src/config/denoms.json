@@ -1,43 +1,625 @@
 {
-  "note": "See README.md (Denoms, symbols, and IBC hashes). Agoric-3: full string match to bank/IBC minimal denoms. Traces: query /ibc/apps/transfer/v1/denom_traces on a mainnet node. Multiple ibc/… strings can be the same logical asset (different IBC paths). coingeckoId is optional: omit for assets without a CoinGecko id (no tooltip USD). Decimals: verify against chain metadata if amounts look wrong; EVM/gravity often 18, Cosmos u* / micro often 6.",
+  "note": "See README.md (Denoms, symbols, and IBC hashes). Agoric-3: full string match to bank/IBC minimal denoms. Traces: query /ibc/apps/transfer/v1/denom_traces on a mainnet node. Multiple ibc/… strings can be the same logical asset (different IBC paths). Decimals: verify against chain metadata if amounts look wrong; EVM/gravity often 18, Cosmos u* / micro often 6. To find missing hashes, diff GET /cosmos/bank/v1beta1/denoms_metadata (field base) against entries[].match.",
   "entries": [
-    { "match": "ubld", "displaySymbol": "BLD", "decimals": 6, "coingeckoId": "agoric" },
-    { "match": "uist", "displaySymbol": "IST", "decimals": 6, "coingeckoId": "inter-stable-token" },
-    { "match": "ufastlp", "displaySymbol": "Fast LP", "decimals": 6 },
-    { "match": "upoc26", "displaySymbol": "Poc26", "decimals": 6 },
-    { "match": "ibc/FE98AAD68F02F03565E9FA39A5E627946699B2B07115889ED812D8BA639576A9", "displaySymbol": "USDC", "decimals": 6, "coingeckoId": "usd-coin" },
-    { "match": "ibc/295548A78785A1007F232DE286149A6FF512F180AF5657780FC89C009E2C348F", "displaySymbol": "USDC", "decimals": 6, "coingeckoId": "usd-coin" },
-    { "match": "ibc/3914BDEF46F429A26917E4D8D434620EC4817DC6B6E68FB327E190902F1E9242", "displaySymbol": "DAI", "decimals": 18, "coingeckoId": "dai" },
-    { "match": "ibc/3D5291C23D776C3AA7A7ABB34C7B023193ECD2BC42EA19D3165B2CF9652117E7", "displaySymbol": "DAI", "decimals": 18, "coingeckoId": "dai" },
-    { "match": "ibc/6831292903487E58BF9A195FDDC8A2E626B3DF39B88F4E7F41C935CADBAF54AC", "displaySymbol": "USDC", "decimals": 6, "coingeckoId": "usd-coin" },
-    { "match": "ibc/BA313C4A19DFBF943586C0387E6B11286F9E416B4DD27574E6909CABE0E342FA", "displaySymbol": "ATOM", "decimals": 6, "coingeckoId": "cosmos" },
-    { "match": "ibc/0471F1C4E7AFD3F07702BEF6DC365268D64570F7C1FDC98EA6098DD6DE59817B", "displaySymbol": "OSMO", "decimals": 6, "coingeckoId": "osmosis" },
-    { "match": "ibc/1C312D6A05202A8F83393290B3403EAA37FF2E3DDA73BB69253C2D10CDA4D6CF", "displaySymbol": "XPRT", "decimals": 6, "coingeckoId": "persistence" },
-    { "match": "ibc/2FAD8D00A958B0A5509A4ECF9E719B65EE268DAFB38FED98FF9B90B720F04C28", "displaySymbol": "PICA", "decimals": 12, "coingeckoId": "picasso" },
-    { "match": "ibc/B557233C2463BCEB5D95E247CBD52AC98BE0847E9BEC5C3800A4384936EB6280", "displaySymbol": "UMEE", "decimals": 6, "coingeckoId": "umee-network" },
-    { "match": "ibc/3763997B746CA5FDC9883C5192B783B114A4610E1A37751955288E0940BB0B7F", "displaySymbol": "AXL", "decimals": 6, "coingeckoId": "axelar" },
-    { "match": "ibc/80D5E86278CE910A7A9653CCA7DEB62C817E07AF9C0C657B43191C43DE60B107", "displaySymbol": "EVMOS", "decimals": 18, "coingeckoId": "evmos" },
-    { "match": "ibc/B770756C834B46C8CBD2396D86E98556A2667FA76C87F9478FF7F527B0CEE44B", "displaySymbol": "EVMOS (hop)", "decimals": 18, "coingeckoId": "evmos" },
-    { "match": "ibc/FA903A861D5A8CD81BB8F0325F2AF782655770AC10E80D8FAF51647B2B61C95E", "displaySymbol": "EVMOS", "decimals": 18, "coingeckoId": "evmos" },
-    { "match": "ibc/B0DBD35FFB7A373EBE4D606A3A907263DAC15FC9A7030B2C75E9E187A8A035B8", "displaySymbol": "EVMOS", "decimals": 18, "coingeckoId": "evmos" },
-    { "match": "ibc/9029A9BAC81D8D34BC3F35691FD1B02E312BE324F8FF30D979E8551B4F01FAD9", "displaySymbol": "WETH", "decimals": 18, "coingeckoId": "weth" },
-    { "match": "ibc/DCEB00D93503D79172652E516515A6115EE9C11684F3E021E6423CA20562D35F", "displaySymbol": "TIA (grv)", "decimals": 6, "coingeckoId": "celestia" },
-    { "match": "ibc/CC4254DC29095615C89368B3A3DD2DEF805655B329E302EAADCB7A98868CB20E", "displaySymbol": "rETH (grv)", "decimals": 18, "coingeckoId": "rocket-pool-eth" },
-    { "match": "ibc/C43141A8F6E9CEDBFA89601B2BA910C9F58A628BF0FE67DEC8096FDCAE4214A8", "displaySymbol": "INJ", "decimals": 18, "coingeckoId": "injective-protocol" },
-    { "match": "ibc/4BFBA0996893D2049913D24060BE5936EF8AAF2C89E08B91BCCCA2B8DE3BA241", "displaySymbol": "stTIA", "decimals": 6, "coingeckoId": "stride-staked-tia" },
-    { "match": "ibc/7C441D807F40AC1EAE386235A6D40DAD6A9197F3BF2311CF3978297BDC790CBA", "displaySymbol": "TIA/AXL", "decimals": 6, "coingeckoId": "celestia" },
-    { "match": "ibc/C5FD47DD588011D52ABC4EAB34EA283C20589C81D2B252BB9620DBF7FB1DA8DF", "displaySymbol": "stTIA (w)", "decimals": 6, "coingeckoId": "stride-staked-tia" },
-    { "match": "ibc/64B3EFE08A6A3EF5D2A7F1D3AF033DDC951DA51F92E06CC31D3F9AF8E8368860", "displaySymbol": "GRAV", "decimals": 6, "coingeckoId": "graviton" },
-    { "match": "ibc/DDAB71B9D194CBF3B87DD6924B3B4846F14061289FCBA8A3989B6F8230BC0F05", "displaySymbol": "stOSMO", "decimals": 6, "coingeckoId": "stride-staked-osmo" },
-    { "match": "ibc/9481CBCEFA8486819A66152E02A2653680978947A495FA489DFFD5603A8D7595", "displaySymbol": "NYM", "decimals": 6, "coingeckoId": "nym" },
-    { "match": "ibc/E5E48993E0D1E813FAC77E0C666CD1D37C5B2B9BD9AC6AD17CC70A8BD56E08D1", "displaySymbol": "stINJ", "decimals": 6, "coingeckoId": "stride-staked-injective" },
-    { "match": "ibc/6A9571DE6A3F60D7703C3290E2944E806C15A47C1EA6D4AFCD3AE4DC8AF080B1", "displaySymbol": "LEV / LP", "decimals": 6 },
-    { "match": "ibc/7CB33A66F90533ED1E168CB3251253C719CF4B04FF1290AFD795F14CA1D67278", "displaySymbol": "WOSMO", "decimals": 6, "coingeckoId": "osmosis" },
-    { "match": "ibc/B11D2BF454691B63FF73738EAC8D27C37F66948A5F390003AE1891FEFD387DDE", "displaySymbol": "FLIX", "decimals": 6, "coingeckoId": "omniflix-network" },
-    { "match": "ibc/4C1E308C6D28C7EA775E188CA7CB6F89FA9FB755DE175B402477E531B2AB5311", "displaySymbol": "AEC (chelon)", "decimals": 6 },
-    { "match": "ibc/8A39DE97A25EF1EFDE49678A1A9A7ECFDCA78CCBB159C97460DC76F0BA426463", "displaySymbol": "BLD (IBC)", "decimals": 6, "coingeckoId": "agoric" },
-    { "match": "ibc/C458CFCD9B96F9066EB206612562E36EFF5C619D83F402D9590AA1275F995C81", "displaySymbol": "BLD (IBC)", "decimals": 6, "coingeckoId": "agoric" },
-    { "match": "ibc/B37E4D9FB5B30F3E1E20A4B2DE2A005E584C5C822C44527546556AE2470B4539", "displaySymbol": "DOT", "decimals": 10, "coingeckoId": "polkadot" },
-    { "match": "ibc/B44BF5AB79C7893A27BAFCF65702B3EBC6DD1E2CF0C8D43605ACDFD1F98229BB", "displaySymbol": "EVM-ERC20", "decimals": 18 }
+    {
+      "match": "ibc/010704EDB319E4141299BBCB1CD8790362910509330824B88049DE3CE5D0A7AD",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/0471F1C4E7AFD3F07702BEF6DC365268D64570F7C1FDC98EA6098DD6DE59817B",
+      "displaySymbol": "OSMO",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/079DAF1995A28BCD3B4E3D38948BB0FBC1CDE47939820CBAB7C02AFB88FF31A3",
+      "displaySymbol": "USDT (Axelar)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/0CD5EB67AE0BCC1EA9ACD05A92C4C2C5F03B362FDA88F480C8576ECDA289B1BE",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/11EF28463CCD8A313E74F87D368BBB7B4FB812946B05599F4AC12187BD9986BF",
+      "displaySymbol": "USDT (Axelar)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/127F74219410953812580419AB871DE76FE4699974CE3D0E89EEB1494568B508",
+      "displaySymbol": "GRAV (grv-bridge)",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/1B38805B1C75352B28169284F96DF56BDEBD9E8FAC005BDCC8CF0378C82AA8E7",
+      "displaySymbol": "WETH",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/1BEF880E1AED058EC316A7394F232ACC03BA8622D170567395D036B05B917194",
+      "displaySymbol": "peggy token",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/1C312D6A05202A8F83393290B3403EAA37FF2E3DDA73BB69253C2D10CDA4D6CF",
+      "displaySymbol": "XPRT",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/1CA272A9C2F98C30A70CF2ED47E49A81EFA199138D3A57B7981F44EF5B5EC89D",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/1CEA01611511B6E795AB64891194D6BD9235BA2A758419E96A2585FD5EC5B9D9",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/1E5E491A5829030C4DAC8EFB1CD23713024E69C5D183DFA087D4E55DA6187F2B",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/259D8E2CF524AF1FB7D12E0B8AE3D02948D6FE9BDED7F0FC6C7B6FA6075331B5",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/27394FB092D2ECCD56123C74F36E4C1F926001CEADA9CA97EA622B25F41E5EB2",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/295548A78785A1007F232DE286149A6FF512F180AF5657780FC89C009E2C348F",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/299612A95693138225447366268ED58014100D965FCEDC43F27D47AB360F351F",
+      "displaySymbol": "STRD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/29A094924EB4272FFCAF4CBADC69F0C2BF575D5F28D6D9267A9E10F259346C53",
+      "displaySymbol": "stTIA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/2A041EEB0C09F7F174FCA5679C7325B1B4151310B6407CB48092C52BCC03BE4E",
+      "displaySymbol": "SEI",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/2ADE35033EB5365B2C92F44F60F669CA68B6409792ADCEF076EC52E12193F557",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/2FAD8D00A958B0A5509A4ECF9E719B65EE268DAFB38FED98FF9B90B720F04C28",
+      "displaySymbol": "PICA",
+      "decimals": 12
+    },
+    {
+      "match": "ibc/3103038EE5B7208E0802C75FC287B483E82063492A5FA955F270E5EB928E8AA6",
+      "displaySymbol": "JUNO",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/3763997B746CA5FDC9883C5192B783B114A4610E1A37751955288E0940BB0B7F",
+      "displaySymbol": "AXL",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/38483A5DBAE9372051D50CC31E0195FF2EBD0320FD41AF8F0B7658D484E94D0F",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/386D09AE31DA7C0C93091BB45D08CB7A0730B1F697CD813F06A5446DCF02EEB2",
+      "displaySymbol": "USDT (grv)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/3914BDEF46F429A26917E4D8D434620EC4817DC6B6E68FB327E190902F1E9242",
+      "displaySymbol": "DAI",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/3D5291C23D776C3AA7A7ABB34C7B023193ECD2BC42EA19D3165B2CF9652117E7",
+      "displaySymbol": "DAI",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/4721B61DBE668E2F3E613E45885396991F21E8374ABDE48CD7336A77B79101A5",
+      "displaySymbol": "stkATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/4A5A5FFC84DE5F679BFFBE73135B5713F6279AEFDDBE4FCC66761E8FA8283ACC",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/4BFBA0996893D2049913D24060BE5936EF8AAF2C89E08B91BCCCA2B8DE3BA241",
+      "displaySymbol": "stTIA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/4C1E308C6D28C7EA775E188CA7CB6F89FA9FB755DE175B402477E531B2AB5311",
+      "displaySymbol": "AEC (chelon)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/512A37281F5DD264C230E3E46B9670DB1AE96B84CF0C549855FF7DE23E4B5F76",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/563F632E87226997394F6F03107A06B5F80D35B30A82D0BBFACACAC2A128C587",
+      "displaySymbol": "GRAV",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/62BE64C6275C58474D769220BE72402D6821138343561EF77D55078D2A50FF95",
+      "displaySymbol": "CMST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/645C92C91742A3D0B1DBBACA4083AE89EEA833F90A7031CDB549ACD0996ED358",
+      "displaySymbol": "stkATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/64B3EFE08A6A3EF5D2A7F1D3AF033DDC951DA51F92E06CC31D3F9AF8E8368860",
+      "displaySymbol": "GRAV",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/6567DAF912E3BC274D0CCE45984E7A9559BF28F4AC9D366CD6A5B6B99168A3F5",
+      "displaySymbol": "APOLLO",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/680088DA29E2FBAD783A39A059C634CF17CC7B8C4BD6FF31A043F90CC4231EBD",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/6831292903487E58BF9A195FDDC8A2E626B3DF39B88F4E7F41C935CADBAF54AC",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/6A9571DE6A3F60D7703C3290E2944E806C15A47C1EA6D4AFCD3AE4DC8AF080B1",
+      "displaySymbol": "LEV / LP",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/6AA5123E11E0AB0D7ACCF898848435C06A1D1C138D4732FB90F9414205B6F0FA",
+      "displaySymbol": "KUJI",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/6B3B149598925C8E077627B6718578F8FA30C48602C13D4DB04C91EA08107953",
+      "displaySymbol": "SCRT",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/6DED6CED3E774E140EC8A565199E852D5CDBD99AC281D93D3707C99B98311C21",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/6EE9687CBBF88E1EFE351BCB01025E0B76452D48A2B41F6583E9E0B942FD62E7",
+      "displaySymbol": "NTRN",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/7223D5D50A1C501761BDA07133B112F3654B175DF8BE78AE12E06C0290621736",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/73E178692DD9B98F6DF928B2DD88F4FFFE3CCE4BC64EC9F2B599DCCE7EC83DFB",
+      "displaySymbol": "LOKI",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/74B0BDD3C0941166F5E96BFBC847219BBE609535F3A0D941C22342A60BD43A08",
+      "displaySymbol": "stATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/7944F925002055015AE40CCD78B795021C41F218DA829DC68D082F1BAB8792FB",
+      "displaySymbol": "TIA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/7A0FAE01EB4FD6930A0111759B22BB631BB089C75F7186E4F9ACC0E139DE678C",
+      "displaySymbol": "CRE",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/7C441D807F40AC1EAE386235A6D40DAD6A9197F3BF2311CF3978297BDC790CBA",
+      "displaySymbol": "TIA/AXL",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/7CB33A66F90533ED1E168CB3251253C719CF4B04FF1290AFD795F14CA1D67278",
+      "displaySymbol": "WOSMO",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/80D5E86278CE910A7A9653CCA7DEB62C817E07AF9C0C657B43191C43DE60B107",
+      "displaySymbol": "EVMOS",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/847A6B485D6BDC8A2440A2D480095B03B232E5D3CCB27FF21742114E57634119",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/897CBF3DCA3B69005E6668871522F57D5B2306EEAEB7D2E7C1A10B9E2637F949",
+      "displaySymbol": "USDC (avax)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/8A39DE97A25EF1EFDE49678A1A9A7ECFDCA78CCBB159C97460DC76F0BA426463",
+      "displaySymbol": "BLD (IBC)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/8BCCE28138180F7F7D7B9F3327DD97DE595A0DD66449FAA90D77EDC00D7F5B18",
+      "displaySymbol": "KUJI",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/8C032D06FBBDD9C3DC2C2CAAF2F3CC4BC0AC0AFD7B358F1105E5123C6F202CC6",
+      "displaySymbol": "STRD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/8C76D743D29FC38BC22EE2E1EA7FE8CCB3D2239B0228204129270F50527965E4",
+      "displaySymbol": "HUAHUA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/8D10A4AE70E8701609A0EBFAFACFEC68415B71175D354C764685B8EE4F561674",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/9029A9BAC81D8D34BC3F35691FD1B02E312BE324F8FF30D979E8551B4F01FAD9",
+      "displaySymbol": "WETH",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/93BEB9751F3E1CB27D144C18113AE472F27B6763FE5A3140A6D843177A2B7682",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/9481CBCEFA8486819A66152E02A2653680978947A495FA489DFFD5603A8D7595",
+      "displaySymbol": "NYM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/96DA6A81618985489BD781DB35276789D77A567E23AF1DC06076318F182BC10A",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/979059815B2C6237783C6A43744EEC3E58A941D68FA6306F6E2536DDA5C570F2",
+      "displaySymbol": "stTIA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/9B59DFFC6399683FCD4F9C48796C5851DBC6522273E9F1F0CDB57FC0E57E786B",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/A2AC94D0253E1C058B9ED332494F62256B882C7FB40F43445D67CFF353AD444A",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/A357D282201CED41A2460DB22440DCE35D4916D77319CDC26F5E45875B501715",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/A358D7F19237777AF6D8AD0E0F53268F8B18AE8A53ED318095C14D6D7F3B2DB5",
+      "displaySymbol": "SCRT",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/A50BE69DE573F17AE1A5D0A862E32144BB6167367A6C7F41C20226833C544913",
+      "displaySymbol": "UST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/A67ACDD1EFE949FA9D93B71106569FC91F94A3D31A6E3BA57DC33E995DA51173",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/A8FCBEFB7AC4B64C3C699265183F7663497B7D6C082030FEE65506083137F5D7",
+      "displaySymbol": "BABYKIRA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/ACC4E026BEEF54B83DF8B9D576A4E1F6E236459557B9F739A3F030DEF5C52DB0",
+      "displaySymbol": "USDC (grv)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/ADE6095B1E78C725D9B2F5159397D33D39C776DB44090930CE9E520832BB0732",
+      "displaySymbol": "DVPN",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/B0DBD35FFB7A373EBE4D606A3A907263DAC15FC9A7030B2C75E9E187A8A035B8",
+      "displaySymbol": "EVMOS",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/B11D2BF454691B63FF73738EAC8D27C37F66948A5F390003AE1891FEFD387DDE",
+      "displaySymbol": "FLIX",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/B16CA24861656EB034E642F0571395D4550769EE74BBECE8D72ED10B2DF0CA76",
+      "displaySymbol": "LUNA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/B1E6288B5A0224565D915D1F66716486F16D8A44BF33A9EC323DD6BA30764C35",
+      "displaySymbol": "stATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/B37E4D9FB5B30F3E1E20A4B2DE2A005E584C5C822C44527546556AE2470B4539",
+      "displaySymbol": "DOT",
+      "decimals": 10
+    },
+    {
+      "match": "ibc/B44BF5AB79C7893A27BAFCF65702B3EBC6DD1E2CF0C8D43605ACDFD1F98229BB",
+      "displaySymbol": "EVM-ERC20",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/B557233C2463BCEB5D95E247CBD52AC98BE0847E9BEC5C3800A4384936EB6280",
+      "displaySymbol": "UMEE",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/B6F3EEBBA6B06DF29C58A13D2383CCC30110224704DED5AB0F80E681D3B96391",
+      "displaySymbol": "TEST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/B770756C834B46C8CBD2396D86E98556A2667FA76C87F9478FF7F527B0CEE44B",
+      "displaySymbol": "EVMOS (hop)",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/BA313C4A19DFBF943586C0387E6B11286F9E416B4DD27574E6909CABE0E342FA",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/BAE800AEF2B5A3B1D48BB5803309E5E8F72FF3BF7C84CA1E4B204824176B4097",
+      "displaySymbol": "USK",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/BBEFCA0C55CF6FE326385725904DD817F7229B82332E8B947F0B15AE1CD66092",
+      "displaySymbol": "QCK",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/BE9116F49581FF59F018C64FB4A445B307332F77381640AAB05380473D0D7642",
+      "displaySymbol": "STARS",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/BF4C55FA14FB8A90E8233C6813356EF30668EDB2854E09AAA1C160861F771E19",
+      "displaySymbol": "SMELL",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/C01154C2547F4CB10A985EA78E7CD4BA891C1504360703A37E1D7043F06B5E1F",
+      "displaySymbol": "AXL",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/C2D0FCE37D22DF6D2E6E20319C8A796B1C2471F7A413C926880270E91424B7E8",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/C43141A8F6E9CEDBFA89601B2BA910C9F58A628BF0FE67DEC8096FDCAE4214A8",
+      "displaySymbol": "INJ",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/C458CFCD9B96F9066EB206612562E36EFF5C619D83F402D9590AA1275F995C81",
+      "displaySymbol": "BLD (IBC)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/C4E863D1C67C884058D99F9301EFE056236854506C0CE994949ADE18EAF09032",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/C50A0C7F7B66DE2A0646F0AE33AF97C6E3A7F6AEBDF02139E25B964241ACDAC5",
+      "displaySymbol": "stLUNA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/C5DEE8F139F26744C49178C01DF0EC3D3F91C7CAC127F53193A53B5C5CE36C85",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/C5FD47DD588011D52ABC4EAB34EA283C20589C81D2B252BB9620DBF7FB1DA8DF",
+      "displaySymbol": "stTIA (w)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/CAF5700762F8181DC20DF87FB48ECA0044F30503A0AB12265FB6B12DDEED61E1",
+      "displaySymbol": "TIA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/CC4254DC29095615C89368B3A3DD2DEF805655B329E302EAADCB7A98868CB20E",
+      "displaySymbol": "rETH (grv)",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/CFAD9AF5E97E18233A32132638D7D43A6705D4CA16AB4BCC5541A1A8F32D4618",
+      "displaySymbol": "NYM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/CFDA885851AA24919E249188B99E1997874797E8FAE6B6D243C1303E72F14C92",
+      "displaySymbol": "USDC (grv)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/D291F4E93D038050723AD2CE0DF40302D2B6DD00C36DEFD30548DACCDDCCA540",
+      "displaySymbol": "USK",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/D7911AED27F1A645197D322DA5DD4DCF5A01EC8E8C1A32D075BB1EE035CD1646",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/D805459E299CFED5CAD35B6A72AEEC18A43D43697A119B728E85DEE5EB8A46D0",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/DAD70BF1F889142E620A63D8C0CEFE60ABCE092B911A0BD728B105F1348679D8",
+      "displaySymbol": "dATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/DADB399E742FCEE71853E98225D13E44E90292852CD0033DF5CABAB96F80B833",
+      "displaySymbol": "WBNB",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/DCEB00D93503D79172652E516515A6115EE9C11684F3E021E6423CA20562D35F",
+      "displaySymbol": "TIA (grv)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/DDAB71B9D194CBF3B87DD6924B3B4846F14061289FCBA8A3989B6F8230BC0F05",
+      "displaySymbol": "stOSMO",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/E3C1A60A5CA60A744428B35C788E02801EB12D74F857F345CC6E3001B0915283",
+      "displaySymbol": "LUNA",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/E405A5D8B520FCD42997A73866135E79C78600F74523C49E4916EB6AF8E4C7C2",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/E49A5D562884D494B490E7D0460476BFC90952F6FA653D7AB021414F9C92B20D",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/E5E48993E0D1E813FAC77E0C666CD1D37C5B2B9BD9AC6AD17CC70A8BD56E08D1",
+      "displaySymbol": "stINJ",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/EA7DF7F779C7F14E07172E5713E07356B55F01496CA649DDE46CF8FBF1A8466D",
+      "displaySymbol": "ION",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/EF80C0B5B0C1E2FD60C2782E4FD3210327DB0A1D75BBB1112048C8181390D96B",
+      "displaySymbol": "USDT (w)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/F0B981CD54CD3D36278E6C0AA5055A5B79C1B461BCE0B9FE1D24DA776586597F",
+      "displaySymbol": "GRAV (grv)",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/F2331645B9683116188EF36FC04A809C28BD36B54555E8705A37146D0182F045",
+      "displaySymbol": "USDT",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/F63DEC0CD762E1B258767C2D8E91362315483A638FFF8B30DCEE81C49C9725B1",
+      "displaySymbol": "DAI (Axelar)",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/FA0006F056DB6719B8C16C551FC392B62F5729978FC0B125AC9A432DBB2AA1A5",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/FA7775734CC73176B7425910DE001A1D2AD9B6D9E93129A5D0750EAD13E4E63A",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/FA903A861D5A8CD81BB8F0325F2AF782655770AC10E80D8FAF51647B2B61C95E",
+      "displaySymbol": "EVMOS",
+      "decimals": 18
+    },
+    {
+      "match": "ibc/FB6FC63E2C19565F24A75562B960CD7D15AED8BC024DF5AFAEAC80DF394663BA",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/FD64352071AF2F4B80E50B1ED3A49D60660D8246D6441B3D68E97CBAD514E5C5",
+      "displaySymbol": "ATOM",
+      "decimals": 6
+    },
+    {
+      "match": "ibc/FE98AAD68F02F03565E9FA39A5E627946699B2B07115889ED812D8BA639576A9",
+      "displaySymbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "match": "ubld",
+      "displaySymbol": "BLD",
+      "decimals": 6
+    },
+    {
+      "match": "ufastlp",
+      "displaySymbol": "Fast LP",
+      "decimals": 6
+    },
+    {
+      "match": "uist",
+      "displaySymbol": "IST",
+      "decimals": 6
+    },
+    {
+      "match": "upoc26",
+      "displaySymbol": "Poc26",
+      "decimals": 6
+    }
   ]
 }
