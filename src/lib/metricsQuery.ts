@@ -237,16 +237,6 @@ export async function buildMetricsPayload(
   const ibcInSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN);
   const ibcOutSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT);
 
-  let largestTransfer: { denom: string; amount: string } | null = null;
-  for (const [d, a] of Object.entries(transferByDenom)) {
-    if (!a) continue;
-    const b = BigInt(a);
-    if (b === 0n) continue;
-    if (!largestTransfer || b > BigInt(largestTransfer.amount)) {
-      largestTransfer = { denom: d, amount: a };
-    }
-  }
-
   /** All denoms with in-range transfer volume, sorted by total descending (legend / draw order). */
   const transferDenomsSorted = [...transferSums.entries()]
     .filter(([, v]) => BigInt(v) > BigInt(0))
@@ -311,7 +301,6 @@ export async function buildMetricsPayload(
         pctChange: pctChange(feeUbldCur, feeUbldPrev),
       },
     },
-    largestTransfer,
     series: {
       txTotal,
       ibcMsgCombined,

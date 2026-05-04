@@ -1,0 +1,4 @@
+{
+  "note": "Optional per-on-chain-denom CoinGecko coin id (overrides display-symbol resolution). Same keys as denoms.json `match` when needed.",
+  "overrides": {}
+}

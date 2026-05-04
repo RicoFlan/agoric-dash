@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateMetricsQuery } from "@/lib/metricsApiValidation";
 import { enrichMetricsForDisplay } from "@/lib/metricsEnrichment";
 import { buildMetricsPayload, type Granularity } from "@/lib/metricsQuery";
+import { enrichTransferVolumeUsdEstimates } from "@/lib/transferVolumeUsdEstimates";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,8 @@ export async function GET(req: NextRequest) {
   try {
     const payload = await buildMetricsPayload(from, to, granularity);
     const display = enrichMetricsForDisplay(payload);
-    return NextResponse.json({ ...payload, display });
+    const usd = await enrichTransferVolumeUsdEstimates(payload.transferVolumeByDenom ?? {}, display);
+    return NextResponse.json({ ...payload, display, ...usd });
   } catch (e) {
     return serverErrorResponse(e);
   }

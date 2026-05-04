@@ -1,5 +1,5 @@
 {
-  "note": "See README.md (Denoms, symbols, and IBC hashes). Agoric-3: full string match to bank/IBC minimal denoms. Traces: query /ibc/apps/transfer/v1/denom_traces on a mainnet node. Multiple ibc/… strings can be the same logical asset (different IBC paths). Decimals: verify against chain metadata if amounts look wrong; EVM/gravity often 18, Cosmos u* / micro often 6. To find missing hashes, diff GET /cosmos/bank/v1beta1/denoms_metadata (field base) against entries[].match.",
+  "note": "See README.md (Denoms, symbols, and IBC hashes). Agoric-3: full string match to bank/IBC minimal denoms. Traces: query /ibc/apps/transfer/v1/denom_traces on a mainnet node. Multiple ibc/\u2026 strings can be the same logical asset (different IBC paths). Decimals: verify against chain metadata if amounts look wrong; EVM/gravity often 18, Cosmos u* / micro often 6. To find missing hashes, diff GET /cosmos/bank/v1beta1/denoms_metadata (field base) against entries[].match. CoinGecko IDs for USD estimates: src/config/coingeckoDisplaySymbolToId.json (+ optional coingeckoDenomOverrides.json).",
   "entries": [
     {
       "match": "ibc/010704EDB319E4141299BBCB1CD8790362910509330824B88049DE3CE5D0A7AD",
@@ -544,7 +544,7 @@
     {
       "match": "ibc/E5E48993E0D1E813FAC77E0C666CD1D37C5B2B9BD9AC6AD17CC70A8BD56E08D1",
       "displaySymbol": "stINJ",
-      "decimals": 6
+      "decimals": 18
     },
     {
       "match": "ibc/EA7DF7F779C7F14E07172E5713E07356B55F01496CA649DDE46CF8FBF1A8466D",

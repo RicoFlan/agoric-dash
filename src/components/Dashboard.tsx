@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChartChunkFallback } from "@/components/dashboard/ChartChunkFallback";
-import { atomicToHumanString } from "@/lib/amountFormat";
+import { atomicToFloat, atomicToHumanString } from "@/lib/amountFormat";
 import { listRow, valueToChartNumber } from "@/lib/displayFormat";
 import { chartTheme } from "@/lib/chartTheme";
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
@@ -83,7 +83,6 @@ interface MetricsPayload {
     };
     feePaidUbld: { current: string; previous: string; pctChange: number | null };
   };
-  largestTransfer: { denom: string; amount: string } | null;
   series: {
     txTotal: { bucket: string; value: string }[];
     ibcMsgCombined: { bucket: string; value: string }[];
@@ -95,6 +94,13 @@ interface MetricsPayload {
   };
   composition: { typeUrl: string; count: string }[];
   transferVolumeByDenom: Record<string, string>;
+  transferVolumeUsdByDenom: Record<string, string | null>;
+  transferVolumeUsdTotal: string | null;
+  usdPricingMeta: {
+    source: "coingecko";
+    spotFetchedAt: string | null;
+    partialOrStale: boolean;
+  };
   feePaidByDenom: Record<string, string>;
   feePaidByDenomPrevious: Record<string, string>;
   indexer: { lastIndexedHeight: string | null; updatedAt: string | null };
@@ -109,6 +115,16 @@ function defaultDateRange() {
     to: to.toISOString().slice(0, 10),
   };
 }
+
+/** UTC calendar date YYYY-MM-DD, shifted by whole days from today UTC. */
+function utcCalendarDate(shiftDaysFromToday: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + shiftDaysFromToday);
+  return d.toISOString().slice(0, 10);
+}
+
+const QUICK_RANGE_BTN =
+  "rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]";
 
 function fmtPct(n: number | null): string {
   if (n === null) return "n/a";
@@ -127,6 +143,21 @@ function formatBucketTick(v: string, g: Granularity) {
 
 /** Max time to wait for /api/metrics (Postgres can be slow; dev HMR can stall). */
 const METRICS_FETCH_MS = 120_000;
+
+/** In-tx volume table: narrow ticker, flexible native, fixed USD, wide denom (ibc/… strings). */
+const CL_TRANSFER_VOL_ROW =
+  "grid grid-cols-[minmax(2.75rem,3.75rem)_minmax(0,1fr)_minmax(5rem,6.75rem)_minmax(18rem,4fr)] gap-x-3 lg:gap-x-6";
+
+/** Native volume column: fixed 2 fractional digits when decimals are known from denoms.json. */
+function formatNativeVolumeRounded(atomic: string, decimals: number | undefined): string | null {
+  if (typeof decimals !== "number" || !Number.isFinite(decimals) || decimals < 0) return null;
+  const n = atomicToFloat(atomic, decimals);
+  if (!Number.isFinite(n)) return null;
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 export function Dashboard() {
   const defaults = useMemo(() => defaultDateRange(), []);
@@ -278,7 +309,7 @@ export function Dashboard() {
     for (const m of maps) for (const k of m.keys()) bucketSet.add(k);
     const keys = [...bucketSet].sort();
     const rows = keys.map((bucket) => {
-      const row: { bucket: string } & Record<string, number> = { bucket };
+      const row = { bucket } as { bucket: string } & Record<string, number>;
       for (let i = 0; i < seriesMeta.length; i++) {
         row[seriesMeta[i].chartKey] = finiteN(maps[i].get(bucket) ?? 0);
       }
@@ -359,7 +390,7 @@ export function Dashboard() {
     for (const m of maps) for (const k of m.keys()) bucketSet.add(k);
     const keys = [...bucketSet].sort();
     const rows = keys.map((bucket) => {
-      const row: { bucket: string } & Record<string, number> = { bucket };
+      const row = { bucket } as { bucket: string } & Record<string, number>;
       for (let i = 0; i < seriesMeta.length; i++) {
         row[seriesMeta[i].chartKey] = finiteN(maps[i].get(bucket) ?? 0);
       }
@@ -404,7 +435,61 @@ export function Dashboard() {
 
   return (
     <div className="space-y-10">
+      {data?.indexer?.lastIndexedHeight && (
+        <p className="text-xs text-[var(--muted)]">
+          Last indexed block height:{" "}
+          <code className="text-[var(--accent)]">{data.indexer.lastIndexedHeight}</code>
+          {data.indexer.updatedAt && (
+            <span className="ml-2">
+              (indexer updated {new Date(data.indexer.updatedAt).toLocaleString()})
+            </span>
+          )}
+        </p>
+      )}
+
       <section className="flex flex-wrap items-end gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+        <div className="flex w-full flex-wrap items-center gap-2 border-b border-[var(--border)]/60 pb-4">
+          <span className="mr-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
+            Quick range
+          </span>
+          <button
+            type="button"
+            className={QUICK_RANGE_BTN}
+            title="UTC: From = yesterday, To = today; hourly buckets."
+            onClick={() => {
+              setFrom(utcCalendarDate(-1));
+              setTo(utcCalendarDate(0));
+              setGranularity("hour");
+            }}
+          >
+            Last 24 hours
+          </button>
+          <button
+            type="button"
+            className={QUICK_RANGE_BTN}
+            title="UTC: last 7 calendar days inclusive, daily buckets."
+            onClick={() => {
+              setFrom(utcCalendarDate(-6));
+              setTo(utcCalendarDate(0));
+              setGranularity("day");
+            }}
+          >
+            Last Week
+          </button>
+          <button
+            type="button"
+            className={QUICK_RANGE_BTN}
+            title="UTC: last 30 calendar days inclusive, daily buckets."
+            onClick={() => {
+              setFrom(utcCalendarDate(-29));
+              setTo(utcCalendarDate(0));
+              setGranularity("day");
+            }}
+          >
+            Last 30 Days
+          </button>
+        </div>
+
         <label className="flex flex-col gap-1 text-sm leading-[1.4]">
           <span className="text-[var(--muted)]">From</span>
           <input
@@ -449,18 +534,6 @@ export function Dashboard() {
         </p>
       </section>
 
-      {data?.indexer?.lastIndexedHeight && (
-        <p className="text-xs text-[var(--muted)]">
-          Last indexed block height:{" "}
-          <code className="text-[var(--accent)]">{data.indexer.lastIndexedHeight}</code>
-          {data.indexer.updatedAt && (
-            <span className="ml-2">
-              (indexer updated {new Date(data.indexer.updatedAt).toLocaleString()})
-            </span>
-          )}
-        </p>
-      )}
-
       {err && (
         <div
           className="rounded-md border px-4 py-3 text-sm"
@@ -485,64 +558,119 @@ export function Dashboard() {
 
       {data && data.kpis && (
         <>
-          <p className="text-sm text-[var(--muted)]">
-            Value handled is primary on this page. In-tx transfer volume is multi-asset: add each denom in{" "}
-            <code className="text-[var(--accent)]">src/config/denoms.json</code> for labels. Default
-            paid fees in <code className="text-[var(--accent)]">{FEE_DENOM_UBLB}</code> are shown as
-            BLD in the Gas and fees section; gas is a separate unit, not a token. Amounts are shown in
-            native units (human-scaled when the denom is mapped in{" "}
-            <code className="text-[var(--accent)]">denoms.json</code>).
-          </p>
-
           <section className="space-y-6">
             <h2 className="text-xl font-semibold leading-tight tracking-tight text-[var(--color-accent)]">
               Value handled
             </h2>
-            <div className="grid gap-4 lg:grid-cols-2 lg:gap-8">
-              <KpiLargestMove
-                largest={data.largestTransfer}
-                display={data.display}
-              />
+            <div className="w-full min-w-0">
               <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
+                <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
                   In-tx transfer volume by denom (range total)
                 </h3>
-                <ul className="max-h-48 space-y-1 overflow-auto text-sm">
-                  {Object.entries(data.transferVolumeByDenom ?? {})
-                    .sort((a, b) => Number(b[1]) - Number(a[1]))
-                    .slice(0, 20)
-                    .map(([denom, amt]) => {
-                      const r = data.display
-                        ? listRow(amt, denom, data.display)
-                        : { amountHuman: amt, symbol: "", rawDenom: denom };
-                      return (
-                        <li
-                          key={denom}
-                          className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--border)]/30 pb-1"
-                        >
-                          <div className="min-w-0">
-                            {r.symbol ? (
-                              <span className="font-mono text-[var(--text)]">
-                                {r.amountHuman} {r.symbol}
-                              </span>
-                            ) : (
-                              <code className="text-xs text-amber-200/90">{r.rawDenom}</code>
-                            )}
-                          </div>
-                          <code className="max-w-[14rem] shrink-0 truncate text-[10px] text-[var(--muted)]">
-                            {r.rawDenom}
-                          </code>
-                        </li>
-                      );
-                    })}
-                </ul>
+                <p className="mb-3 text-[10px] leading-snug text-[var(--muted)]">
+                  USD estimates multiply each asset&apos;s <strong className="font-medium text-[var(--color-text-secondary)]">full-period native total</strong> by{" "}
+                  <strong className="font-medium text-[var(--color-text-secondary)]">current CoinGecko spot USD</strong>. That is{" "}
+                  <strong className="font-medium text-[var(--color-text-secondary)]">not</strong> a historically accurate mark-to-market over the selected range, but it makes
+                  cross-asset sizes easier to compare. Native amounts remain the on-chain record.
+                  {data.usdPricingMeta.partialOrStale && (
+                    <span> Some USD cells may be empty when the price feed is rate-limited.</span>
+                  )}
+                  {data.usdPricingMeta.spotFetchedAt && (
+                    <span>
+                      {" "}
+                      Spot snapshot:{" "}
+                      <time dateTime={data.usdPricingMeta.spotFetchedAt}>
+                        {new Date(data.usdPricingMeta.spotFetchedAt).toLocaleString()}
+                      </time>
+                      .
+                    </span>
+                  )}
+                </p>
+                <div className="overflow-x-auto">
+                  <div className="w-full min-w-[min(100%,56rem)]">
+                    <div
+                      className={`${CL_TRANSFER_VOL_ROW} mb-1.5 border-b border-[var(--border)]/40 pb-1 text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-secondary)]`}
+                    >
+                      <span className="min-w-0 truncate">Ticker</span>
+                      <span className="text-right">Native volume</span>
+                      <span className="text-right">USD (EST)</span>
+                      <span className="min-w-0">Denom</span>
+                    </div>
+                    <ul className="max-h-64 overflow-auto text-sm">
+                      {Object.entries(data.transferVolumeByDenom ?? {})
+                        .map(([denom, amt]) => {
+                          const r = data.display
+                            ? listRow(amt, denom, data.display)
+                            : { amountHuman: amt, symbol: "", rawDenom: denom };
+                          const ticker = r.symbol || "—";
+                          const usd = data.transferVolumeUsdByDenom[denom] ?? null;
+                          const dec = data.display?.metas[denom]?.decimals;
+                          const rounded = formatNativeVolumeRounded(amt, dec);
+                          const nativeVolume =
+                            rounded ?? r.amountHuman;
+                          return {
+                            key: denom,
+                            denom,
+                            ticker,
+                            nativeVolume,
+                            unknown: !r.symbol,
+                            usd,
+                          };
+                        })
+                        .sort((a, b) => {
+                          const unk = (t: string) => (t === "—" ? 1 : 0);
+                          if (unk(a.ticker) !== unk(b.ticker)) return unk(a.ticker) - unk(b.ticker);
+                          const c = a.ticker.localeCompare(b.ticker, undefined, { sensitivity: "base" });
+                          if (c !== 0) return c;
+                          return a.denom.localeCompare(b.denom);
+                        })
+                        .map((row) => (
+                          <li
+                            key={row.key}
+                            className={`${CL_TRANSFER_VOL_ROW} border-b border-[var(--border)]/30 py-1.5`}
+                          >
+                            <div
+                              className="min-w-0 truncate font-medium text-[var(--text)]"
+                              title={row.ticker}
+                            >
+                              {row.ticker}
+                            </div>
+                            <div className="min-w-0 text-right font-mono text-[var(--text)]">
+                              {row.unknown ? (
+                                <code className="text-xs text-amber-200/90">{row.nativeVolume}</code>
+                              ) : (
+                                row.nativeVolume
+                              )}
+                            </div>
+                            <div className="text-right font-mono text-[var(--text)]">{row.usd ?? "—"}</div>
+                            <code
+                              className="min-w-0 break-all text-left text-[10px] leading-snug text-[var(--muted)] sm:break-normal sm:text-xs"
+                              title={row.denom}
+                            >
+                              {row.denom}
+                            </code>
+                          </li>
+                        ))}
+                    </ul>
+                    <div
+                      className={`${CL_TRANSFER_VOL_ROW} mt-2 border-t-2 border-[var(--border)] pt-3 text-sm font-semibold text-[var(--text)]`}
+                      role="row"
+                      aria-label="Totals"
+                    >
+                      <span>TOTAL</span>
+                      <span aria-hidden className="select-none text-[var(--muted)]" />
+                      <span className="text-right font-mono">{data.transferVolumeUsdTotal ?? "—"}</span>
+                      <span aria-hidden className="select-none" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-          <section className="space-y-8 lg:space-y-10">
-            <TransferVolumeLineChart model={chartTransferValue} timeAxis={timeAxis} />
-            <IbcAmountFlowsLineChart model={chartIbcValueAmounts} timeAxis={timeAxis} />
-          </section>
+            <section className="space-y-8 lg:space-y-10">
+              <TransferVolumeLineChart model={chartTransferValue} timeAxis={timeAxis} />
+              <IbcAmountFlowsLineChart model={chartIbcValueAmounts} timeAxis={timeAxis} />
+            </section>
           </section>
 
           <section className="space-y-4">
@@ -627,47 +755,6 @@ export function Dashboard() {
           </pre>
         )}
       </footer>
-    </div>
-  );
-}
-
-function KpiLargestMove({
-  largest,
-  display,
-}: {
-  largest: { denom: string; amount: string } | null;
-  display?: EnrichedDisplay;
-}) {
-  const sub =
-    "Largest MsgSend / MultiSend / IBC out amount in this range, by raw on-chain denom (any asset).";
-  if (!largest) {
-    return (
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
-          Largest in-tx transfer
-        </h3>
-        <p className="mt-1 text-[10px] text-[var(--muted)]">{sub}</p>
-        <p className="mt-2 text-2xl text-[var(--muted)]">—</p>
-      </div>
-    );
-  }
-  const m = display?.metas[largest.denom];
-  const dec =
-    m && typeof m.decimals === "number" && Number.isFinite(m.decimals) && m.decimals >= 0
-      ? Math.min(18, m.decimals)
-      : 6;
-  const line = m
-    ? `${atomicToHumanString(largest.amount, dec)} ${m.displaySymbol}`
-    : `${largest.amount} (atomic) ${largest.denom.length > 24 ? largest.denom.slice(0, 20) + "…" : largest.denom}`;
-  return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
-        Largest in-tx transfer
-      </h3>
-      <p className="mt-1 text-[10px] text-[var(--muted)]">{sub}</p>
-      <p className="mt-2 font-mono text-xl text-[var(--text)]" title={largest.denom}>
-        {line}
-      </p>
     </div>
   );
 }

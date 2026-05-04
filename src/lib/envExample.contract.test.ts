@@ -22,4 +22,8 @@ describe(".env.example", () => {
     expect(raw).toMatch(/INDEXER_POLL_MS=/);
     expect(raw).toMatch(/INDEXER_LAG=/);
   });
+
+  it("documents optional CoinGecko key for USD estimates", () => {
+    expect(raw).toMatch(/COINGECKO_API_KEY/);
+  });
 });

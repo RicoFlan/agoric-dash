@@ -30,7 +30,7 @@ Convenience:
 ## Runtime boundaries
 
 - **API routes** `src/app/api/metrics` and `src/app/api/status` export `dynamic = 'force-dynamic'` so Next never tries to static-cache dynamic DB-backed JSON.
-- **`GET /api/metrics`** — Validates `from` / `to` (ISO day, order) and caps range size (`src/lib/metricsApiValidation.ts`): up to **366** days for `day` / `week`, **62** days for `hour` (limits DB work). In **production**, 500 JSON omits internal error details (see route handler); errors are still logged server-side.
+- **`GET /api/metrics`** — Validates `from` / `to` (ISO day, order) and caps range size (`src/lib/metricsApiValidation.ts`): up to **366** days for `day` / `week`, **62** days for `hour` (limits DB work). After DB metrics are built, the route enriches **USD spot estimates** for the in-tx transfer volume table (`src/lib/transferVolumeUsdEstimates.ts`): batched CoinGecko **`/simple/price`** calls, in-memory TTL cache (`src/lib/coingecko/simplePrice.ts`). Optional **`COINGECKO_API_KEY`** (Demo plan) in `.env` sets `x-cg-demo-api-key` for higher rate limits. In **production**, 500 JSON omits internal error details (see route handler); errors are still logged server-side.
 - **MetricsErrorBoundary** wraps the dashboard in `src/app/page.tsx` so a Recharts or render error shows a recovery UI instead of a blank page.
 - **`src/app/error.tsx`** — App Router error boundary for failures outside the dashboard subtree.
 
@@ -55,4 +55,6 @@ Human labels and decimals for chart/table display come from **`src/config/denoms
 2. For each metadata **`base`** not already in `entries[].match`, add `{ match, displaySymbol, decimals }` (decimals from denom units or asset conventions; verify if amounts look wrong).
 3. Keep **`entries` sorted alphabetically by `match`** — `src/lib/denomsJson.contract.test.ts` enforces this.
 
-Recharts line charts for value handled can show **many** series; performance is usually fine for typical on-chain denom counts, but very wide ranges may produce busy legends.
+For **USD (EST)** cells in the in-tx transfer volume table, add or adjust mappings in **`src/config/coingeckoDisplaySymbolToId.json`** (and **`coingeckoDenomOverrides.json`** when a specific `match` must differ). IDs must match CoinGecko’s **`/simple/price`** `ids` parameter.
+
+Recharts line charts for value handled can show **many** series; the **In-tx transfer volume (per asset)** chart adds **checkboxes** so users can hide lines. Performance is usually fine for typical on-chain denom counts, but very wide ranges may produce busy legends.

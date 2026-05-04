@@ -8,7 +8,7 @@ The page order follows **`Dashboard.tsx`**: **Value handled** (KPIs, denom list,
 
 | Area | Content |
 |------|--------|
-| **Value handled** | KPIs: **largest in-tx transfer**, **in-tx transfer volume by denom** list; charts (**full width**, stacked): **in-tx transfer volume** (one line per denom with in-range volume), **IBC amount flows** (one line per denom for recv and for outbound amounts). |
+| **Value handled** | **In-tx transfer volume by denom** table: Ticker, Native volume (2 decimal places), **USD (EST)** (CoinGecko spot × range total; disclaimer in UI), on-chain **Denom**, **TOTAL** for priced USD rows; sort A–Z by ticker. **In-tx transfer volume (per asset)** line chart with per-asset **checkboxes** (all on by default). **IBC amount flows** chart (per denom, recv + out). **Quick range** buttons: Last 24 hours (UTC yesterday→today, hourly), Last Week, Last 30 Days. **Last indexed block height** line above the date filter when the indexer has state. |
 | **Gas and fees** | KPIs: **gas used** (ABCI units), **paid fees uBLD → BLD**. |
 | **Transaction activity** | KPIs: **successful txs**, **IBC transfers out / recv** (message counts); charts (**full width**, stacked): **all txs vs IBC message volume**, then **IBC traffic** (out vs recv counts). |
 | **Transaction nature** | “First message only” bar chart (`MESSAGE_ATTRIBUTION` in `src/lib/semantics.ts`). |
@@ -24,7 +24,7 @@ A **Methodology** panel in the app mirrors the definitions below. Source of trut
 - **Gas**: **ABCI / consensus gas units** — not a token and not the same as paid fees. Do not conflate with BLD or IBC.
 - **Paid fees**: Parsed from **tx result events** (e.g. `tx` / `fee` attributes) — the amount actually **paid in execution**, not the signed “max fee” cap only. The primary fee KPI and chart copy focus on **uBLD → BLD**; other fee denoms are listed in **Fee paid by denom**.
 - **In-tx “value” / transfer volume**: **Multi-asset**. Native and **IBC** denoms (including long `ibc/HASH` strings) are different lines. **uBLD fee totals are not a summary of all economic value** — in-tx movement is per denom. Amounts are shown in on-chain units (human-formatted when listed in `denoms.json`).
-- **Largest in-tx transfer**: The denom with the **largest** range-aggregated `transfer_volume` in that window (from indexed transfer surface). Not the same as “largest IBC in only” unless you change the product definition.
+- **USD (EST) in the in-tx table**: **Not** on-chain USD. Each cell is **range-aggregated native total × current CoinGecko spot** (see `src/lib/transferVolumeUsdEstimates.ts`). The **TOTAL** row sums only rows that have a price. Unmapped or rate-limited denoms show **—**. Optional **`COINGECKO_API_KEY`** (Demo) in `.env` helps free-tier rate limits (`x-cg-demo-api-key` header).
 - **Nature / composition**: **First message** type URL in the transaction body, per the constant in `semantics.ts`.
 - **Transfer / transfer volume (indexed)**: Native minimal units from decoded **`MsgSend`**, **`MsgMultiSend`**, and **`MsgTransfer`**, plus IBC recv indexing where the indexer records amounts — **smart-contract-internal flows** may be missing from this view.
 - **IBC** direction is **Agoric-relative** (e.g. out = `MsgTransfer` from this chain; in = recv packet handling as indexed).
@@ -33,6 +33,7 @@ A **Methodology** panel in the app mirrors the definitions below. Source of trut
 ## Denoms, symbols, and IBC hashes
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.
+- **CoinGecko IDs for USD estimates**: **`src/config/coingeckoDisplaySymbolToId.json`** maps each `displaySymbol` → CoinGecko `ids` string for `/simple/price`. Optional per-denom overrides: **`src/config/coingeckoDenomOverrides.json`** (`match` → id). A reviewed export with status notes lives at **`public/denom-translations.csv`** (also served at `/denom-translations.csv` when the app is running).
 - A long `ibc/FE98…` style value is a **canon IBC token id** (hash of path + base denom) — the dashboard shows the raw id until you add a matching `entries` row. To find hashes registered on chain but missing from the file, diff **`GET /cosmos/bank/v1beta1/denoms_metadata`** (`base` field) against `entries[].match` (see the **note** in `denoms.json`). **Multiple** `ibc/...` values can still represent the **same** logical asset via **different IBC paths**; each path needs its own `match` row if you want a distinct label.
 
 ## Prerequisites
@@ -110,7 +111,13 @@ npm start
 ## API
 
 - `GET /api/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD&granularity=day|hour|week`  
-  Returns rollup payload from `buildMetricsPayload` plus a **`display`** object from `enrichMetricsForDisplay` (symbol/decimals **metas** per denom). Used by the dashboard client; shape is defined in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. Time series for value charts include **`series.transferVolumeSeries`** (all denoms with transfer volume in range), **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** (per-denom IBC recv / out amounts)—each item is `{ denom, data: [{ bucket, value }] }`.
+  Returns rollup payload from `buildMetricsPayload` plus:
+  - **`display`** — from `enrichMetricsForDisplay` (symbol/decimals **metas** per denom).
+  - **`transferVolumeUsdByDenom`** — per-denom formatted USD estimate strings or `null` when unpriced.
+  - **`transferVolumeUsdTotal`** — formatted sum of priced USD rows (same basis as the table **TOTAL**), or `null` if none.
+  - **`usdPricingMeta`** — `{ source: "coingecko", spotFetchedAt, partialOrStale }`.
+
+  Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. Time series for value charts include **`series.transferVolumeSeries`** (all denoms with transfer volume in range), **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** (per-denom IBC recv / out amounts)—each item is `{ denom, data: [{ bucket, value }] }`.
 
 ## Project layout
 
@@ -124,8 +131,13 @@ npm start
 | `src/lib/semantics.ts` | `CHAIN_ID`, series names, `FEE_DENOM_UBLB`, `METHODOLOGY_BLURB` |
 | `src/lib/metricsQuery.ts` | `buildMetricsPayload`, KPIs, series for charts, comparison window |
 | `src/lib/metricsEnrichment.ts` | `resolveDenom`-based **metas** for `display` |
+| `src/lib/transferVolumeUsdEstimates.ts` | CoinGecko spot × volume; **USD** strings + **total** for the in-tx table |
+| `src/lib/coingecko/` | `resolveCoinGeckoId`, batched **simple/price** fetch + TTL cache |
+| `src/config/coingeckoDisplaySymbolToId.json` | `displaySymbol` → CoinGecko coin id |
+| `src/config/coingeckoDenomOverrides.json` | Optional per-`match` CoinGecko id overrides |
 | `src/lib/resolveDenom.ts` | Resolves a denom string using `denoms.json` |
-| `src/app/api/metrics/route.ts` | JSON: `{ ...payload, display }` |
+| `src/app/api/metrics/route.ts` | JSON: `{ ...payload, display, transferVolumeUsd…, usdPricingMeta }` |
+| `public/denom-translations.csv` | Optional export of denom ↔ symbol ↔ CoinGecko mapping |
 | `src/components/Dashboard.tsx` | Date/granularity controls, charts, tables |
 | `src/components/MetricsErrorBoundary.tsx` | Catches render errors in the client dashboard |
 
@@ -138,6 +150,8 @@ npm start
 | `src/lib/amountFormat.test.ts` | Human-readable amounts |
 | `src/lib/resolveDenom.test.ts` | `denoms.json` resolution |
 | `src/lib/displayFormat.test.ts` | Chart/list display helpers |
+| `src/lib/transferVolumeUsdEstimates.test.ts` | USD estimate **formatting** (`formatUsdEstimate`) |
+| `src/lib/coingecko/resolveCoinGeckoId.test.ts` | Symbol / override → CoinGecko id resolution |
 | `src/lib/envExample.contract.test.ts` | `.env.example` documents indexer env vars (contract with README) |
 | `src/lib/denomsJson.contract.test.ts` | `denoms.json` shape, unique `match`, sorted entries |
 
