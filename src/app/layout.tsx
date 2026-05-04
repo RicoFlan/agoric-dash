@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agoric L1 activity",
+  title: "Agoric L1 Activity Explorer",
   description: "On-chain activity dashboard for Agoric mainnet",
 };
 
@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} min-h-screen antialiased`}
       >

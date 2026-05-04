@@ -25,13 +25,15 @@ Convenience:
 
 1. **Stale `.next`** — Addressed by default: **`npm run dev`** wipes `.next` before Turbopack starts. Using **`npm run dev:incremental`** or **`npm run dev:webpack`** can still corrupt cache during long Webpack HMR sessions; run **`npm run clean`** then **`npm run dev`** if so.
 2. **Postgres** — If `DATABASE_URL` is wrong or the DB is down, `/api/metrics` returns 500. The app uses a **15s connection timeout** on the pool so requests fail instead of hanging indefinitely.
-3. **Client fetch / loading** — The dashboard uses a single in-flight controller, generation guards for `loading`, and a 2-minute fetch timeout. Silent refresh is skipped while a visible load is in progress so the UI does not get stuck on “Loading metrics…”.
+3. **Client fetch / loading** — The dashboard uses a single in-flight controller, generation guards for `loading`, and a 2-minute fetch timeout. Metrics reload when **From / To** or **Granularity** changes (no periodic polling).
 
 ## Runtime boundaries
 
 - **API routes** `src/app/api/metrics` and `src/app/api/status` export `dynamic = 'force-dynamic'` so Next never tries to static-cache dynamic DB-backed JSON.
-- **`GET /api/metrics`** — Validates `from` / `to` (ISO day, order) and caps range size (`src/lib/metricsApiValidation.ts`): up to **366** days for `day` / `week`, **62** days for `hour` (limits DB work). After DB metrics are built, the route enriches **USD spot estimates** for the in-tx transfer volume table (`src/lib/transferVolumeUsdEstimates.ts`): batched CoinGecko **`/simple/price`** calls, in-memory TTL cache (`src/lib/coingecko/simplePrice.ts`). Optional **`COINGECKO_API_KEY`** (Demo plan) in `.env` sets `x-cg-demo-api-key` for higher rate limits. In **production**, 500 JSON omits internal error details (see route handler); errors are still logged server-side.
+- **`GET /api/metrics`** — Validates `from` / `to` (ISO day, order) and caps range size (`src/lib/metricsApiValidation.ts`): up to **366** days for `day` / `week`, **62** days for `hour` (limits DB work). Then **`clampMetricsRangeToIndexedHistory`** lifts **`from`** to **`INDEXED_HISTORY_FROM_DAY`** (`2026-01-01`, `src/lib/semantics.ts`) when needed so all series match the indexer’s configured start (same intent as default **`INDEXER_START_DATE`** in `.env.example`). Response JSON includes **`indexedHistoryFromDay`** and a **`range`** object reflecting the **effective** (post-clamp) window. After DB metrics are built, the route enriches **USD spot estimates** (`src/lib/transferVolumeUsdEstimates.ts`), **`enrichParticipationAndConcentration`** (when `participant_day` / `address_volume_day` exist; `src/lib/participationQueries.ts`), then merges **`display`**. CoinGecko: batched **`/simple/price`**, TTL cache (`src/lib/coingecko/simplePrice.ts`); optional **`COINGECKO_API_KEY`** (Demo plan) sets `x-cg-demo-api-key`. In **production**, 500 JSON omits internal error details; errors are still logged server-side.
 - **MetricsErrorBoundary** wraps the dashboard in `src/app/page.tsx` so a Recharts or render error shows a recovery UI instead of a blank page.
+- **Header jump navigation** — `src/app/page.tsx` renders **`dashboardNavLinks`** from `src/lib/dashboardNav.ts` (right-aligned text anchors; excludes the date-range toolbar section). Section **`id`s** are set on the matching `<section>` / `<footer>` elements in `src/components/Dashboard.tsx`; changing anchors requires updating **both** files (see `src/lib/dashboardNav.test.ts`).
+- **`scroll-smooth`** on `<html>` in `src/app/layout.tsx` applies to in-page navigation.
 - **`src/app/error.tsx`** — App Router error boundary for failures outside the dashboard subtree.
 
 ## Next.js config
@@ -55,6 +57,12 @@ Human labels and decimals for chart/table display come from **`src/config/denoms
 2. For each metadata **`base`** not already in `entries[].match`, add `{ match, displaySymbol, decimals }` (decimals from denom units or asset conventions; verify if amounts look wrong).
 3. Keep **`entries` sorted alphabetically by `match`** — `src/lib/denomsJson.contract.test.ts` enforces this.
 
-For **USD (EST)** cells in the in-tx transfer volume table, add or adjust mappings in **`src/config/coingeckoDisplaySymbolToId.json`** (and **`coingeckoDenomOverrides.json`** when a specific `match` must differ). IDs must match CoinGecko’s **`/simple/price`** `ids` parameter.
+For **USD (EST)** cells in the gross in-tx movement table, add or adjust mappings in **`src/config/coingeckoDisplaySymbolToId.json`** (and **`coingeckoDenomOverrides.json`** when a specific `match` must differ). IDs must match CoinGecko’s **`/simple/price`** `ids` parameter.
 
-Recharts line charts for value handled can show **many** series; the **In-tx transfer volume (per asset)** chart adds **checkboxes** so users can hide lines. Performance is usually fine for typical on-chain denom counts, but very wide ranges may produce busy legends.
+### Gross in-tx movement table (`Dashboard.tsx`)
+
+Implemented as a semantic **`<table>`** with **`colgroup`** column widths **10% / 20% / 20% / 50%** (Ticker / Gross / USD (EST) / Denom), **`table-fixed`**, and **`min-w-0` / `overflow-x-auto`** on wrappers so the grid stays within the viewport. **Ticker**, **Gross**, **USD**, and **Denom** use **`whitespace-nowrap`** with **in-cell horizontal scroll** when content exceeds the column—no multi-line ticker wrapping. **Zebra** striping uses **`--color-bg-primary`** vs **`--color-border`** on alternating body rows (see `docs/style-guide.md`).
+
+The **USD (EST)** header is a **sort control**: cycles **default row order** (ticker A→Z, then denom) → **descending** USD estimate → **ascending** → default. Sorting is **client-side** over the already-fetched payload; it parses formatted currency strings via **`parseUsdEstimateSortKey`** in **`src/lib/grossTableUsdSort.ts`**. Rows without a USD estimate sort **after** priced rows. Changing **From**, **To**, or **Granularity** resets sort to default (same fetch lifecycle as metrics reload).
+
+Recharts line charts for value handled can show **many** series; the **Gross in-tx movement (per asset)** chart adds **checkboxes** so users can hide lines. Performance is usually fine for typical on-chain denom counts, but very wide ranges may produce busy legends.

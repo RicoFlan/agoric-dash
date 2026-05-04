@@ -1,34 +1,38 @@
 # agoric-dash
 
-Dashboard for monitoring on-chain activity on **Agoric L1** (`agoric-3`). Metrics are indexed from CometBFT **`block`** / **`block_results`**, rolled up in PostgreSQL (**`daily_metrics`** and **`hourly_metrics`**, per series/denom), and served by **Next.js** API routes. The UI is **Recharts** with a **~60s auto-refresh** and filters for **date range** and **granularity** (UTC hour, day, or week).
+Dashboard for monitoring on-chain activity on **Agoric L1** (`agoric-3`). Metrics are indexed from CometBFT **`block`** / **`block_results`**, rolled up in PostgreSQL (**`daily_metrics`** and **`hourly_metrics`**, plus participation tables — see below), and served by **Next.js** API routes. The UI is **Recharts** with filters for **date range** and **granularity** (UTC hour, day, or week); metrics reload when those inputs change.
+
+The **`page.tsx`** header includes **right-aligned jump links** (`src/lib/dashboardNav.ts`) to main content sections (not the date-range toolbar); **`layout.tsx`** sets **`scroll-smooth`** on `<html>` for in-page anchors.
 
 ## What the dashboard shows
 
-The page order follows **`Dashboard.tsx`**: **Value handled** (KPIs, denom list, transfer + IBC amount charts), **Gas and fees**, **Transaction activity** KPIs, **full-width** tx vs IBC line charts, then **Transaction nature**.
+The page order follows **`Dashboard.tsx`**: **Range** (date/granularity controls at top — **`filters`** anchor only; not in header nav), **Value handled** (KPIs, denom list, transfer + IBC amount charts), **Gas and fees**, **Transaction activity** KPIs, **full-width** tx vs IBC line charts, then **economic participation & concentration** (last main section, above the methodology footer). Header jump links align with the latter sections only.
 
 | Area | Content |
 |------|--------|
-| **Value handled** | **In-tx transfer volume by denom** table: Ticker, Native volume (2 decimal places), **USD (EST)** (CoinGecko spot × range total; disclaimer in UI), on-chain **Denom**, **TOTAL** for priced USD rows; sort A–Z by ticker. **In-tx transfer volume (per asset)** line chart with per-asset **checkboxes** (all on by default). **IBC amount flows** chart (per denom, recv + out). **Quick range** buttons: Last 24 hours (UTC yesterday→today, hourly), Last Week, Last 30 Days. **Last indexed block height** line above the date filter when the indexer has state. |
+| **Range** | **Granularity**, **Quick range** presets, **Custom Range** (`--color-bg-control` toolbar). Anchor id **`filters`**. |
+| **Value handled** | **Gross in-tx movement by denom** HTML **table**: **`colgroup`** + **`table-fixed`** (10% / 20% / 20% / 50%), **`min-w-0`** scroll wrapper so the table does not overflow the viewport. All four value columns are **one line** with **in-cell horizontal scroll** if needed. **USD (EST)** header sorts (high→low / low→high / default; resets on **From / To / Granularity**). **Zebra** rows. **Gross in-tx (per asset)** line chart with **checkboxes**; **IBC amount flows**; **Quick range** + **Custom Range**; **last indexed block height** when available. |
 | **Gas and fees** | KPIs: **gas used** (ABCI units), **paid fees uBLD → BLD**. |
 | **Transaction activity** | KPIs: **successful txs**, **IBC transfers out / recv** (message counts); charts (**full width**, stacked): **all txs vs IBC message volume**, then **IBC traffic** (out vs recv counts). |
-| **Transaction nature** | “First message only” bar chart (`MESSAGE_ATTRIBUTION` in `src/lib/semantics.ts`). |
-| **Asset-level detail** | **Fee paid by denom** (primary units) and related breakdowns in the Gas and fees area. |
+| **Volume and IBC (time series)** | **All txs vs IBC** and **IBC traffic** line charts (full width). |
+| **Economic participation & concentration** | Last main section: **daily distinct-account line chart** (UTC calendar days in range), KPI cards, **top 10** gross USD share, optional **distinct account addresses per calendar day** table — requires indexer tables `participant_day` and `address_volume_day`. |
 
 All KPIs that support it show **prior window** and **percent change** vs an equal-length period ending immediately before the selected range (`pctChange` in `src/lib/metricsQuery.ts`).
 
-A **Methodology** panel in the app mirrors the definitions below. Source of truth for metric semantics is `src/lib/semantics.ts` and `METHODOLOGY_BLURB`.
+The in-app **Methodology & caveats** panel is the full narrative (`METHODOLOGY_BLURB` in `src/lib/semantics.ts`). The bullets below are a shorter reference.
 
 ## Definitions (v1)
 
 - **Successful txs**: ABCI result code `0` (KPI; “all txs” in charts includes **failed** inclusions as well).
 - **Gas**: **ABCI / consensus gas units** — not a token and not the same as paid fees. Do not conflate with BLD or IBC.
-- **Paid fees**: Parsed from **tx result events** (e.g. `tx` / `fee` attributes) — the amount actually **paid in execution**, not the signed “max fee” cap only. The primary fee KPI and chart copy focus on **uBLD → BLD**; other fee denoms are listed in **Fee paid by denom**.
-- **In-tx “value” / transfer volume**: **Multi-asset**. Native and **IBC** denoms (including long `ibc/HASH` strings) are different lines. **uBLD fee totals are not a summary of all economic value** — in-tx movement is per denom. Amounts are shown in on-chain units (human-formatted when listed in `denoms.json`).
-- **USD (EST) in the in-tx table**: **Not** on-chain USD. Each cell is **range-aggregated native total × current CoinGecko spot** (see `src/lib/transferVolumeUsdEstimates.ts`). The **TOTAL** row sums only rows that have a price. Unmapped or rate-limited denoms show **—**. Optional **`COINGECKO_API_KEY`** (Demo) in `.env` helps free-tier rate limits (`x-cg-demo-api-key` header).
-- **Nature / composition**: **First message** type URL in the transaction body, per the constant in `semantics.ts`.
+- **Paid fees**: Parsed from **tx result events** (e.g. `tx` / `fee` attributes) — the amount actually **paid in execution**, not the signed “max fee” cap only. The primary fee KPI shows **uBLD → BLD**; the API also carries per-denom fee breakdowns for other uses.
+- **Gross in-tx movement** (not supply): **Multi-asset** sum of on-chain transfer legs in the range. Native and **IBC** denoms (including long `ibc/HASH` strings) are different lines. **uBLD fee totals are not a summary of all economic value** — movement is per denom. Amounts are shown in on-chain units (human-formatted when listed in `denoms.json`). Do not treat range totals as comparable to circulating supply; they are gross flow.
+- **USD (EST) in the in-tx table**: **Not** on-chain USD. Each cell is **range-aggregated native total × current CoinGecko spot** (see `src/lib/transferVolumeUsdEstimates.ts`). The **TOTAL** row sums only rows that have a price. Unmapped or rate-limited denoms show **—**. Optional **`COINGECKO_API_KEY`** (Demo) in `.env` helps free-tier rate limits (`x-cg-demo-api-key` header). **Sorting** on that column is **client-side** only (parsed from formatted currency strings); see `src/lib/grossTableUsdSort.ts` and tests in `src/lib/grossTableUsdSort.test.ts`.
 - **Transfer / transfer volume (indexed)**: Native minimal units from decoded **`MsgSend`**, **`MsgMultiSend`**, and **`MsgTransfer`**, plus IBC recv indexing where the indexer records amounts — **smart-contract-internal flows** may be missing from this view.
 - **IBC** direction is **Agoric-relative** (e.g. out = `MsgTransfer` from this chain; in = recv packet handling as indexed).
-- **Period comparison**: A **previous window of equal length** immediately before the selected `from` (documented in the date/granularity UI).
+- **Period comparison**: A **previous window of equal length** immediately before the selected `from` (see **Methodology & caveats** in the app).
+- **Indexed window**: Rollups and participation data are only meaningful from **`INDEXED_HISTORY_FROM_DAY`** (`2026-01-01` UTC, aligned with default **`INDEXER_START_DATE`**). The API clamps an earlier **`from`** to that day; the dashboard date picker uses the same minimum.
+- **Economic participation & concentration**: Successful txs only; **signers** (decoded pubkeys) and **fee payers** (fee-grant granter if set, else first signer). **Distinct account addresses per calendar day**: unique addresses per UTC day counting signer ∪ fee payer once per day (shown as a **daily line chart** over the selected From–To span and in an optional table). **Top 10 gross USD share** uses CoinGecko spot on sender-side indexed legs (bank send / multi-send inputs / ICS-20 send), same scope as indexed `transfer_volume` — not IBC recv. Counts are not “users” (bots/vaults inflate).
 
 ## Denoms, symbols, and IBC hashes
 
@@ -59,7 +63,7 @@ npm run db:push
 
 ## Run indexer (separate terminal)
 
-Polls `RPC_URL`, resolves the first block at or after `INDEXER_START_DATE` (binary search on heights), indexes **from that height to tip**, then tails new blocks. Writes **`daily_metrics`** and **`hourly_metrics`** (`scripts/indexer.ts`). In catch-up, deltas are merged in memory and flushed per chunk (`addRollupDelta` / `flushRollupMaps`).
+Polls `RPC_URL`, resolves the first block at or after `INDEXER_START_DATE` (binary search on heights), indexes **from that height to tip**, then tails new blocks. Writes **`daily_metrics`** and **`hourly_metrics`**, and **`participant_day`** / **`address_volume_day`** (and **`address_fee_day`**) for participation metrics (`scripts/indexer.ts`). In catch-up, rollup deltas are merged in memory and flushed per chunk (`addRollupDelta` / `flushRollupMaps`); participant/volume maps flush via **`flushParticipantMaps`** in the same loop.
 
 ### Index window and catch-up behavior
 
@@ -97,7 +101,7 @@ Copy **`.env.example`** to `.env` and adjust. Example defaults target **bounded 
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Use **From / To**, **Granularity**, and **Refresh** as needed; the dashboard re-fetches metrics on an interval (about **60 seconds**).
+Open [http://localhost:3000](http://localhost:3000). Set **Granularity**, choose a **quick range**, or open **Custom Range** to set **From / To** (minimum **From** = **`INDEXED_HISTORY_FROM_DAY`** / API clamp); changes apply automatically when you adjust filters.
 
 Chart buckets must exist in Postgres for your selected range: if the UI shows zeros, the indexer may still be catching up to wall-clock or your range may lie outside indexed hours/days.
 
@@ -116,8 +120,10 @@ npm start
   - **`transferVolumeUsdByDenom`** — per-denom formatted USD estimate strings or `null` when unpriced.
   - **`transferVolumeUsdTotal`** — formatted sum of priced USD rows (same basis as the table **TOTAL**), or `null` if none.
   - **`usdPricingMeta`** — `{ source: "coingecko", spotFetchedAt, partialOrStale }`.
+  - **`participation`** / **`concentration`** — from `enrichParticipationAndConcentration` (`src/lib/enrichParticipationAndConcentration.ts`) for the Economic participation & concentration section (requires indexer-filled **`participant_day`** / **`address_volume_day`**). Methodology copy lives only in **`METHODOLOGY_BLURB`** (`src/lib/semantics.ts`), not as a separate API field.
+  - **`indexedHistoryFromDay`** — `"2026-01-01"` (constant **`INDEXED_HISTORY_FROM_DAY`**); **`from`** query dates before this are clamped for all metrics.
 
-  Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. Time series for value charts include **`series.transferVolumeSeries`** (all denoms with transfer volume in range), **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** (per-denom IBC recv / out amounts)—each item is `{ denom, data: [{ bucket, value }] }`.
+  Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (same basis as the gross in-tx movement table). **`series.ibcAmountInSeries`** / **`ibcAmountOutSeries`** remain separate IBC recv/out views—each item is `{ denom, data: [{ bucket, value }] }`.
 
 ## Project layout
 
@@ -127,18 +133,26 @@ npm start
 | `docs/style-guide.md` | Visual design system (colors, type, spacing, components) for the UI |
 | `scripts/indexer.ts` | Block scanner; bounded start date, catch-up vs tail, batched rollups |
 | `src/config/denoms.json` | `match` (full on-chain denom) → symbol, decimals |
-| `src/db/schema.ts` | `daily_metrics`, `hourly_metrics`, `indexer_state` (Drizzle) |
-| `src/lib/semantics.ts` | `CHAIN_ID`, series names, `FEE_DENOM_UBLB`, `METHODOLOGY_BLURB` |
+| `src/db/schema.ts` | `daily_metrics`, `hourly_metrics`, `indexer_state`, `participant_day`, `address_volume_day`, … (Drizzle) |
+| `src/lib/semantics.ts` | `CHAIN_ID`, `SERIES`, `FEE_DENOM_UBLB`, **`INDEXED_HISTORY_FROM_DAY`**, `METHODOLOGY_BLURB` |
+| `src/lib/metricsApiValidation.ts` | `GET /api/metrics` query validation (range caps, ISO dates); **`clampMetricsRangeToIndexedHistory`** |
 | `src/lib/metricsQuery.ts` | `buildMetricsPayload`, KPIs, series for charts, comparison window |
 | `src/lib/metricsEnrichment.ts` | `resolveDenom`-based **metas** for `display` |
 | `src/lib/transferVolumeUsdEstimates.ts` | CoinGecko spot × volume; **USD** strings + **total** for the in-tx table |
+| `src/lib/grossTableUsdSort.ts` | Client-side **USD (EST)** column sort for the gross in-tx table |
 | `src/lib/coingecko/` | `resolveCoinGeckoId`, batched **simple/price** fetch + TTL cache |
 | `src/config/coingeckoDisplaySymbolToId.json` | `displaySymbol` → CoinGecko coin id |
 | `src/config/coingeckoDenomOverrides.json` | Optional per-`match` CoinGecko id overrides |
 | `src/lib/resolveDenom.ts` | Resolves a denom string using `denoms.json` |
-| `src/app/api/metrics/route.ts` | JSON: `{ ...payload, display, transferVolumeUsd…, usdPricingMeta }` |
+| `src/app/api/metrics/route.ts` | JSON: `{ ...payload, display, transferVolumeUsd…, participation, concentration, indexedHistoryFromDay }` (clamps **`from`** before `buildMetricsPayload`) |
+| `src/app/page.tsx` | Shell header (logo, title, **`dashboardNavLinks`** jump nav) |
+| `src/lib/dashboardNav.ts` | Section anchor ids — keep aligned with **`Dashboard.tsx`** `id`s |
+| `src/lib/participationQueries.ts` | Postgres reads for participation range + address volume totals |
+| `src/lib/enrichParticipationAndConcentration.ts` | Participation + concentration enrichment for `/api/metrics` |
 | `public/denom-translations.csv` | Optional export of denom ↔ symbol ↔ CoinGecko mapping |
-| `src/components/Dashboard.tsx` | Date/granularity controls, charts, tables |
+| `src/components/Dashboard.tsx` | Date/granularity controls, charts, tables, section anchors |
+| `src/components/dashboard/charts/DistinctAccountsLineChart.tsx` | Daily distinct account addresses (**UTC**), filled series |
+| `src/lib/filledDistinctAccountsSeries.ts` | Dense calendar-day rows from sparse API **distinctUnionPerDay** |
 | `src/components/MetricsErrorBoundary.tsx` | Catches render errors in the client dashboard |
 
 ## Tests
@@ -151,9 +165,16 @@ npm start
 | `src/lib/resolveDenom.test.ts` | `denoms.json` resolution |
 | `src/lib/displayFormat.test.ts` | Chart/list display helpers |
 | `src/lib/transferVolumeUsdEstimates.test.ts` | USD estimate **formatting** (`formatUsdEstimate`) |
+| `src/lib/grossTableUsdSort.test.ts` | Gross in-tx table **USD column** sort keys and comparators |
 | `src/lib/coingecko/resolveCoinGeckoId.test.ts` | Symbol / override → CoinGecko id resolution |
-| `src/lib/envExample.contract.test.ts` | `.env.example` documents indexer env vars (contract with README) |
+| `src/lib/metricsApiValidation.test.ts` | `GET /api/metrics` validation (range caps, ISO dates, **`clampMetricsRangeToIndexedHistory`**) |
+| `src/lib/metricsQuery.transferTable.test.ts` | `transferVolumeTableByDenom` rollup semantics |
+| `src/lib/envExample.contract.test.ts` | `.env.example` documents indexer env vars; **`INDEXER_START_DATE`** calendar day matches **`INDEXED_HISTORY_FROM_DAY`** |
 | `src/lib/denomsJson.contract.test.ts` | `denoms.json` shape, unique `match`, sorted entries |
+| `src/lib/concentrationMath.test.ts` | Herfindahl-style helpers, **top-N share** (used for gross USD concentration) |
+| `src/lib/transferVolumeAttribution.test.ts` | Sender-side legs for **MsgSend** / **MultiSend** / **ICS-20** (indexer + enrichment) |
+| `src/lib/dashboardNav.test.ts` | Header **`dashboardNavLinks`** (omits **`filters`** toolbar); every href targets **`dashboardSectionIds`** |
+| `src/lib/filledDistinctAccountsSeries.test.ts` | Dense daily series for distinct-account **time-series** chart |
 
 ```bash
 npm test

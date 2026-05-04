@@ -1,4 +1,5 @@
 import type { Granularity } from "@/lib/metricsQuery";
+import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -33,4 +34,22 @@ export function validateMetricsQuery(
     return `The date range must be at most ${MAX_RANGE_DAYS_DAY_OR_WEEK} days.`;
   }
   return null;
+}
+
+/**
+ * Clamp `from` / `to` so the requested window does not start before indexed history.
+ * When the entire selection is before {@link INDEXED_HISTORY_FROM_DAY}, collapses to that single day.
+ */
+export function clampMetricsRangeToIndexedHistory(
+  from: string,
+  to: string
+): { from: string; to: string; clamped: boolean } {
+  const fd = from.slice(0, 10);
+  const td = to.slice(0, 10);
+  const min = INDEXED_HISTORY_FROM_DAY;
+  if (fd >= min) {
+    return { from: fd, to: td, clamped: false };
+  }
+  const newTo = td < min ? min : td;
+  return { from: min, to: newTo, clamped: true };
 }

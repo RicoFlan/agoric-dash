@@ -1,6 +1,7 @@
 /**
- * Standalone indexer: polls RPC for block + block_results, updates daily_metrics
- * and hourly_metrics (same dimensions; hour bucket from block time UTC).
+ * Standalone indexer: polls RPC for block + block_results, updates daily_metrics,
+ * hourly_metrics, participant_day, address_volume_day, and address_fee_day
+ * (hour bucket from block time UTC for hourly_metrics).
  * Run: DATABASE_URL=... RPC_URL=... tsx scripts/indexer.ts
  */
 import "dotenv/config";
@@ -16,9 +17,13 @@ import {
   extractPaidFeesFromEvents,
   parseCoinsAmounts,
 } from "../src/lib/cosmos";
+import { attributedTransferLegsFromDecodedMsg } from "../src/lib/transferVolumeAttribution";
+import {
+  feePayerBech32FromAuthInfo,
+  signerBech32AddressesFromAuthInfo,
+} from "../src/lib/txParticipantAddresses";
 import { rpcCall, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
 import {
-  MESSAGE_ATTRIBUTION,
   MSG_IBC_TRANSFER,
   MSG_RECV_PACKET,
   SERIES,
@@ -50,7 +55,7 @@ if (!DATABASE_URL) {
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
 
-const { dailyMetrics, hourlyMetrics } = schema;
+const { dailyMetrics, hourlyMetrics, participantDay, addressVolumeDay, addressFeeDay } = schema;
 
 const START_DATE_MS = new Date(START_DATE_ISO).getTime();
 if (!Number.isFinite(START_DATE_MS)) {
@@ -96,6 +101,27 @@ function addRollupDelta(
   bumpRollupMap(hourly, [hour.toISOString(), series, dimension].join(ROLLUP_KEY_DELIM), delta);
 }
 
+function noteParticipant(
+  day: string,
+  address: string,
+  role: "signer" | "fee_payer",
+  participantTriples: Set<string>
+) {
+  participantTriples.add([day, address, role].join(ROLLUP_KEY_DELIM));
+}
+
+function bumpAddrDenom(
+  m: Map<string, bigint>,
+  day: string,
+  address: string,
+  denom: string,
+  delta: bigint
+) {
+  if (delta === BigInt(0)) return;
+  const key = [day, address, denom].join(ROLLUP_KEY_DELIM);
+  m.set(key, (m.get(key) ?? BigInt(0)) + delta);
+}
+
 async function flushRollupMaps(daily: Map<string, bigint>, hourly: Map<string, bigint>) {
   if (daily.size === 0 && hourly.size === 0) return;
   await db.transaction(async (tx) => {
@@ -122,6 +148,44 @@ async function flushRollupMaps(daily: Map<string, bigint>, hourly: Map<string, b
         .onConflictDoUpdate({
           target: [hourlyMetrics.hour, hourlyMetrics.series, hourlyMetrics.dimension],
           set: { value: sql`${hourlyMetrics.value} + ${sql.raw("excluded.value")}` },
+        });
+    }
+  });
+}
+
+async function flushParticipantMaps(
+  participantTriples: Set<string>,
+  volumeDeltas: Map<string, bigint>,
+  feeDeltas: Map<string, bigint>
+) {
+  if (participantTriples.size === 0 && volumeDeltas.size === 0 && feeDeltas.size === 0) return;
+  await db.transaction(async (tx) => {
+    for (const key of participantTriples) {
+      const [day, address, role] = key.split(ROLLUP_KEY_DELIM);
+      await tx.insert(participantDay).values({ day, address, role }).onConflictDoNothing();
+    }
+    for (const [key, delta] of volumeDeltas) {
+      if (delta === BigInt(0)) continue;
+      const [day, address, denom] = key.split(ROLLUP_KEY_DELIM);
+      const dStr = delta.toString();
+      await tx
+        .insert(addressVolumeDay)
+        .values({ day, address, denom, volume: dStr })
+        .onConflictDoUpdate({
+          target: [addressVolumeDay.day, addressVolumeDay.address, addressVolumeDay.denom],
+          set: { volume: sql`${addressVolumeDay.volume} + ${sql.raw("excluded.volume")}` },
+        });
+    }
+    for (const [key, delta] of feeDeltas) {
+      if (delta === BigInt(0)) continue;
+      const [day, address, denom] = key.split(ROLLUP_KEY_DELIM);
+      const dStr = delta.toString();
+      await tx
+        .insert(addressFeeDay)
+        .values({ day, address, denom, fee: dStr })
+        .onConflictDoUpdate({
+          target: [addressFeeDay.day, addressFeeDay.address, addressFeeDay.denom],
+          set: { fee: sql`${addressFeeDay.fee} + ${sql.raw("excluded.fee")}` },
         });
     }
   });
@@ -177,7 +241,10 @@ function accumulateBlock(
   block: RpcBlockResponse,
   results: RpcBlockResultsResponse,
   daily: Map<string, bigint>,
-  hourly: Map<string, bigint>
+  hourly: Map<string, bigint>,
+  participantTriples: Set<string>,
+  volumeDeltas: Map<string, bigint>,
+  feeDeltas: Map<string, bigint>
 ) {
   const hStr = block.block.header.height;
   const iso = block.block.header.time;
@@ -218,11 +285,18 @@ function accumulateBlock(
       continue;
     }
 
-    const msgs = decoded.body.messages;
-    if (MESSAGE_ATTRIBUTION === "first_message" && msgs.length > 0) {
-      const first = msgs[0]!;
-      addRollupDelta(daily, hourly, day, hour, SERIES.MSG_TYPE, first.typeUrl, BigInt(1));
+    for (const s of signerBech32AddressesFromAuthInfo(decoded.authInfo)) {
+      noteParticipant(day, s, "signer", participantTriples);
     }
+    const feePayer = feePayerBech32FromAuthInfo(decoded.authInfo);
+    if (feePayer) {
+      noteParticipant(day, feePayer, "fee_payer", participantTriples);
+      for (const [denom, amt] of fees) {
+        bumpAddrDenom(feeDeltas, day, feePayer, denom, amt);
+      }
+    }
+
+    const msgs = decoded.body.messages;
 
     for (const msg of msgs) {
       const enc = msg as EncodeObject;
@@ -251,15 +325,21 @@ function accumulateBlock(
           token?: { denom: string; amount: string };
         };
 
+        for (const leg of attributedTransferLegsFromDecodedMsg(typeUrl, decodedMsg)) {
+          bumpAddrDenom(volumeDeltas, day, leg.address, leg.denom, leg.amount);
+        }
+
         if (typeUrl.includes("MsgSend")) {
           for (const c of decodedMsg.amount ?? []) {
-            addRollupDelta(daily, hourly, day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
+            const amt = BigInt(c.amount);
+            addRollupDelta(daily, hourly, day, hour, SERIES.TRANSFER_VOLUME, c.denom, amt);
           }
         }
         if (typeUrl.includes("MsgMultiSend")) {
           for (const o of decodedMsg.outputs ?? []) {
             for (const c of o.coins ?? []) {
-              addRollupDelta(daily, hourly, day, hour, SERIES.TRANSFER_VOLUME, c.denom, BigInt(c.amount));
+              const amt = BigInt(c.amount);
+              addRollupDelta(daily, hourly, day, hour, SERIES.TRANSFER_VOLUME, c.denom, amt);
             }
           }
         }
@@ -403,10 +483,22 @@ async function loop(startFloorHeight: bigint) {
     const pairs = await Promise.all(heights.map((h) => fetchBlockPair(h)));
     const daily = new Map<string, bigint>();
     const hourly = new Map<string, bigint>();
+    const participantTriples = new Set<string>();
+    const volumeDeltas = new Map<string, bigint>();
+    const feeDeltas = new Map<string, bigint>();
     for (const p of pairs) {
-      accumulateBlock(p.block, p.results, daily, hourly);
+      accumulateBlock(
+        p.block,
+        p.results,
+        daily,
+        hourly,
+        participantTriples,
+        volumeDeltas,
+        feeDeltas
+      );
     }
     await flushRollupMaps(daily, hourly);
+    await flushParticipantMaps(participantTriples, volumeDeltas, feeDeltas);
 
     const lastH = heights[heights.length - 1]!;
     await setCursor(lastH);

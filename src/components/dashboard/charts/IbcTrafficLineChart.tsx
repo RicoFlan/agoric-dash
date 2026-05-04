@@ -24,10 +24,10 @@ export default function IbcTrafficLineChart({
 }) {
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-      <h2 className="mb-1 text-lg font-semibold leading-tight text-[var(--color-text-primary)]">
+      <h3 className="mb-3 border-b border-[var(--border)] pb-2 text-lg font-semibold leading-tight text-[var(--color-text-primary)]">
         IBC traffic: out vs received
-      </h2>
-      <p className="mb-4 text-xs text-[var(--muted)]">
+      </h3>
+      <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">
         Transfers out (MsgTransfer) and recv packet handling, per bucket.
       </p>
       <div className="h-72 w-full">

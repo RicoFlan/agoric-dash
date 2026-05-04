@@ -48,10 +48,10 @@ export default function IbcAmountFlowsLineChart({
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-      <h2 className="mb-1 text-lg font-semibold leading-tight text-[var(--color-text-primary)]">
+      <h3 className="mb-3 border-b border-[var(--border)] pb-2 text-lg font-semibold leading-tight text-[var(--color-text-primary)]">
         IBC amount flows (separate from bank sends above)
-      </h2>
-      <p className="mb-4 text-xs text-[var(--muted)]">
+      </h3>
+      <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">
         In = recv / event-sourced; out = IBC out msg. One line per denom with in-range volume
         (human-scaled when mapped in{" "}
         <code className="text-[var(--accent)]">src/config/denoms.json</code>). One vertical scale;
@@ -65,16 +65,7 @@ export default function IbcAmountFlowsLineChart({
             <LineChart data={rows} margin={{ top: 4, right: 8, left: 4, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
               <XAxis {...timeAxis} />
-              <YAxis
-                yAxisId={0}
-                tick={{ fill: chartTheme.axisTick, fontSize: 10 }}
-                label={{
-                  value: "Amount (human per asset; units differ)",
-                  angle: -90,
-                  position: "insideLeft",
-                  style: { fill: chartTheme.axisLabelMuted, fontSize: 11 },
-                }}
-              />
+              <YAxis yAxisId={0} tick={{ fill: chartTheme.axisTick, fontSize: 10 }} />
               <Tooltip
                 content={({ label: lb, active, payload: pl }) =>
                   active && pl && pl.length ? (

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateMetricsQuery } from "@/lib/metricsApiValidation";
+import { clampMetricsRangeToIndexedHistory, validateMetricsQuery } from "@/lib/metricsApiValidation";
+import { enrichParticipationAndConcentration } from "@/lib/enrichParticipationConcentration";
 import { enrichMetricsForDisplay } from "@/lib/metricsEnrichment";
 import { buildMetricsPayload, type Granularity } from "@/lib/metricsQuery";
 import { enrichTransferVolumeUsdEstimates } from "@/lib/transferVolumeUsdEstimates";
+import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +41,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: invalid }, { status: 400 });
   }
 
+  const { from: qFrom, to: qTo } = clampMetricsRangeToIndexedHistory(from, to);
+
   try {
-    const payload = await buildMetricsPayload(from, to, granularity);
+    const payload = await buildMetricsPayload(qFrom, qTo, granularity);
     const display = enrichMetricsForDisplay(payload);
     const usd = await enrichTransferVolumeUsdEstimates(payload.transferVolumeByDenom ?? {}, display);
-    return NextResponse.json({ ...payload, display, ...usd });
+    const fromDay = qFrom.slice(0, 10);
+    const toDay = qTo.slice(0, 10);
+    const participationConcentration = await enrichParticipationAndConcentration(
+      fromDay,
+      toDay,
+      payload.transferVolumeByDenom ?? {},
+      display
+    );
+    return NextResponse.json({
+      ...payload,
+      display,
+      ...usd,
+      ...participationConcentration,
+      indexedHistoryFromDay: INDEXED_HISTORY_FROM_DAY,
+    });
   } catch (e) {
     return serverErrorResponse(e);
   }

@@ -7,12 +7,15 @@ import { atomicToFloat, atomicToHumanString } from "@/lib/amountFormat";
 import { listRow, valueToChartNumber } from "@/lib/displayFormat";
 import { chartTheme } from "@/lib/chartTheme";
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
-import { FEE_DENOM_UBLB, METHODOLOGY_BLURB, MESSAGE_ATTRIBUTION } from "@/lib/semantics";
+import { sortGrossMovementRows, type GrossMovementRow } from "@/lib/grossTableUsdSort";
+import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
+import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, METHODOLOGY_BLURB } from "@/lib/semantics";
 
 const TransferVolumeLineChart = dynamic(
   () => import("@/components/dashboard/charts/TransferVolumeLineChart"),
   {
-    loading: () => <ChartChunkFallback title="In-tx transfer volume" />,
+    loading: () => <ChartChunkFallback title="Gross in-tx movement" />,
     ssr: false,
   }
 );
@@ -41,12 +44,10 @@ const IbcTrafficLineChart = dynamic(
   }
 );
 
-const TransactionNatureBarChart = dynamic(
-  () => import("@/components/dashboard/charts/TransactionNatureBarChart"),
+const DistinctAccountsLineChart = dynamic(
+  () => import("@/components/dashboard/charts/DistinctAccountsLineChart"),
   {
-    loading: () => (
-      <ChartChunkFallback title="Transaction nature" className="h-80" />
-    ),
+    loading: () => <ChartChunkFallback title="Distinct account addresses" />,
     ssr: false,
   }
 );
@@ -92,7 +93,6 @@ interface MetricsPayload {
     ibcAmountInSeries: { denom: string; data: { bucket: string; value: string }[] }[];
     ibcAmountOutSeries: { denom: string; data: { bucket: string; value: string }[] }[];
   };
-  composition: { typeUrl: string; count: string }[];
   transferVolumeByDenom: Record<string, string>;
   transferVolumeUsdByDenom: Record<string, string | null>;
   transferVolumeUsdTotal: string | null;
@@ -104,16 +104,18 @@ interface MetricsPayload {
   feePaidByDenom: Record<string, string>;
   feePaidByDenomPrevious: Record<string, string>;
   indexer: { lastIndexedHeight: string | null; updatedAt: string | null };
-}
-
-function defaultDateRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setUTCDate(from.getUTCDate() - 30);
-  return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
+  participation?: {
+    distinctSigners: string;
+    distinctFeePayers: string;
+    singleDayInRange: string;
+    multiDayInRange: string;
+    distinctUnionPerDay: { day: string; count: string }[];
   };
+  concentration?: {
+    top10AddressShareGrossUsd: string | null;
+  };
+  /** First day included in indexed DB rollups (UTC); requests earlier than this are clamped. */
+  indexedHistoryFromDay?: string;
 }
 
 /** UTC calendar date YYYY-MM-DD, shifted by whole days from today UTC. */
@@ -123,8 +125,38 @@ function utcCalendarDate(shiftDaysFromToday: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Align picker/API range with indexed history (same floor as default INDEXER_START_DATE). */
+function clampDayNotBeforeIndexed(day: string): string {
+  const d = day.slice(0, 10);
+  return d < INDEXED_HISTORY_FROM_DAY ? INDEXED_HISTORY_FROM_DAY : d;
+}
+
 const QUICK_RANGE_BTN =
   "rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]";
+
+const QUICK_RANGE_BTN_ACTIVE =
+  "border-[var(--accent)] bg-[var(--color-bg-secondary)] shadow-sm ring-1 ring-[var(--accent)]/25";
+
+function activeQuickPreset(
+  from: string,
+  to: string,
+  g: Granularity
+): "24h" | "week" | "30" | "90" | null {
+  const t0 = utcCalendarDate(0);
+  if (from === utcCalendarDate(-1) && to === t0 && g === "hour") return "24h";
+  if (from === utcCalendarDate(-6) && to === t0 && g === "day") return "week";
+  if (from === utcCalendarDate(-29) && to === t0 && g === "day") return "30";
+  if (from === utcCalendarDate(-89) && to === t0 && g === "day") return "90";
+  return null;
+}
+
+/** docs/style-guide.md §2 — top-level section rails: accent (H2 / 20px) + left rail */
+const SECTION_HEADING_CLASS =
+  "border-l-2 border-[var(--color-accent)] pl-3 text-xl font-semibold leading-tight tracking-tight text-[var(--color-accent)]";
+
+/** In-card panel title (H3 / 18px): primary + subtle rule under the title (style guide structure) */
+const IN_CARD_TITLE_CLASS =
+  "mb-2 border-b border-[var(--border)] pb-2 text-lg font-semibold leading-snug text-[var(--color-text-primary)]";
 
 function fmtPct(n: number | null): string {
   if (n === null) return "n/a";
@@ -144,10 +176,6 @@ function formatBucketTick(v: string, g: Granularity) {
 /** Max time to wait for /api/metrics (Postgres can be slow; dev HMR can stall). */
 const METRICS_FETCH_MS = 120_000;
 
-/** In-tx volume table: narrow ticker, flexible native, fixed USD, wide denom (ibc/… strings). */
-const CL_TRANSFER_VOL_ROW =
-  "grid grid-cols-[minmax(2.75rem,3.75rem)_minmax(0,1fr)_minmax(5rem,6.75rem)_minmax(18rem,4fr)] gap-x-3 lg:gap-x-6";
-
 /** Native volume column: fixed 2 fractional digits when decimals are known from denoms.json. */
 function formatNativeVolumeRounded(atomic: string, decimals: number | undefined): string | null {
   if (typeof decimals !== "number" || !Number.isFinite(decimals) || decimals < 0) return null;
@@ -160,14 +188,17 @@ function formatNativeVolumeRounded(atomic: string, decimals: number | undefined)
 }
 
 export function Dashboard() {
-  const defaults = useMemo(() => defaultDateRange(), []);
-  const [from, setFrom] = useState(defaults.from);
-  const [to, setTo] = useState(defaults.to);
-  const [granularity, setGranularity] = useState<Granularity>("hour");
+  /** Default load: last 30 calendar days (daily buckets); custom pickers stay hidden until “Custom Range”. */
+  const [from, setFrom] = useState(() => clampDayNotBeforeIndexed(utcCalendarDate(-29)));
+  const [to, setTo] = useState(() => utcCalendarDate(0));
+  const [granularity, setGranularity] = useState<Granularity>("day");
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [data, setData] = useState<MetricsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [methodologyOpen, setMethodologyOpen] = useState(false);
+  /** Gross table: default = ticker/denom order from API; asc/desc = USD (EST) estimate. */
+  const [usdSort, setUsdSort] = useState<"default" | "asc" | "desc">("default");
 
   /** Latest metrics fetch; `finally` clears `loading` only when this controller is still current. */
   const metricsFlightRef = useRef<AbortController | null>(null);
@@ -189,6 +220,8 @@ export function Dashboard() {
         setLoading(true);
         setErr(null);
       }
+      const requestedFrom = from;
+      const requestedTo = to;
       try {
         const mRes = await fetch(
           `/api/metrics?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=${granularity}`,
@@ -213,6 +246,14 @@ export function Dashboard() {
         const m = (await mRes.json()) as MetricsPayload;
         if (metricsFlightRef.current !== ctrl) return;
         setData(m);
+        if (
+          m.range?.from &&
+          m.range?.to &&
+          (m.range.from !== requestedFrom || m.range.to !== requestedTo)
+        ) {
+          setFrom(m.range.from);
+          setTo(m.range.to);
+        }
         if (silent) setErr(null);
       } catch (e) {
         if (metricsFlightRef.current !== ctrl) return;
@@ -244,9 +285,8 @@ export function Dashboard() {
   }, [load]);
 
   useEffect(() => {
-    const id = setInterval(() => void load({ silent: true }), 60_000);
-    return () => clearInterval(id);
-  }, [load]);
+    setUsdSort("default");
+  }, [from, to, granularity]);
 
   /** Join bucket streams for aligned line charts (handles sparse edges). */
   const chartAllTxVsIbc = useMemo(() => {
@@ -317,6 +357,31 @@ export function Dashboard() {
     });
     return { rows, series: seriesMeta };
   }, [data]);
+
+  const grossInTxRows = useMemo((): GrossMovementRow[] => {
+    const tv = data?.transferVolumeByDenom;
+    if (!tv) return [];
+    const disp = data.display;
+    const mapped: GrossMovementRow[] = Object.entries(tv).map(([denom, amt]) => {
+      const r = disp
+        ? listRow(amt, denom, disp)
+        : { amountHuman: amt, symbol: "", rawDenom: denom };
+      const ticker = r.symbol || "—";
+      const usd = data.transferVolumeUsdByDenom[denom] ?? null;
+      const dec = disp?.metas[denom]?.decimals;
+      const rounded = formatNativeVolumeRounded(amt, dec);
+      const grossDisplay = rounded ?? r.amountHuman;
+      return {
+        key: denom,
+        denom,
+        ticker,
+        grossDisplay,
+        grossUnknown: !r.symbol,
+        usd,
+      };
+    });
+    return sortGrossMovementRows(mapped, usdSort);
+  }, [data, usdSort]);
 
   const chartIbcValueAmounts = useMemo(() => {
     if (!data) {
@@ -399,18 +464,34 @@ export function Dashboard() {
     return { rows, series: seriesMeta };
   }, [data]);
 
-  const topComposition = useMemo(() => {
-    if (!data) return [];
-    return (data.composition ?? []).slice(0, 12).map((c) => {
-      const url = typeof c?.typeUrl === "string" ? c.typeUrl : "";
-      const n = Number(c?.count);
-      return {
-        name: url ? (url.split(".").pop() ?? url) : "(unknown type)",
-        full: url,
-        count: Number.isFinite(n) ? n : 0,
-      };
-    });
-  }, [data]);
+  const chartDistinctAccountsRows = useMemo(() => {
+    const sparse = data?.participation?.distinctUnionPerDay;
+    if (!sparse) return [];
+    return filledDistinctAccountsPerDay(from, to, sparse);
+  }, [from, to, data?.participation?.distinctUnionPerDay]);
+
+  const distinctAccountsTimeAxis = useMemo(() => {
+    const n = chartDistinctAccountsRows.length;
+    const dense = n > 31;
+    return {
+      dataKey: "bucket" as const,
+      tick: { fill: chartTheme.axisTick, fontSize: dense ? 9 : 11 },
+      ...(dense
+        ? {
+            height: 58,
+            angle: -32,
+            textAnchor: "end" as const,
+            interval: "preserveStartEnd" as const,
+            minTickGap: 4,
+          }
+        : {}),
+      tickFormatter: (v: string) => {
+        const d = new Date(`${v.slice(0, 10)}T12:00:00.000Z`);
+        if (Number.isNaN(d.getTime())) return v;
+        return `${(d.getUTCMonth() + 1).toString().padStart(2, "0")}/${d.getUTCDate().toString().padStart(2, "0")}`;
+      },
+    };
+  }, [chartDistinctAccountsRows]);
 
   const timeAxis = useMemo(() => {
     const g = granularity;
@@ -436,7 +517,7 @@ export function Dashboard() {
   return (
     <div className="space-y-10">
       {data?.indexer?.lastIndexedHeight && (
-        <p className="text-xs text-[var(--muted)]">
+        <p className="text-xs text-[var(--color-text-secondary)]">
           Last indexed block height:{" "}
           <code className="text-[var(--accent)]">{data.indexer.lastIndexedHeight}</code>
           {data.indexer.updatedAt && (
@@ -447,90 +528,124 @@ export function Dashboard() {
         </p>
       )}
 
-      <section className="flex flex-wrap items-end gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-        <div className="flex w-full flex-wrap items-center gap-2 border-b border-[var(--border)]/60 pb-4">
-          <span className="mr-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
-            Quick range
-          </span>
-          <button
-            type="button"
-            className={QUICK_RANGE_BTN}
-            title="UTC: From = yesterday, To = today; hourly buckets."
-            onClick={() => {
-              setFrom(utcCalendarDate(-1));
-              setTo(utcCalendarDate(0));
-              setGranularity("hour");
-            }}
-          >
-            Last 24 hours
-          </button>
-          <button
-            type="button"
-            className={QUICK_RANGE_BTN}
-            title="UTC: last 7 calendar days inclusive, daily buckets."
-            onClick={() => {
-              setFrom(utcCalendarDate(-6));
-              setTo(utcCalendarDate(0));
-              setGranularity("day");
-            }}
-          >
-            Last Week
-          </button>
-          <button
-            type="button"
-            className={QUICK_RANGE_BTN}
-            title="UTC: last 30 calendar days inclusive, daily buckets."
-            onClick={() => {
-              setFrom(utcCalendarDate(-29));
-              setTo(utcCalendarDate(0));
-              setGranularity("day");
-            }}
-          >
-            Last 30 Days
-          </button>
+      <section
+        id={dashboardSectionIds.filters}
+        className="scroll-mt-6 flex flex-wrap items-end gap-4 rounded-lg border border-[var(--border)] bg-[var(--color-bg-control)] p-5 shadow-[var(--shadow-card)]"
+      >
+        <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-3 border-b border-[var(--border)]/60 pb-4">
+          <label className="flex shrink-0 flex-row items-center gap-2 text-sm leading-[1.4]">
+            <span className="whitespace-nowrap text-sm font-medium text-[var(--color-text-secondary)]">
+              Granularity
+            </span>
+            <select
+              value={granularity}
+              onChange={(e) => setGranularity(e.target.value as Granularity)}
+              className="min-w-[10.5rem] rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]"
+            >
+              <option value="hour">Hour (UTC)</option>
+              <option value="day">Day</option>
+              <option value="week">Week (UTC Monday)</option>
+            </select>
+          </label>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-wrap items-center gap-2">
+            <span className="mr-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
+              Quick range
+            </span>
+            <button
+              type="button"
+              className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "24h" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
+              title="UTC: From = yesterday, To = today; hourly buckets."
+              onClick={() => {
+                setCustomRangeOpen(false);
+                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-1)));
+                setTo(utcCalendarDate(0));
+                setGranularity("hour");
+              }}
+            >
+              Last 24 hours
+            </button>
+            <button
+              type="button"
+              className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "week" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
+              title="UTC: last 7 calendar days inclusive, daily buckets."
+              onClick={() => {
+                setCustomRangeOpen(false);
+                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-6)));
+                setTo(utcCalendarDate(0));
+                setGranularity("day");
+              }}
+            >
+              Last Week
+            </button>
+            <button
+              type="button"
+              className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "30" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
+              title="UTC: last 30 calendar days inclusive, daily buckets."
+              onClick={() => {
+                setCustomRangeOpen(false);
+                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-29)));
+                setTo(utcCalendarDate(0));
+                setGranularity("day");
+              }}
+            >
+              Last 30 Days
+            </button>
+            <button
+              type="button"
+              className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "90" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
+              title="UTC: last 90 calendar days inclusive, daily buckets."
+              onClick={() => {
+                setCustomRangeOpen(false);
+                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-89)));
+                setTo(utcCalendarDate(0));
+                setGranularity("day");
+              }}
+            >
+              Last 90 Days
+            </button>
+            <button
+              type="button"
+              className={`${QUICK_RANGE_BTN} ${customRangeOpen ? QUICK_RANGE_BTN_ACTIVE : ""}`}
+              title="Show From / To dates; changes apply automatically."
+              onClick={() => setCustomRangeOpen(true)}
+            >
+              Custom Range
+            </button>
+          </div>
         </div>
 
-        <label className="flex flex-col gap-1 text-sm leading-[1.4]">
-          <span className="text-[var(--muted)]">From</span>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm leading-[1.4]">
-          <span className="text-[var(--muted)]">To</span>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm leading-[1.4]">
-          <span className="text-[var(--muted)]">Granularity</span>
-          <select
-            value={granularity}
-            onChange={(e) => setGranularity(e.target.value as Granularity)}
-            className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]"
-          >
-            <option value="hour">Hour (UTC)</option>
-            <option value="day">Day</option>
-            <option value="week">Week (UTC Monday)</option>
-          </select>
-        </label>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-[var(--accent-on)] transition-transform hover:-translate-y-px hover:bg-[var(--color-accent-hover)] active:bg-[var(--color-accent-active)]"
-        >
-          Refresh
-        </button>
-        <p className="text-xs leading-[1.4] text-[var(--muted)]">
-          {granularity === "hour"
-            ? "Comparison: prior period of the same number of hours ending the hour before the range start (UTC)."
-            : "Comparison: equal length ending the day before From."}
+        {customRangeOpen && (
+          <div className="flex w-full flex-wrap items-center gap-4 border-b border-[var(--border)]/60 pb-4">
+            <label className="flex flex-row items-center gap-2 text-sm leading-[1.4]">
+              <span className="whitespace-nowrap text-sm font-medium text-[var(--color-text-secondary)]">
+                From
+              </span>
+              <input
+                type="date"
+                min={INDEXED_HISTORY_FROM_DAY}
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]"
+              />
+            </label>
+            <label className="flex flex-row items-center gap-2 text-sm leading-[1.4]">
+              <span className="whitespace-nowrap text-sm font-medium text-[var(--color-text-secondary)]">
+                To
+              </span>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]"
+              />
+            </label>
+          </div>
+        )}
+        <p className="w-full text-xs leading-[1.4] text-[var(--muted)]">
+          Indexed rollups and participation metrics start{" "}
+          <time dateTime={INDEXED_HISTORY_FROM_DAY}>{INDEXED_HISTORY_FROM_DAY}</time> UTC. The API
+          clamps <strong className="font-medium text-[var(--color-text-secondary)]">From</strong> to
+          that day when needed so results match the indexer window.
         </p>
       </section>
 
@@ -558,17 +673,14 @@ export function Dashboard() {
 
       {data && data.kpis && (
         <>
-          <section className="space-y-6">
-            <h2 className="text-xl font-semibold leading-tight tracking-tight text-[var(--color-accent)]">
-              Value handled
-            </h2>
+          <section id={dashboardSectionIds.valueHandled} className="scroll-mt-6 min-w-0 space-y-6">
+            <h2 className={SECTION_HEADING_CLASS}>Value handled</h2>
             <div className="w-full min-w-0">
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-                <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
-                  In-tx transfer volume by denom (range total)
-                </h3>
-                <p className="mb-3 text-[10px] leading-snug text-[var(--muted)]">
-                  USD estimates multiply each asset&apos;s <strong className="font-medium text-[var(--color-text-secondary)]">full-period native total</strong> by{" "}
+              <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+                <h3 className={IN_CARD_TITLE_CLASS}>Gross in-tx movement by denom (range total)</h3>
+                <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+                  Sum of transfer-message legs plus IBC receive per denom for the range (same definition as the line chart below). USD estimates multiply each asset&apos;s{" "}
+                  <strong className="font-medium text-[var(--color-text-secondary)]">full-period native total</strong> by{" "}
                   <strong className="font-medium text-[var(--color-text-secondary)]">current CoinGecko spot USD</strong>. That is{" "}
                   <strong className="font-medium text-[var(--color-text-secondary)]">not</strong> a historically accurate mark-to-market over the selected range, but it makes
                   cross-asset sizes easier to compare. Native amounts remain the on-chain record.
@@ -586,83 +698,122 @@ export function Dashboard() {
                     </span>
                   )}
                 </p>
-                <div className="overflow-x-auto">
-                  <div className="w-full min-w-[min(100%,56rem)]">
-                    <div
-                      className={`${CL_TRANSFER_VOL_ROW} mb-1.5 border-b border-[var(--border)]/40 pb-1 text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-secondary)]`}
-                    >
-                      <span className="min-w-0 truncate">Ticker</span>
-                      <span className="text-right">Native volume</span>
-                      <span className="text-right">USD (EST)</span>
-                      <span className="min-w-0">Denom</span>
-                    </div>
-                    <ul className="max-h-64 overflow-auto text-sm">
-                      {Object.entries(data.transferVolumeByDenom ?? {})
-                        .map(([denom, amt]) => {
-                          const r = data.display
-                            ? listRow(amt, denom, data.display)
-                            : { amountHuman: amt, symbol: "", rawDenom: denom };
-                          const ticker = r.symbol || "—";
-                          const usd = data.transferVolumeUsdByDenom[denom] ?? null;
-                          const dec = data.display?.metas[denom]?.decimals;
-                          const rounded = formatNativeVolumeRounded(amt, dec);
-                          const nativeVolume =
-                            rounded ?? r.amountHuman;
-                          return {
-                            key: denom,
-                            denom,
-                            ticker,
-                            nativeVolume,
-                            unknown: !r.symbol,
-                            usd,
-                          };
-                        })
-                        .sort((a, b) => {
-                          const unk = (t: string) => (t === "—" ? 1 : 0);
-                          if (unk(a.ticker) !== unk(b.ticker)) return unk(a.ticker) - unk(b.ticker);
-                          const c = a.ticker.localeCompare(b.ticker, undefined, { sensitivity: "base" });
-                          if (c !== 0) return c;
-                          return a.denom.localeCompare(b.denom);
-                        })
-                        .map((row) => (
-                          <li
-                            key={row.key}
-                            className={`${CL_TRANSFER_VOL_ROW} border-b border-[var(--border)]/30 py-1.5`}
+                <div className="min-w-0 max-w-full overflow-x-auto">
+                  <table className="w-full min-w-0 table-fixed border-collapse text-xs sm:text-sm">
+                    <colgroup>
+                      <col className="w-[10%]" />
+                      <col className="w-[20%]" />
+                      <col className="w-[20%]" />
+                      <col className="w-[50%]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="rounded-t-sm bg-[var(--color-bg-secondary)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-accent)] border-b-2 border-[var(--color-accent)]/55 sm:text-xs sm:tracking-wider">
+                        <th
+                          scope="col"
+                          className="px-1.5 py-2 text-left align-bottom font-semibold normal-case sm:px-2"
+                        >
+                          Ticker
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
+                          title="transfer_volume + IBC recv (gross in-tx movement)"
+                        >
+                          Gross
+                        </th>
+                        <th
+                          scope="col"
+                          aria-sort={
+                            usdSort === "default"
+                              ? "none"
+                              : usdSort === "asc"
+                                ? "ascending"
+                                : "descending"
+                          }
+                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setUsdSort((s) =>
+                                s === "default" ? "desc" : s === "desc" ? "asc" : "default"
+                              )
+                            }
+                            className="inline-flex w-full max-w-full items-center justify-end gap-1 rounded px-1 py-0.5 text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-primary)]/70 hover:text-[var(--text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+                            aria-label={
+                              usdSort === "default"
+                                ? "Sort by USD estimate, highest first"
+                                : usdSort === "desc"
+                                  ? "Sort by USD estimate, lowest first"
+                                  : "Clear USD sort (ticker order)"
+                            }
                           >
-                            <div
-                              className="min-w-0 truncate font-medium text-[var(--text)]"
-                              title={row.ticker}
+                            <span>USD (EST)</span>
+                            <span
+                              className="font-mono text-[10px] leading-none text-[var(--color-text-secondary)]"
+                              aria-hidden
                             >
-                              {row.ticker}
-                            </div>
-                            <div className="min-w-0 text-right font-mono text-[var(--text)]">
-                              {row.unknown ? (
-                                <code className="text-xs text-amber-200/90">{row.nativeVolume}</code>
-                              ) : (
-                                row.nativeVolume
-                              )}
-                            </div>
-                            <div className="text-right font-mono text-[var(--text)]">{row.usd ?? "—"}</div>
+                              {usdSort === "desc" ? "▼" : usdSort === "asc" ? "▲" : "⇅"}
+                            </span>
+                          </button>
+                        </th>
+                        <th
+                          scope="col"
+                          className="min-w-0 px-1.5 py-2 text-left align-bottom font-semibold normal-case sm:px-2"
+                        >
+                          Denom
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grossInTxRows.map((row) => (
+                        <tr
+                          key={row.key}
+                          className="border-b border-[var(--border)]/50 odd:bg-[var(--color-bg-primary)] even:bg-[var(--color-border)]"
+                        >
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle font-medium leading-tight text-[var(--text)] sm:px-2">
+                            {row.ticker}
+                          </td>
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
+                            {row.grossUnknown ? (
+                              <code className="text-xs text-amber-200/90">{row.grossDisplay}</code>
+                            ) : (
+                              row.grossDisplay
+                            )}
+                          </td>
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
+                            {row.usd ?? "—"}
+                          </td>
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle sm:px-2">
                             <code
-                              className="min-w-0 break-all text-left text-[10px] leading-snug text-[var(--muted)] sm:break-normal sm:text-xs"
+                              className="block w-max whitespace-nowrap text-left text-[11px] leading-tight text-[var(--muted)] sm:text-xs"
                               title={row.denom}
                             >
                               {row.denom}
                             </code>
-                          </li>
-                        ))}
-                    </ul>
-                    <div
-                      className={`${CL_TRANSFER_VOL_ROW} mt-2 border-t-2 border-[var(--border)] pt-3 text-sm font-semibold text-[var(--text)]`}
-                      role="row"
-                      aria-label="Totals"
-                    >
-                      <span>TOTAL</span>
-                      <span aria-hidden className="select-none text-[var(--muted)]" />
-                      <span className="text-right font-mono">{data.transferVolumeUsdTotal ?? "—"}</span>
-                      <span aria-hidden className="select-none" />
-                    </div>
-                  </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr
+                        className="border-t-2 border-[var(--border)] text-xs font-semibold text-[var(--color-text-primary)] sm:text-sm"
+                        aria-label="Totals"
+                      >
+                        <td className="px-1.5 py-3 text-[var(--color-accent)] sm:px-2">TOTAL</td>
+                        <td
+                          className="px-1.5 py-3 text-center text-[var(--muted)] sm:px-2"
+                          title="Not summed across assets"
+                        >
+                          —
+                        </td>
+                        <td className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2">
+                          {data.transferVolumeUsdTotal ?? "—"}
+                        </td>
+                        <td aria-hidden className="min-w-0 px-1.5 py-3 sm:px-2" />
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               </div>
             </div>
@@ -673,10 +824,8 @@ export function Dashboard() {
             </section>
           </section>
 
-          <section className="space-y-4">
-            <h2 className="text-xl font-semibold leading-tight tracking-tight text-[var(--color-accent)]">
-              Gas and fees
-            </h2>
+          <section id={dashboardSectionIds.gasFees} className="scroll-mt-6 space-y-4">
+            <h2 className={SECTION_HEADING_CLASS}>Gas and fees</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <KpiCard
                 title="Gas used"
@@ -703,10 +852,8 @@ export function Dashboard() {
             </div>
           </section>
 
-          <section className="space-y-4">
-            <h2 className="text-xl font-semibold leading-tight tracking-tight text-[var(--color-accent)]">
-              Transaction activity
-            </h2>
+          <section id={dashboardSectionIds.transactionActivity} className="scroll-mt-6 space-y-4">
+            <h2 className={SECTION_HEADING_CLASS}>Transaction activity</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <KpiCard
                 title="Successful txs"
@@ -729,19 +876,84 @@ export function Dashboard() {
             </div>
           </section>
 
-          <section className="space-y-8 lg:space-y-10">
-            <AllTxVsIbcLineChart data={chartAllTxVsIbc} timeAxis={timeAxis} />
-            <IbcTrafficLineChart data={chartIbcTraffic} timeAxis={timeAxis} />
+          <section id={dashboardSectionIds.volumeIbc} className="scroll-mt-6 space-y-3">
+            <h2 className={SECTION_HEADING_CLASS}>Volume and IBC (time series)</h2>
+            <div className="space-y-8 lg:space-y-10">
+              <AllTxVsIbcLineChart data={chartAllTxVsIbc} timeAxis={timeAxis} />
+              <IbcTrafficLineChart data={chartIbcTraffic} timeAxis={timeAxis} />
+            </div>
           </section>
 
-          <TransactionNatureBarChart
-            data={topComposition}
-            messageAttribution={MESSAGE_ATTRIBUTION}
-          />
+          {(data.participation || data.concentration) && (
+            <section id={dashboardSectionIds.participation} className="scroll-mt-6 space-y-4">
+              <h2 className={SECTION_HEADING_CLASS}>Economic participation &amp; concentration</h2>
+              <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+                Addresses are not end users: bots, vaults, and protocol wallets can inflate counts.
+                The top-10 gross share uses USD spot estimates (same caveats as gross movement) on
+                sender-side transfer legs only — see methodology.
+              </p>
+              {data.participation && chartDistinctAccountsRows.length > 0 && (
+                <DistinctAccountsLineChart
+                  data={chartDistinctAccountsRows}
+                  timeAxis={distinctAccountsTimeAxis}
+                />
+              )}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {data.participation && (
+                  <>
+                    <KpiCardLite title="Distinct signers (range)" value={data.participation.distinctSigners} />
+                    <KpiCardLite title="Distinct fee payers (range)" value={data.participation.distinctFeePayers} />
+                    <KpiCardLite
+                      title="Active 1 day only (in range)"
+                      subtitle="Calendar days with any signer/fee role"
+                      value={data.participation.singleDayInRange}
+                    />
+                    <KpiCardLite
+                      title="Active 2+ days (in range)"
+                      subtitle="Returning within the selected window"
+                      value={data.participation.multiDayInRange}
+                    />
+                  </>
+                )}
+                {data.concentration && (
+                  <KpiCardLite
+                    title="Top 10 addresses — gross USD share"
+                    subtitle="Sender-attributed transfer legs"
+                    value={data.concentration.top10AddressShareGrossUsd ?? "—"}
+                  />
+                )}
+              </div>
+              {data.participation &&
+                data.participation.distinctUnionPerDay &&
+                data.participation.distinctUnionPerDay.length > 0 && (
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+                    <h3 className={IN_CARD_TITLE_CLASS}>Distinct account addresses per calendar day</h3>
+                    <div className="max-h-48 overflow-y-auto">
+                      <table className="w-full border-collapse text-xs sm:text-sm">
+                        <thead>
+                          <tr className="border-b border-[var(--border)] text-left text-[var(--color-accent)]">
+                            <th className="py-2 pr-4 font-semibold">Day (UTC)</th>
+                            <th className="py-2 font-semibold">Count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.participation.distinctUnionPerDay.map((r) => (
+                            <tr key={r.day} className="border-b border-[var(--border)]/40">
+                              <td className="py-1.5 font-mono text-[var(--text)]">{r.day}</td>
+                              <td className="py-1.5 font-mono tabular-nums text-[var(--text)]">{r.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+            </section>
+          )}
         </>
       )}
 
-      <footer className="border-t border-[var(--border)] pt-6">
+      <footer id={dashboardSectionIds.methodology} className="scroll-mt-6 border-t border-[var(--border)] pt-6">
         <button
           type="button"
           onClick={() => setMethodologyOpen((o) => !o)}
@@ -774,8 +986,8 @@ function KpiCard({
 }) {
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">{title}</h3>
-      {subtitle && <p className="mt-1 text-[10px] text-[var(--muted)]">{subtitle}</p>}
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{title}</h3>
+      {subtitle && <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p>}
       <p className="mt-2 font-mono text-2xl text-[var(--text)]">{current}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">
         Prior window: <span className="font-mono text-[var(--text)]">{previous}</span>
@@ -788,6 +1000,24 @@ function KpiCard({
           {fmtPct(pct)}
         </span>
       </p>
+    </div>
+  );
+}
+
+function KpiCardLite({
+  title,
+  subtitle,
+  value,
+}: {
+  title: string;
+  subtitle?: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{title}</h3>
+      {subtitle && <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p>}
+      <p className="mt-2 font-mono text-2xl text-[var(--text)]">{value}</p>
     </div>
   );
 }

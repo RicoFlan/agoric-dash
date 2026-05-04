@@ -126,6 +126,24 @@ function seriesOverTime(
   }));
 }
 
+/**
+ * Same basis as `transferVolumeTableByDenom`: per bucket, transfer-like msgs + IBC recv for `denom`.
+ * Keeps the gross in-tx movement chart aligned with the range-total table (not TV-only).
+ */
+function seriesTransferVolumePlusIbcRecv(
+  bucketMap: Map<string, Map<string, Map<string, bigint>>>,
+  denom: string
+): { bucket: string; value: string }[] {
+  const keys = [...bucketMap.keys()].sort();
+  return keys.map((bucket) => {
+    const tv =
+      bucketMap.get(bucket)?.get(SERIES.TRANSFER_VOLUME)?.get(denom) ?? BigInt(0);
+    const ibcIn =
+      bucketMap.get(bucket)?.get(SERIES.IBC_TRANSFER_AMOUNT_IN)?.get(denom) ?? BigInt(0);
+    return { bucket, value: (tv + ibcIn).toString() };
+  });
+}
+
 /** Per-bucket sum of several series (same dimension) — e.g. success+failed, or IBC out+in */
 function sumSeriesOverTime(
   bucketMap: Map<string, Map<string, Map<string, bigint>>>,
@@ -168,31 +186,40 @@ export async function buildMetricsPayload(
   let prevBuckets: Map<string, Map<string, Map<string, bigint>>>;
   let comparisonWindow: { from: string; to: string };
 
+  /** Always fetch daily rows for [fromDay,toDay] — used for transfer-volume table totals (below). */
+  let currentDailyRows: Awaited<ReturnType<typeof fetchMetricsRange>>;
+
   if (granularity === "hour") {
     const fromStart = new Date(fromDay + "T00:00:00.000Z");
     const toEnd = new Date(toDay + "T23:00:00.000Z");
     const nHours = (toEnd.getTime() - fromStart.getTime()) / 3_600_000 + 1;
     const prevTo = new Date(fromStart.getTime() - 3_600_000);
     const prevFrom = new Date(fromStart.getTime() - nHours * 3_600_000);
-    const [curH, prevH] = await Promise.all([
+    const [dailyRows, curH, prevH] = await Promise.all([
+      fetchMetricsRange(fromDay, toDay),
       fetchHourlyRange(fromStart, toEnd),
       fetchHourlyRange(prevFrom, prevTo),
     ]);
+    currentDailyRows = dailyRows;
     curBuckets = aggregateFlatRows(mapHourlyDbToFlat(curH));
     prevBuckets = aggregateFlatRows(mapHourlyDbToFlat(prevH));
     comparisonWindow = { from: prevFrom.toISOString(), to: prevTo.toISOString() };
   } else {
-    const [currentRows, prevRows] = await Promise.all([
+    const [dailyRows, prevRows] = await Promise.all([
       fetchMetricsRange(fromDay, toDay),
       fetchMetricsRange(prevFromDay, prevToDay),
     ]);
+    currentDailyRows = dailyRows;
     const g = granularity;
-    const curFlat = dailyRowsToFlat(currentRows, g);
+    const curFlat = dailyRowsToFlat(currentDailyRows, g);
     const prevFlat = dailyRowsToFlat(prevRows, g);
     curBuckets = aggregateFlatRows(curFlat);
     prevBuckets = aggregateFlatRows(prevFlat);
     comparisonWindow = { from: prevFromDay, to: prevToDay };
   }
+
+  /** Table + USD enrichment: always daily rollups for the calendar range (stable vs chart granularity). */
+  const transferTableBuckets = aggregateFlatRows(dailyRowsToFlat(currentDailyRows, "day"));
 
   const txSuccessCur = sumSeries(curBuckets, SERIES.TX_SUCCESS);
   const txSuccessPrev = sumSeries(prevBuckets, SERIES.TX_SUCCESS);
@@ -229,22 +256,26 @@ export async function buildMetricsPayload(
 
   const feeByDenomCurrent = feeDenomBreakdown(curBuckets);
 
-  const composition = compositionFromBuckets(curBuckets, SERIES.MSG_TYPE);
-
-  const transferByDenom = denomBreakdown(curBuckets, SERIES.TRANSFER_VOLUME);
+  /** Table lists every denom with movement: bank + IBC out (transfer_volume) plus IBC recv (not double-counting IBC out). */
+  const transferByDenom = transferVolumeTableByDenom(transferTableBuckets);
   const feePaidByDenomPrevious = Object.fromEntries(feeDenomBreakdown(prevBuckets));
   const transferSums = aggregateDenomSeries(curBuckets, SERIES.TRANSFER_VOLUME);
   const ibcInSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN);
   const ibcOutSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT);
 
-  /** All denoms with in-range transfer volume, sorted by total descending (legend / draw order). */
-  const transferDenomsSorted = [...transferSums.entries()]
-    .filter(([, v]) => BigInt(v) > BigInt(0))
-    .sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : BigInt(b[1]) < BigInt(a[1]) ? -1 : 0))
-    .map(([d]) => d);
+  /** Denoms with non-zero TV + IBC recv in range (matches table), sorted by combined total for legend order. */
+  const transferDenomsSorted = [...new Set([...transferSums.keys(), ...ibcInSums.keys()])]
+    .map((d) => ({
+      d,
+      total: BigInt(transferSums.get(d) ?? "0") + BigInt(ibcInSums.get(d) ?? "0"),
+    }))
+    .filter((x) => x.total > BigInt(0))
+    .sort((a, b) => (b.total > a.total ? 1 : b.total < a.total ? -1 : 0))
+    .map((x) => x.d);
+
   const transferVolumeSeries = transferDenomsSorted.map((denom) => ({
     denom,
-    data: seriesOverTime(curBuckets, SERIES.TRANSFER_VOLUME, denom),
+    data: seriesTransferVolumePlusIbcRecv(curBuckets, denom),
   }));
 
   const ibcInDenomsSorted = [...ibcInSums.entries()]
@@ -310,7 +341,6 @@ export async function buildMetricsPayload(
       ibcAmountInSeries,
       ibcAmountOutSeries,
     },
-    composition,
     transferVolumeByDenom: transferByDenom,
     feePaidByDenom: Object.fromEntries(feeByDenomCurrent),
     feePaidByDenomPrevious,
@@ -339,26 +369,21 @@ function feeDenomBreakdown(
   return aggregateDenomSeries(bucketMap, SERIES.FEE_PAID);
 }
 
-function denomBreakdown(
-  bucketMap: Map<string, Map<string, Map<string, bigint>>>,
-  series: string
+/**
+ * Range totals for the gross in-tx movement table: sums `transfer_volume` (MsgSend, MsgMultiSend,
+ * IBC MsgTransfer) and `ibc_transfer_amount_in` per denom. IBC outbound amounts are included only in
+ * `transfer_volume` — we do **not** add `ibc_transfer_amount_out` (would duplicate MsgTransfer amounts).
+ */
+export function transferVolumeTableByDenom(
+  bucketMap: Map<string, Map<string, Map<string, bigint>>>
 ): Record<string, string> {
-  return Object.fromEntries(aggregateDenomSeries(bucketMap, series));
-}
-
-function compositionFromBuckets(
-  bucketMap: Map<string, Map<string, Map<string, bigint>>>,
-  series: string
-): { typeUrl: string; count: string }[] {
-  const totals = new Map<string, bigint>();
-  for (const sm of bucketMap.values()) {
-    const dm = sm.get(series);
-    if (!dm) continue;
-    for (const [msgType, v] of dm) {
-      totals.set(msgType, (totals.get(msgType) ?? BigInt(0)) + v);
-    }
+  const tv = aggregateDenomSeries(bucketMap, SERIES.TRANSFER_VOLUME);
+  const ibcIn = aggregateDenomSeries(bucketMap, SERIES.IBC_TRANSFER_AMOUNT_IN);
+  const keys = new Set<string>([...tv.keys(), ...ibcIn.keys()]);
+  const out: Record<string, string> = {};
+  for (const d of keys) {
+    const sum = BigInt(tv.get(d) ?? "0") + BigInt(ibcIn.get(d) ?? "0");
+    if (sum > BigInt(0)) out[d] = sum.toString();
   }
-  return [...totals.entries()]
-    .sort((a, b) => (b[1] > a[1] ? 1 : -1))
-    .map(([typeUrl, count]) => ({ typeUrl, count: count.toString() }));
+  return out;
 }

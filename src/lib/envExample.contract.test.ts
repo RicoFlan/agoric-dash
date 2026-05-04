@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
 
 /**
  * Contract tests: `.env.example` stays aligned with indexer + app docs (no runtime imports).
@@ -25,5 +26,11 @@ describe(".env.example", () => {
 
   it("documents optional CoinGecko key for USD estimates", () => {
     expect(raw).toMatch(/COINGECKO_API_KEY/);
+  });
+
+  it("default INDEXER_START_DATE calendar day matches INDEXED_HISTORY_FROM_DAY", () => {
+    const line = raw.split("\n").find((l) => l.startsWith("INDEXER_START_DATE="));
+    expect(line).toBeDefined();
+    expect(line!.slice("INDEXER_START_DATE=".length)).toContain(INDEXED_HISTORY_FROM_DAY);
   });
 });

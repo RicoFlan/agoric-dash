@@ -7,6 +7,7 @@
 --color-bg-primary:    #0B0F14
 --color-bg-secondary:  #121821
 --color-surface:       #161D26
+--color-bg-control:    #1D2736   (date range / filter toolbar — elevated vs data cards)
 --color-border:        #232C38
 
 ### Text
@@ -27,6 +28,19 @@
 --color-success: #2ECC71
 --color-warning: #F5A623
 --color-error:   #E0565B
+
+---
+
+## 1a. Header and filter toolbar
+
+- **Page title** (`src/app/page.tsx`): primary heading uses **white** text for contrast with the dark shell; section jump links (`src/lib/dashboardNav.ts`, **`dashboardNavLinks`**) use **`--color-text-secondary`** with **`--color-accent`** on hover. The date-range toolbar (`id="filters"`) is **not** listed in the header nav—anchors remain available for direct `#filters` links.
+- **Date / granularity strip** uses **`--color-bg-control`** (lighter than **`--color-surface`** cards) plus optional card shadow so controls read as a **toolbar**, not a data panel. **`INDEXED_HISTORY_FROM_DAY`** is enforced as **`min`** on the **From** date input and via API clamping. See `globals.css` / §1 **Base** tokens.
+
+---
+
+## 1b. Dashboard data tables (gross in-tx movement)
+
+The **Gross in-tx movement by denom** block uses a **fixed-layout** HTML table with **`<colgroup>`** percentage widths (10% / 20% / 20% / 50%), **`w-full min-w-0 table-fixed`** on the table, and **`min-w-0 max-w-full overflow-x-auto`** on the scroll wrapper so the block never forces the page wider than the viewport. **Ticker**, **Gross**, **USD**, and **Denom** body cells use **`min-w-0 max-w-0`**, **`whitespace-nowrap`**, and **`overflow-x-auto`** so long text stays on one line and scrolls inside the cell. **Zebra** body rows alternate **`--color-bg-primary`** (odd) with **`--color-border`** (even).
 
 ---
 

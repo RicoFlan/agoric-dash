@@ -72,22 +72,20 @@ export default function TransferVolumeLineChart({
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-      <h2 className="mb-1 text-lg font-semibold leading-tight text-[var(--color-text-primary)]">
-        In-tx transfer volume (per asset)
-      </h2>
-      <p className="mb-4 text-xs text-[var(--muted)]">
-        Value moved via MsgSend, MsgMultiSend, and outbound IBC amount fields — one line per denom
-        with in-range volume (human-scaled when mapped in{" "}
-        <code className="text-[var(--accent)]">src/config/denoms.json</code>). Y-axis mixes assets;
-        amounts are not cross-asset comparable. IBC recv vs out amounts are in the chart below.
+      <h3 className="mb-3 border-b border-[var(--border)] pb-2 text-lg font-semibold leading-tight text-[var(--color-text-primary)]">
+        Gross in-tx movement (per asset)
+      </h3>
+      <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">
+        Per-bucket total = transfer messages (send / multi / out) + IBC <strong className="font-medium text-[var(--color-text-secondary)]">recv</strong> for that denom — same as the table above. Human-scaled when mapped in{" "}
+        <code className="text-[var(--accent)]">src/config/denoms.json</code>. Y-axis mixes assets. IBC flow chart below keeps recv/out split.
       </p>
       {hasData ? (
         <>
           <fieldset className="mb-4 rounded-md border border-[var(--border)]/80 bg-[var(--bg)]/40 p-3">
-            <legend className="px-1 text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-accent)]">
               Show assets
             </legend>
-            <p className="mb-2 text-[10px] text-[var(--muted)]">
+            <p className="mb-2 text-xs text-[var(--muted)]">
               Uncheck to hide a line from the chart. Your choices reset when you change the date range or refresh data.
             </p>
             <div className="max-h-40 overflow-y-auto pr-1">

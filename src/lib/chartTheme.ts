@@ -4,13 +4,14 @@
  */
 
 export const chartTheme = {
-  grid: "#2A3648",
-  axisTick: "#C8D2DE",
-  axisLabelMuted: "#94A1B2",
-  tooltipBg: "#1E2B3C",
-  tooltipBorder: "#2A3648",
-  tooltipMuted: "#C8D2DE",
-  tooltipText: "#F2F6FA",
+  /** Aligned to docs/style-guide.md & globals.css :root */
+  grid: "#232C38",
+  axisTick: "#AAB6C4",
+  axisLabelMuted: "#6B7785",
+  tooltipBg: "#161D26",
+  tooltipBorder: "#232C38",
+  tooltipMuted: "#AAB6C4",
+  tooltipText: "#E6EDF3",
   /** Series strokes — distinguishable without neon; first follows accent */
   lineA: "#2ED3B7",
   lineB: "#5BA8E8",

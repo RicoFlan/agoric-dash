@@ -4,15 +4,16 @@
  * Design tokens: docs/style-guide.md (Base UI Kit — dark theme).
  */
 :root {
+  /* Token values: docs/style-guide.md §1 (Base — dark theme) */
   --color-bg-primary: #0b0f14;
   --color-bg-secondary: #121821;
-  /* Lifted vs guide default so panels read clearly on page bg */
-  --color-surface: #1e2b3c;
-  --color-border: #2a3648;
-  /* Lifted for readability on --color-surface panels */
-  --color-text-primary: #f2f6fa;
-  --color-text-secondary: #c8d2de;
-  --color-text-muted: #94a1b2;
+  --color-surface: #161d26;
+  /** Toolbar / filter strip — lighter than --color-surface (data cards); docs/style-guide.md §1 */
+  --color-bg-control: #1d2736;
+  --color-border: #232c38;
+  --color-text-primary: #e6edf3;
+  --color-text-secondary: #aab6c4;
+  --color-text-muted: #6b7785;
   --color-accent: #2ed3b7;
   --color-accent-hover: #26bfa5;
   --color-accent-active: #1fa38c;
