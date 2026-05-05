@@ -112,6 +112,8 @@ npm run build
 npm start
 ```
 
+On **Fly.io** (and similar), the platform sets **`PORT`** (often **8080**) while Next defaults to **3000** if unset—set **`http_service.internal_port = 8080`** (plain digits; avoid **`8_080`**-style separators) and rely on **`npm start`** (`--port ${PORT:-3000}`). A reference **`fly.toml`** lives in the repo root (adjust **`app`** name if yours differs). Use **one** VM memory field (**`memory = "1gb"`** or **`"256mb"`**)—do not set both **`memory`** and **`memory_mb`** to conflicting values.
+
 ## API
 
 - `GET /api/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD&granularity=day|hour|week`  
