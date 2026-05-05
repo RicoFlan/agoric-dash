@@ -13,8 +13,11 @@ describe("valueToChartNumber", () => {
     expect(valueToChartNumber("1000000", "ubld", displayWithBld)).toBe(1);
   });
 
-  it("falls back to Number(atomic) when no meta", () => {
+  it("falls back to atomic minimal units (decimals 0) when no meta", () => {
     expect(valueToChartNumber("42", "unknown", undefined)).toBe(42);
+    expect(valueToChartNumber("9000000000000000000000", "unknown", undefined)).toBe(
+      9000000000000000000000
+    );
   });
 });
 

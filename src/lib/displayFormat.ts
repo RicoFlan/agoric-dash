@@ -5,7 +5,8 @@ import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
 export function valueToChartNumber(atomic: string, denom: string, display?: EnrichedDisplay): number {
   const m = display?.metas[denom];
   if (m) return atomicToFloat(atomic, m.decimals);
-  return Number(atomic);
+  /** Unknown denom: treat amounts as indivisible minimal units (avoid `Number(atomic)` precision bugs). */
+  return atomicToFloat(atomic, 0);
 }
 
 export function listRow(atomic: string, denom: string, display: EnrichedDisplay) {

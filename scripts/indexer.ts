@@ -2,6 +2,8 @@
  * Standalone indexer: polls RPC for block + block_results, updates daily_metrics,
  * hourly_metrics, participant_day, address_volume_day, and address_fee_day
  * (hour bucket from block time UTC for hourly_metrics).
+ * IBC recv **amounts** sum `coin_received`/`transfer` events once per successful tx (see
+ * `sumRecvCoinAmountsFromTxEvents`) so multiple MsgRecvPacket in one tx do not multiply totals.
  * Run: DATABASE_URL=... RPC_URL=... tsx scripts/indexer.ts
  */
 import "dotenv/config";
@@ -11,18 +13,14 @@ import type { EncodeObject } from "@cosmjs/proto-signing";
 import { fromBase64 } from "@cosmjs/encoding";
 import pg from "pg";
 import * as schema from "../src/db/schema";
-import {
-  decodeMsg,
-  decodeTxRawTx,
-  extractPaidFeesFromEvents,
-  parseCoinsAmounts,
-} from "../src/lib/cosmos";
+import { decodeMsg, decodeTxRawTx, extractPaidFeesFromEvents } from "../src/lib/cosmos";
 import { attributedTransferLegsFromDecodedMsg } from "../src/lib/transferVolumeAttribution";
 import {
   feePayerBech32FromAuthInfo,
   signerBech32AddressesFromAuthInfo,
 } from "../src/lib/txParticipantAddresses";
 import { rpcCall, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
+import { sumRecvCoinAmountsFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
 import {
   MSG_IBC_TRANSFER,
   MSG_RECV_PACKET,
@@ -298,23 +296,16 @@ function accumulateBlock(
 
     const msgs = decoded.body.messages;
 
+    let recvPacketCount = 0;
+    for (const msg of msgs) {
+      if ((msg as EncodeObject).typeUrl === MSG_RECV_PACKET) recvPacketCount += 1;
+    }
+
     for (const msg of msgs) {
       const enc = msg as EncodeObject;
       const typeUrl = enc.typeUrl;
 
       if (!TRANSFER_MSG_TYPES.has(typeUrl)) {
-        if (typeUrl === MSG_RECV_PACKET) {
-          addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_IN_COUNT, "", BigInt(1));
-          for (const ev of eventsPerTx[i] ?? []) {
-            if (ev.type !== "coin_received" && ev.type !== "transfer") continue;
-            for (const a of ev.attributes) {
-              if (a.key !== "amount") continue;
-              for (const [denom, amt] of parseCoinsAmounts(a.value)) {
-                addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
-              }
-            }
-          }
-        }
         continue;
       }
 
@@ -366,6 +357,21 @@ function accumulateBlock(
         }
       } catch {
         /* ignore malformed */
+      }
+    }
+
+    if (recvPacketCount > 0) {
+      addRollupDelta(
+        daily,
+        hourly,
+        day,
+        hour,
+        SERIES.IBC_TRANSFER_IN_COUNT,
+        "",
+        BigInt(recvPacketCount)
+      );
+      for (const [denom, amt] of sumRecvCoinAmountsFromTxEvents(eventsPerTx[i] ?? [])) {
+        addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
       }
     }
   }

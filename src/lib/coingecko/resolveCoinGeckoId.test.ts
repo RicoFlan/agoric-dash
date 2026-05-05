@@ -34,6 +34,12 @@ describe("resolveCoinGeckoId", () => {
     );
   });
 
+  it("maps AXL (router) aarch IBC path to axelar", () => {
+    expect(
+      resolveCoinGeckoId("ibc/3763997B746CA5FDC9883C5192B783B114A4610E1A37751955288E0940BB0B7F")
+    ).toBe("axelar");
+  });
+
   it("returns null when denom is unknown to denoms.json", () => {
     expect(resolveCoinGeckoId("ibc/UNKNOWN00000000000000000000000000000000000000000000000000")).toBeNull();
   });

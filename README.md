@@ -38,7 +38,7 @@ The in-app **Methodology & caveats** panel is the full narrative (`METHODOLOGY_B
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.
 - **CoinGecko IDs for USD estimates**: **`src/config/coingeckoDisplaySymbolToId.json`** maps each `displaySymbol` → CoinGecko `ids` string for `/simple/price`. Optional per-denom overrides: **`src/config/coingeckoDenomOverrides.json`** (`match` → id). A reviewed export with status notes lives at **`public/denom-translations.csv`** (also served at `/denom-translations.csv` when the app is running).
-- A long `ibc/FE98…` style value is a **canon IBC token id** (hash of path + base denom) — the dashboard shows the raw id until you add a matching `entries` row. To find hashes registered on chain but missing from the file, diff **`GET /cosmos/bank/v1beta1/denoms_metadata`** (`base` field) against `entries[].match` (see the **note** in `denoms.json`). **Multiple** `ibc/...` values can still represent the **same** logical asset via **different IBC paths**; each path needs its own `match` row if you want a distinct label.
+- A long `ibc/FE98…` style value is a **canon IBC token id** (hash of path + base denom) — the dashboard shows the raw id until you add a matching `entries` row. To find hashes registered on chain but missing from the file, diff **`GET /cosmos/bank/v1beta1/denoms_metadata`** (`base` field) against `entries[].match` (see the **note** in `denoms.json`). **Multiple** `ibc/...` values can still represent the **same** logical asset via **different IBC paths**; each path needs its own `match` row with **correct `decimals` for that path’s base denom** (query **`/ibc/apps/transfer/v1/denom_traces/{hash}`** for `base_denom`—e.g. Axelar **`uaxl`** vs **`aarch`** use different minimal-unit scales). Example: **`AXL`** vs **`AXL (router)`** in `denoms.json`.
 
 ## Prerequisites
 
@@ -63,7 +63,7 @@ npm run db:push
 
 ## Run indexer (separate terminal)
 
-Polls `RPC_URL`, resolves the first block at or after `INDEXER_START_DATE` (binary search on heights), indexes **from that height to tip**, then tails new blocks. Writes **`daily_metrics`** and **`hourly_metrics`**, and **`participant_day`** / **`address_volume_day`** (and **`address_fee_day`**) for participation metrics (`scripts/indexer.ts`). In catch-up, rollup deltas are merged in memory and flushed per chunk (`addRollupDelta` / `flushRollupMaps`); participant/volume maps flush via **`flushParticipantMaps`** in the same loop.
+Polls `RPC_URL`, resolves the first block at or after `INDEXER_START_DATE` (binary search on heights), indexes **from that height to tip**, then tails new blocks. Writes **`daily_metrics`** and **`hourly_metrics`**, and **`participant_day`** / **`address_volume_day`** (and **`address_fee_day`**) for participation metrics (`scripts/indexer.ts`). **IBC-in amounts** aggregate `coin_received` / `transfer` event credits **once per successful tx** (`src/lib/ibcRecvEventAmounts.ts`) so multi–recv-packet txs do not inflate gross rows; upgrading requires **reindexing** (or truncating metrics tables and replaying) for historically correct gross totals. In catch-up, rollup deltas are merged in memory and flushed per chunk (`addRollupDelta` / `flushRollupMaps`); participant/volume maps flush via **`flushParticipantMaps`** in the same loop.
 
 ### Index window and catch-up behavior
 
@@ -120,7 +120,7 @@ npm start
   - **`transferVolumeUsdByDenom`** — per-denom formatted USD estimate strings or `null` when unpriced.
   - **`transferVolumeUsdTotal`** — formatted sum of priced USD rows (same basis as the table **TOTAL**), or `null` if none.
   - **`usdPricingMeta`** — `{ source: "coingecko", spotFetchedAt, partialOrStale }`.
-  - **`participation`** / **`concentration`** — from `enrichParticipationAndConcentration` (`src/lib/enrichParticipationAndConcentration.ts`) for the Economic participation & concentration section (requires indexer-filled **`participant_day`** / **`address_volume_day`**). Methodology copy lives only in **`METHODOLOGY_BLURB`** (`src/lib/semantics.ts`), not as a separate API field.
+  - **`participation`** / **`concentration`** — from **`enrichParticipationAndConcentration`** in `src/lib/enrichParticipationConcentration.ts` for the Economic participation & concentration section (requires indexer-filled **`participant_day`** / **`address_volume_day`**). Methodology copy lives only in **`METHODOLOGY_BLURB`** (`src/lib/semantics.ts`), not as a separate API field.
   - **`indexedHistoryFromDay`** — `"2026-01-01"` (constant **`INDEXED_HISTORY_FROM_DAY`**); **`from`** query dates before this are clamped for all metrics.
 
   Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (same basis as the gross in-tx movement table). **`series.ibcAmountInSeries`** / **`ibcAmountOutSeries`** remain separate IBC recv/out views—each item is `{ denom, data: [{ bucket, value }] }`.
@@ -131,7 +131,9 @@ npm start
 |------|--------|
 | `docs/DEVELOPMENT.md` | Dev workflow, quality gate (`npm run verify`) |
 | `docs/style-guide.md` | Visual design system (colors, type, spacing, components) for the UI |
-| `scripts/indexer.ts` | Block scanner; bounded start date, catch-up vs tail, batched rollups |
+| `scripts/indexer.ts` | Block scanner; bounded start date, catch-up vs tail; **IBC-in** amounts via **`sumRecvCoinAmountsFromTxEvents`** (once per tx) |
+| `scripts/scanIbcRecvDay.ts` | Debug: scan a UTC day for IBC recv denom totals (`npm run scan:ibc-recv-day`) |
+| `src/lib/ibcRecvEventAmounts.ts` | **`sumRecvCoinAmountsFromTxEvents`** — parses `coin_received` / `transfer` amounts (shared with indexer + scan script) |
 | `src/config/denoms.json` | `match` (full on-chain denom) → symbol, decimals |
 | `src/db/schema.ts` | `daily_metrics`, `hourly_metrics`, `indexer_state`, `participant_day`, `address_volume_day`, … (Drizzle) |
 | `src/lib/semantics.ts` | `CHAIN_ID`, `SERIES`, `FEE_DENOM_UBLB`, **`INDEXED_HISTORY_FROM_DAY`**, `METHODOLOGY_BLURB` |
@@ -141,14 +143,14 @@ npm start
 | `src/lib/transferVolumeUsdEstimates.ts` | CoinGecko spot × volume; **USD** strings + **total** for the in-tx table |
 | `src/lib/grossTableUsdSort.ts` | Client-side **USD (EST)** column sort for the gross in-tx table |
 | `src/lib/coingecko/` | `resolveCoinGeckoId`, batched **simple/price** fetch + TTL cache |
-| `src/config/coingeckoDisplaySymbolToId.json` | `displaySymbol` → CoinGecko coin id |
+| `src/config/coingeckoDisplaySymbolToId.json` | `displaySymbol` → CoinGecko coin id (incl. **`AXL (router)`** → `axelar`) |
 | `src/config/coingeckoDenomOverrides.json` | Optional per-`match` CoinGecko id overrides |
 | `src/lib/resolveDenom.ts` | Resolves a denom string using `denoms.json` |
 | `src/app/api/metrics/route.ts` | JSON: `{ ...payload, display, transferVolumeUsd…, participation, concentration, indexedHistoryFromDay }` (clamps **`from`** before `buildMetricsPayload`) |
 | `src/app/page.tsx` | Shell header (logo, title, **`dashboardNavLinks`** jump nav) |
 | `src/lib/dashboardNav.ts` | Section anchor ids — keep aligned with **`Dashboard.tsx`** `id`s |
 | `src/lib/participationQueries.ts` | Postgres reads for participation range + address volume totals |
-| `src/lib/enrichParticipationAndConcentration.ts` | Participation + concentration enrichment for `/api/metrics` |
+| `src/lib/enrichParticipationConcentration.ts` | **`enrichParticipationAndConcentration`** — participation + concentration for `/api/metrics` |
 | `public/denom-translations.csv` | Optional export of denom ↔ symbol ↔ CoinGecko mapping |
 | `src/components/Dashboard.tsx` | Date/granularity controls, charts, tables, section anchors |
 | `src/components/dashboard/charts/DistinctAccountsLineChart.tsx` | Daily distinct account addresses (**UTC**), filled series |
@@ -157,7 +159,7 @@ npm start
 
 ## Tests
 
-**Vitest** runs tests on pure modules (no Postgres or Next server by default):
+**Vitest** runs tests on pure modules (**15** files, **70** tests at last `npm run verify`; no Postgres or Next server by default):
 
 | File | Covers |
 |------|--------|
@@ -166,7 +168,7 @@ npm start
 | `src/lib/displayFormat.test.ts` | Chart/list display helpers |
 | `src/lib/transferVolumeUsdEstimates.test.ts` | USD estimate **formatting** (`formatUsdEstimate`) |
 | `src/lib/grossTableUsdSort.test.ts` | Gross in-tx table **USD column** sort keys and comparators |
-| `src/lib/coingecko/resolveCoinGeckoId.test.ts` | Symbol / override → CoinGecko id resolution |
+| `src/lib/coingecko/resolveCoinGeckoId.test.ts` | Symbol / override → CoinGecko id resolution (**`AXL (router)`**, stkATOM, etc.) |
 | `src/lib/metricsApiValidation.test.ts` | `GET /api/metrics` validation (range caps, ISO dates, **`clampMetricsRangeToIndexedHistory`**) |
 | `src/lib/metricsQuery.transferTable.test.ts` | `transferVolumeTableByDenom` rollup semantics |
 | `src/lib/envExample.contract.test.ts` | `.env.example` documents indexer env vars; **`INDEXER_START_DATE`** calendar day matches **`INDEXED_HISTORY_FROM_DAY`** |
@@ -175,6 +177,7 @@ npm start
 | `src/lib/transferVolumeAttribution.test.ts` | Sender-side legs for **MsgSend** / **MultiSend** / **ICS-20** (indexer + enrichment) |
 | `src/lib/dashboardNav.test.ts` | Header **`dashboardNavLinks`** (omits **`filters`** toolbar); every href targets **`dashboardSectionIds`** |
 | `src/lib/filledDistinctAccountsSeries.test.ts` | Dense daily series for distinct-account **time-series** chart |
+| `src/lib/ibcRecvEventAmounts.test.ts` | **`sumRecvCoinAmountsFromTxEvents`** (`coin_received` / `transfer` parsing) |
 
 ```bash
 npm test
@@ -187,6 +190,7 @@ npm test
 |--------|-------------|
 | `npm run dev` | Next.js dev server |
 | `npm run indexer` | Indexer worker |
+| `npm run scan:ibc-recv-day` | `tsx scripts/scanIbcRecvDay.ts` — inspect IBC recv totals for a UTC day |
 | `npm run db:push` | Apply Drizzle schema to Postgres |
 | `npm run db:generate` | Generate SQL migrations (optional) |
 | `npm test` | Run Vitest once (`vitest run`) |

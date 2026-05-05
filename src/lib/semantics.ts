@@ -64,7 +64,7 @@ These totals are gross flow: legs can repeat as tokens move. They are not wallet
 
 The gross movement and IBC amount-flow charts plot each denom with non-zero volume in the range (per direction for IBC where applicable). Axes use human units per asset when mapped—cross-asset addition is not meaningful.
 
-IBC direction is chain-relative (out = MsgTransfer from this chain; in = recv packet handling as indexed). The IBC amount flows chart is event- and message-based and is not the same series as the bank + gross transfer chart.
+IBC direction is chain-relative (out = MsgTransfer from this chain; in = recv packet handling as indexed). Indexed **IBC-in amounts** sum coin_received / transfer event credits **once per successful tx**, so gross totals do not multiply when a tx contains multiple MsgRecvPacket messages. The IBC amount flows chart is event-based for amounts (see indexer) and is not the same construction as the bank + outbound-transfer decode path.
 
 Period-over-period: KPI cards compare the current range to an equal-length prior window ending immediately before the selected from date (UTC hour or calendar days per granularity). That rule is not duplicated next to the date controls.
 

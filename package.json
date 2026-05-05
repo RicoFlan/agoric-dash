@@ -19,6 +19,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "indexer": "tsx scripts/indexer.ts",
+    "scan:ibc-recv-day": "tsx scripts/scanIbcRecvDay.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

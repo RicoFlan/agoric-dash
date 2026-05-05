@@ -108,8 +108,8 @@
     },
     {
       "match": "ibc/3763997B746CA5FDC9883C5192B783B114A4610E1A37751955288E0940BB0B7F",
-      "displaySymbol": "AXL",
-      "decimals": 6
+      "displaySymbol": "AXL (router)",
+      "decimals": 18
     },
     {
       "match": "ibc/38483A5DBAE9372051D50CC31E0195FF2EBD0320FD41AF8F0B7658D484E94D0F",
