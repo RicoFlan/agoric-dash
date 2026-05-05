@@ -16,6 +16,9 @@ ENV NODE_ENV="production"
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
+# Reduce Node OOM during npm/next build on constrained builders (e.g. Fly remote builder).
+ENV NODE_OPTIONS="--max-old-space-size=6144"
+
 # Install packages needed to build node modules
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
@@ -27,8 +30,11 @@ RUN npm ci --include=dev
 # Copy application code
 COPY . .
 
-# Build application
-RUN npx next build --experimental-build-mode compile
+# Compile then generate while devDependencies still exist. Runtime image runs `next start` only
+# (see docker-entrypoint.js); running `next build` at boot after `npm prune` drops typescript/tailwind
+# and forces npx to fetch tooling on a small VM → missing deps / OOM.
+RUN npx next build --experimental-build-mode compile && \
+    npx next build --experimental-build-mode generate
 
 # Remove development dependencies
 RUN npm prune --omit=dev

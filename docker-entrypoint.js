@@ -5,12 +5,8 @@ const { spawn } = require('node:child_process')
 const env = { ...process.env }
 
 ;(async() => {
-  // If running the web server then prerender pages
-  if (process.argv.slice(-3).join(' ') === 'npm run start') {
-    await exec('npx next build --experimental-build-mode generate')
-  }
-
-  // launch application
+  // Prerender/generate runs in the Docker build stage (see Dockerfile). Do not run `next build` here:
+  // after `npm prune --omit=dev` the image has no typescript/tailwind, so boot-time builds break or OOM.
   await exec(process.argv.slice(2).join(' '))
 })()
 
