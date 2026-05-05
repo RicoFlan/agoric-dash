@@ -4,6 +4,9 @@
 app = "agoric-dash"
 primary_region = "sjc"
 
+[env]
+  PORT = "8080"
+
 [build]
 
 [http_service]

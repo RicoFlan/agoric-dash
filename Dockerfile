@@ -43,6 +43,9 @@ RUN npm prune --omit=dev
 # Final stage for app image
 FROM base
 
+# Match Fly `http_service.internal_port`; without PORT, Next listens on 3000 and the proxy gets PC01.
+ENV PORT="8080"
+
 # Copy built application
 COPY --from=build /app /app
 
@@ -50,5 +53,5 @@ COPY --from=build /app /app
 ENTRYPOINT [ "/app/docker-entrypoint.js" ]
 
 # Start the server by default, this can be overwritten at runtime
-EXPOSE 3000
+EXPOSE 8080
 CMD [ "npm", "run", "start" ]
