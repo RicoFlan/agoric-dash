@@ -176,6 +176,63 @@ function formatBucketTick(v: string, g: Granularity) {
 /** Max time to wait for /api/metrics (Postgres can be slow; dev HMR can stall). */
 const METRICS_FETCH_MS = 120_000;
 
+function isLocalDevHostname(h: string): boolean {
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+}
+
+/** Where the dashboard is opened from — drives setup hints when /api/metrics fails. */
+function metricsFailureHintKind(): "local" | "fly" | "deploy" {
+  if (typeof window === "undefined") return "deploy";
+  const h = window.location.hostname;
+  if (isLocalDevHostname(h)) return "local";
+  if (h.endsWith(".fly.dev")) return "fly";
+  return "deploy";
+}
+
+const HINT_P =
+  "mt-2 text-xs opacity-90 leading-relaxed" as const;
+const HINT_CODE = "text-[var(--accent)]" as const;
+
+/** Second line under metrics fetch errors: local Docker vs Fly vs other production. */
+function MetricsFailureSetupHint() {
+  const [kind, setKind] = useState<"pending" | "local" | "fly" | "deploy">("pending");
+  useEffect(() => {
+    setKind(metricsFailureHintKind());
+  }, []);
+  if (kind === "pending") return null;
+  if (kind === "local") {
+    return (
+      <p className={HINT_P} style={{ color: "var(--color-text-secondary)" }}>
+        Start Postgres (<code className={HINT_CODE}>docker compose up -d</code>), run{" "}
+        <code className={HINT_CODE}>npm run db:push</code>, then{" "}
+        <code className={HINT_CODE}>npm run indexer</code>.
+      </p>
+    );
+  }
+  if (kind === "fly") {
+    return (
+      <p className={HINT_P} style={{ color: "var(--color-text-secondary)" }}>
+        The web app only serves the UI; metrics come from Postgres over{" "}
+        <code className={HINT_CODE}>DATABASE_URL</code>. On Fly: create or attach Postgres, then{" "}
+        <code className={HINT_CODE}>fly secrets set DATABASE_URL=postgres://…</code> using your real URL, then{" "}
+        redeploy so the app picks it up. Apply the schema with{" "}
+        <code className={HINT_CODE}>npm run db:push</code> pointed at that URL, then run{" "}
+        <code className={HINT_CODE}>npm run indexer</code> with the same <code className={HINT_CODE}>DATABASE_URL</code>{" "}
+        and a reachable <code className={HINT_CODE}>RPC_URL</code> on a long-lived worker (second Fly Machine, your
+        laptop for tests, etc.).
+      </p>
+    );
+  }
+  return (
+    <p className={HINT_P} style={{ color: "var(--color-text-secondary)" }}>
+      Set <code className={HINT_CODE}>DATABASE_URL</code> to a reachable Postgres instance, run{" "}
+      <code className={HINT_CODE}>npm run db:push</code> against it, then run{" "}
+      <code className={HINT_CODE}>npm run indexer</code> with the same database URL and a valid{" "}
+      <code className={HINT_CODE}>RPC_URL</code> so rollup tables stay filled.
+    </p>
+  );
+}
+
 /** Native volume column: fixed 2 fractional digits when decimals are known from denoms.json. */
 function formatNativeVolumeRounded(atomic: string, decimals: number | undefined): string | null {
   if (typeof decimals !== "number" || !Number.isFinite(decimals) || decimals < 0) return null;
@@ -260,7 +317,9 @@ export function Dashboard() {
         if (!silent) {
           const aborted = e instanceof DOMException && e.name === "AbortError";
           const msg = aborted
-            ? "Loading metrics timed out or was cancelled. Check Postgres, run `npm run dev:clean` if the dev server returns 500."
+            ? metricsFailureHintKind() === "local"
+              ? "Loading metrics timed out or was cancelled. Check Postgres, run `npm run dev:clean` if the dev server returns 500."
+              : "Loading metrics timed out. Check DATABASE_URL, that Postgres accepts connections from this host, and pooler/firewall rules."
             : e instanceof Error
               ? e.message
               : "Failed to load metrics";
@@ -659,11 +718,7 @@ export function Dashboard() {
           }}
         >
           {err}
-          <p className="mt-2 text-xs opacity-90" style={{ color: "var(--color-text-secondary)" }}>
-            Start Postgres (<code className="text-[var(--accent)]">docker compose up -d</code>),
-            run <code className="text-[var(--accent)]">npm run db:push</code>, then{" "}
-            <code className="text-[var(--accent)]">npm run indexer</code>.
-          </p>
+          <MetricsFailureSetupHint />
         </div>
       )}
 
