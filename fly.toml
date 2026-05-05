@@ -7,7 +7,9 @@ primary_region = "sjc"
 [env]
   PORT = "8080"
 
-[build]
+[build.args]
+  # Baked at `next build` so the dashboard shows Fly setup hints even on a custom domain.
+  NEXT_PUBLIC_DASHBOARD_HOSTING = "fly"
 
 [http_service]
   internal_port = 8080

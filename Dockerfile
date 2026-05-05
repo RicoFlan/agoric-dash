@@ -16,6 +16,10 @@ ENV NODE_ENV="production"
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
+# Inlined into the client bundle for setup hints. fly.toml sets this for Fly.io Docker builds.
+ARG NEXT_PUBLIC_DASHBOARD_HOSTING=
+ENV NEXT_PUBLIC_DASHBOARD_HOSTING=$NEXT_PUBLIC_DASHBOARD_HOSTING
+
 # Reduce Node OOM during npm/next build on constrained builders (e.g. Fly remote builder).
 ENV NODE_OPTIONS="--max-old-space-size=6144"
 

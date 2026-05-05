@@ -183,6 +183,8 @@ function isLocalDevHostname(h: string): boolean {
 /** Where the dashboard is opened from — drives setup hints when /api/metrics fails. */
 function metricsFailureHintKind(): "local" | "fly" | "deploy" {
   if (typeof window === "undefined") return "deploy";
+  // Fly Docker images set this at build time (see Dockerfile + fly.toml [build.args]).
+  if (process.env.NEXT_PUBLIC_DASHBOARD_HOSTING === "fly") return "fly";
   const h = window.location.hostname;
   if (isLocalDevHostname(h)) return "local";
   if (h.endsWith(".fly.dev")) return "fly";
@@ -202,11 +204,19 @@ function MetricsFailureSetupHint() {
   if (kind === "pending") return null;
   if (kind === "local") {
     return (
-      <p className={HINT_P} style={{ color: "var(--color-text-secondary)" }}>
-        Start Postgres (<code className={HINT_CODE}>docker compose up -d</code>), run{" "}
-        <code className={HINT_CODE}>npm run db:push</code>, then{" "}
-        <code className={HINT_CODE}>npm run indexer</code>.
-      </p>
+      <div className="space-y-2">
+        <p className={HINT_P} style={{ color: "var(--color-text-secondary)" }}>
+          You are viewing the app on <strong className="font-medium text-[var(--color-text-primary)]">localhost</strong>
+          . The steps below install Postgres <em>on this computer</em>. If you meant to fix the live Fly app, open your{" "}
+          <code className={HINT_CODE}>.fly.dev</code> (or custom) URL and set <code className={HINT_CODE}>DATABASE_URL</code>{" "}
+          there instead.
+        </p>
+        <p className={HINT_P} style={{ color: "var(--color-text-secondary)" }}>
+          Start Postgres (<code className={HINT_CODE}>docker compose up -d</code>), run{" "}
+          <code className={HINT_CODE}>npm run db:push</code>, then{" "}
+          <code className={HINT_CODE}>npm run indexer</code>.
+        </p>
+      </div>
     );
   }
   if (kind === "fly") {
