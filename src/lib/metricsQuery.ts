@@ -84,6 +84,38 @@ async function fetchHourlyRange(fromInclusive: Date, toInclusive: Date) {
     .where(and(gte(hourlyMetrics.hour, fromInclusive), lte(hourlyMetrics.hour, toInclusive)));
 }
 
+/** Every UTC calendar day from `fromDay` through `toDay` inclusive (YYYY-MM-DD). */
+export function iterateUtcDaysInclusive(fromDay: string, toDay: string): string[] {
+  const fd = fromDay.slice(0, 10);
+  const td = toDay.slice(0, 10);
+  const start = new Date(`${fd}T00:00:00.000Z`);
+  const end = new Date(`${td}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    return [];
+  }
+  const out: string[] = [];
+  for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/**
+ * Ensure each UTC calendar day in [fromDay, toDay] exists as a bucket key so charts/KPIs include
+ * days with no `daily_metrics` rows (zeros) instead of shortening the axis.
+ */
+export function ensureDenseUtcDayBuckets(
+  bucketMap: Map<string, Map<string, Map<string, bigint>>>,
+  fromDay: string,
+  toDay: string
+) {
+  for (const day of iterateUtcDaysInclusive(fromDay, toDay)) {
+    if (!bucketMap.has(day)) {
+      bucketMap.set(day, new Map());
+    }
+  }
+}
+
 /** Collapse per-day (or per-week) rows from daily_metrics into bucket keys, then sum. */
 function aggregateFlatRows(
   flat: FlatMetric[]
@@ -209,11 +241,13 @@ export async function buildMetricsPayload(
     /** Hourly table empty but daily rollups exist (older DB / indexer gap) — use daily buckets so KPIs and charts are not all zero. */
     if (curBuckets.size === 0 && dailyRows.length > 0) {
       usedDailyFallbackForHourView = true;
-      const prevFromDay = prevFrom.toISOString().slice(0, 10);
-      const prevToDay = prevTo.toISOString().slice(0, 10);
-      const prevDailyRows = await fetchMetricsRange(prevFromDay, prevToDay);
+      const prevFromDayH = prevFrom.toISOString().slice(0, 10);
+      const prevToDayH = prevTo.toISOString().slice(0, 10);
+      const prevDailyRows = await fetchMetricsRange(prevFromDayH, prevToDayH);
       curBuckets = aggregateFlatRows(dailyRowsToFlat(dailyRows, "day"));
       prevBuckets = aggregateFlatRows(dailyRowsToFlat(prevDailyRows, "day"));
+      ensureDenseUtcDayBuckets(curBuckets, fromDay, toDay);
+      ensureDenseUtcDayBuckets(prevBuckets, prevFromDayH, prevToDayH);
     }
 
     comparisonWindow = { from: prevFrom.toISOString(), to: prevTo.toISOString() };
@@ -229,10 +263,15 @@ export async function buildMetricsPayload(
     curBuckets = aggregateFlatRows(curFlat);
     prevBuckets = aggregateFlatRows(prevFlat);
     comparisonWindow = { from: prevFromDay, to: prevToDay };
+    if (g === "day") {
+      ensureDenseUtcDayBuckets(curBuckets, fromDay, toDay);
+      ensureDenseUtcDayBuckets(prevBuckets, prevFromDay, prevToDay);
+    }
   }
 
   /** Table + USD enrichment: always daily rollups for the calendar range (stable vs chart granularity). */
   const transferTableBuckets = aggregateFlatRows(dailyRowsToFlat(currentDailyRows, "day"));
+  ensureDenseUtcDayBuckets(transferTableBuckets, fromDay, toDay);
 
   const txSuccessCur = sumSeries(curBuckets, SERIES.TX_SUCCESS);
   const txSuccessPrev = sumSeries(prevBuckets, SERIES.TX_SUCCESS);
