@@ -116,6 +116,8 @@ interface MetricsPayload {
   };
   /** First day included in indexed DB rollups (UTC); requests earlier than this are clamped. */
   indexedHistoryFromDay?: string;
+  /** True when hour granularity was requested but `hourly_metrics` had no rows, so daily rollups were used for charts/KPIs. */
+  usedDailyFallbackForHourView?: boolean;
 }
 
 /** UTC calendar date YYYY-MM-DD, shifted by whole days from today UTC. */
@@ -143,7 +145,7 @@ function activeQuickPreset(
   g: Granularity
 ): "24h" | "week" | "30" | "90" | null {
   const t0 = utcCalendarDate(0);
-  if (from === utcCalendarDate(-1) && to === t0 && g === "hour") return "24h";
+  if (from === t0 && to === t0 && g === "hour") return "24h";
   if (from === utcCalendarDate(-6) && to === t0 && g === "day") return "week";
   if (from === utcCalendarDate(-29) && to === t0 && g === "day") return "30";
   if (from === utcCalendarDate(-89) && to === t0 && g === "day") return "90";
@@ -568,6 +570,22 @@ export function Dashboard() {
         </p>
       )}
 
+      {data?.granularity === "hour" && data.usedDailyFallbackForHourView && (
+        <p
+          className="rounded-md border px-3 py-2 text-xs leading-snug"
+          style={{
+            borderColor: "color-mix(in srgb, var(--color-accent) 35%, transparent)",
+            backgroundColor: "color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-primary))",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          No rows in <code className="text-[var(--accent)]">hourly_metrics</code> for this range; the API
+          fell back to <strong className="font-medium text-[var(--color-text-primary)]">daily</strong>{" "}
+          rollups so values are not all zero. For a true hourly breakdown, ensure the indexer has written
+          hourly data (same DB; re-index or catch up if this table was never filled).
+        </p>
+      )}
+
       <section
         id={dashboardSectionIds.filters}
         className="scroll-mt-6 flex flex-wrap items-end gap-4 rounded-lg border border-[var(--border)] bg-[var(--color-bg-control)] p-5 shadow-[var(--shadow-card)]"
@@ -594,11 +612,12 @@ export function Dashboard() {
             <button
               type="button"
               className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "24h" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
-              title="UTC: From = yesterday, To = today; hourly buckets."
+              title="UTC: current calendar day only (24 hourly buckets, 00:00–23:00 UTC)."
               onClick={() => {
                 setCustomRangeOpen(false);
-                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-1)));
-                setTo(utcCalendarDate(0));
+                const today = clampDayNotBeforeIndexed(utcCalendarDate(0));
+                setFrom(today);
+                setTo(today);
                 setGranularity("hour");
               }}
             >

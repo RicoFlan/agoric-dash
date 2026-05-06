@@ -188,11 +188,13 @@ export async function buildMetricsPayload(
 
   /** Always fetch daily rows for [fromDay,toDay] — used for transfer-volume table totals (below). */
   let currentDailyRows: Awaited<ReturnType<typeof fetchMetricsRange>>;
+  let usedDailyFallbackForHourView = false;
 
   if (granularity === "hour") {
     const fromStart = new Date(fromDay + "T00:00:00.000Z");
     const toEnd = new Date(toDay + "T23:00:00.000Z");
-    const nHours = (toEnd.getTime() - fromStart.getTime()) / 3_600_000 + 1;
+    const nHours =
+      Math.round((toEnd.getTime() - fromStart.getTime()) / 3_600_000) + 1;
     const prevTo = new Date(fromStart.getTime() - 3_600_000);
     const prevFrom = new Date(fromStart.getTime() - nHours * 3_600_000);
     const [dailyRows, curH, prevH] = await Promise.all([
@@ -203,6 +205,17 @@ export async function buildMetricsPayload(
     currentDailyRows = dailyRows;
     curBuckets = aggregateFlatRows(mapHourlyDbToFlat(curH));
     prevBuckets = aggregateFlatRows(mapHourlyDbToFlat(prevH));
+
+    /** Hourly table empty but daily rollups exist (older DB / indexer gap) — use daily buckets so KPIs and charts are not all zero. */
+    if (curBuckets.size === 0 && dailyRows.length > 0) {
+      usedDailyFallbackForHourView = true;
+      const prevFromDay = prevFrom.toISOString().slice(0, 10);
+      const prevToDay = prevTo.toISOString().slice(0, 10);
+      const prevDailyRows = await fetchMetricsRange(prevFromDay, prevToDay);
+      curBuckets = aggregateFlatRows(dailyRowsToFlat(dailyRows, "day"));
+      prevBuckets = aggregateFlatRows(dailyRowsToFlat(prevDailyRows, "day"));
+    }
+
     comparisonWindow = { from: prevFrom.toISOString(), to: prevTo.toISOString() };
   } else {
     const [dailyRows, prevRows] = await Promise.all([
@@ -345,6 +358,7 @@ export async function buildMetricsPayload(
     feePaidByDenom: Object.fromEntries(feeByDenomCurrent),
     feePaidByDenomPrevious,
     indexer: await getIndexerStatus(),
+    ...(usedDailyFallbackForHourView ? { usedDailyFallbackForHourView: true as const } : {}),
   };
 }
 
