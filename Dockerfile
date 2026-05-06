@@ -4,8 +4,6 @@
 ARG NODE_VERSION=22.21.1
 FROM node:${NODE_VERSION}-slim AS base
 
-LABEL fly_launch_runtime="Next.js"
-
 # Next.js app lives here
 WORKDIR /app
 
@@ -16,11 +14,7 @@ ENV NODE_ENV="production"
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
-# Inlined into the client bundle for setup hints. fly.toml sets this for Fly.io Docker builds.
-ARG NEXT_PUBLIC_DASHBOARD_HOSTING=
-ENV NEXT_PUBLIC_DASHBOARD_HOSTING=$NEXT_PUBLIC_DASHBOARD_HOSTING
-
-# Reduce Node OOM during npm/next build on constrained builders (e.g. Fly remote builder).
+# Reduce Node OOM during `next build` on memory-constrained builders.
 ENV NODE_OPTIONS="--max-old-space-size=6144"
 
 # Install packages needed to build node modules
@@ -47,9 +41,6 @@ RUN npm prune --omit=dev
 # Final stage for app image
 FROM base
 
-# Match Fly `http_service.internal_port`; without PORT, Next listens on 3000 and the proxy gets PC01.
-ENV PORT="8080"
-
 # Copy built application
 COPY --from=build /app /app
 
@@ -57,5 +48,5 @@ COPY --from=build /app /app
 ENTRYPOINT [ "/app/docker-entrypoint.js" ]
 
 # Start the server by default, this can be overwritten at runtime
-EXPOSE 8080
+EXPOSE 3000
 CMD [ "npm", "run", "start" ]
