@@ -20,6 +20,9 @@
     "db:push": "drizzle-kit push",
     "indexer": "tsx scripts/indexer.ts",
     "scan:ibc-recv-day": "tsx scripts/scanIbcRecvDay.ts",
+    "validate:uist-apr2026": "bash scripts/validateUistIbcApril2026.sh",
+    "backfill:ibc-flow-in": "tsx scripts/backfillIbcTransferFlowIn.ts",
+    "parity:rollup": "tsx scripts/verifyRollupParity.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

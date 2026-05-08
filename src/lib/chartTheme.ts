@@ -19,4 +19,9 @@ export const chartTheme = {
   lineD: "#E0565B",
   lineE: "#F5A623",
   barPrimary: "#2ED3B7",
+  /** Linear OLS trend overlays (dashed, slightly thinner than primary series). */
+  trendLineProps: {
+    strokeDasharray: "5 5",
+    strokeWidth: 1.5,
+  },
 } as const;

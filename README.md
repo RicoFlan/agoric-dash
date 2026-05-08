@@ -10,12 +10,12 @@ The page order follows **`Dashboard.tsx`**: **Range** (date/granularity controls
 
 | Area | Content |
 |------|--------|
-| **Range** | **Granularity**, **Quick range** presets, **Custom Range** (`--color-bg-control` toolbar). Anchor id **`filters`**. |
-| **Value handled** | **Gross in-tx movement by denom** HTML **table**: **`colgroup`** + **`table-fixed`** (10% / 20% / 20% / 50%), **`min-w-0`** scroll wrapper so the table does not overflow the viewport. All four value columns are **one line** with **in-cell horizontal scroll** if needed. **USD (EST)** header sorts (high→low / low→high / default; resets on **From / To / Granularity**). **Zebra** rows. **Gross in-tx (per asset)** line chart with **checkboxes**; **IBC amount flows**; **Quick range** + **Custom Range**; **last indexed block height** when available. |
+| **Range** | **Granularity**, **Date range** presets (uppercase label), **Custom Range** (`--color-bg-control` toolbar); controls are **centered** in the card. Anchor id **`filters`**. |
+| **Value handled** | **Gross in-tx movement by denom** HTML **table**: **`colgroup`** + **`table-fixed`** (10% / 20% / 20% / 50%), **`min-w-0`** scroll wrapper so the table does not overflow the viewport. All four value columns are **one line** with **in-cell horizontal scroll** if needed. **USD (EST)** header sorts (high→low / low→high / default; resets on **From / To / Granularity**). **Zebra** rows. **Gross in-tx (per asset)** line chart with **checkboxes**; **IBC amount flows**; **Date range** + **Custom Range**; **last indexed block height** (**bold**, left-aligned) when available. Note under filters: **indexed-history** sentence **bold**, remainder normal; **centered**. |
 | **Gas and fees** | KPIs: **gas used** (ABCI units), **paid fees uBLD → BLD**. |
-| **Transaction activity** | KPIs: **successful txs**, **IBC transfers out / recv** (message counts); charts (**full width**, stacked): **all txs vs IBC message volume**, then **IBC traffic** (out vs recv counts). |
-| **Volume and IBC (time series)** | **All txs vs IBC** and **IBC traffic** line charts (full width). |
-| **Economic participation & concentration** | Last main section: **daily distinct-account line chart** (UTC calendar days in range), KPI cards, **top 10** gross USD share, optional **distinct account addresses per calendar day** table — requires indexer tables `participant_day` and `address_volume_day`. |
+| **Transaction activity** | KPIs: **successful txs**, **IBC out** (one per MsgTransfer), **IBC recv** (distinct `recv_packet` events when indexed, else MsgRecvPacket count); charts (**full width**): **successful txs vs IBC transfer volume**, then **IBC traffic** (out vs recv). Each includes a **dashed linear trend** (OLS vs bucket order; legend **`(trend)`**). |
+| **Volume and IBC (time series)** | **Successful txs vs IBC** and **IBC traffic** line charts (full width); dashed **trend** overlays per series (`src/lib/linearTrend.ts`, `chartTheme.trendLineProps`). |
+| **Economic participation & concentration** | Last main section: **daily distinct-account line chart** (UTC calendar days in range; **trend** overlay), KPI cards, **top 10** gross USD share, optional **distinct account addresses per calendar day** table — requires indexer tables `participant_day` and `address_volume_day`. |
 
 All KPIs that support it show **prior window** and **percent change** vs an equal-length period ending immediately before the selected range (`pctChange` in `src/lib/metricsQuery.ts`).
 
@@ -101,7 +101,7 @@ Copy **`.env.example`** to `.env` and adjust. Example defaults target **bounded 
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Set **Granularity**, choose a **quick range**, or open **Custom Range** to set **From / To** (minimum **From** = **`INDEXED_HISTORY_FROM_DAY`** / API clamp); changes apply automatically when you adjust filters.
+Open [http://localhost:3000](http://localhost:3000). Set **Granularity**, choose a **date range** preset, or open **Custom Range** to set **From / To** (minimum **From** = **`INDEXED_HISTORY_FROM_DAY`** / API clamp); changes apply automatically when you adjust filters.
 
 Chart buckets must exist in Postgres for your selected range: if the UI shows zeros, the indexer may still be catching up to wall-clock or your range may lie outside indexed hours/days.
 
@@ -134,7 +134,9 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `docs/DEVELOPMENT.md` | Dev workflow, quality gate (`npm run verify`) |
 | `docs/style-guide.md` | Visual design system (colors, type, spacing, components) for the UI |
 | `scripts/indexer.ts` | Block scanner; bounded start date, catch-up vs tail; **IBC-in** amounts via **`sumRecvCoinAmountsFromTxEvents`** (once per tx) |
-| `scripts/scanIbcRecvDay.ts` | Debug: scan a UTC day for IBC recv denom totals (`npm run scan:ibc-recv-day`) |
+| `scripts/scanIbcRecvDay.ts` | Debug: scan a UTC day for IBC recv denom totals (`npm run scan:ibc-recv-day`). Optional **`SCAN_HEIGHT_START`** + **`SCAN_HEIGHT_END_EXCLUSIVE`** skip time→height lookup; **`SCAN_CONCURRENCY`** limits parallelism; RPC calls **retry** on transient failures. |
+| `scripts/validateUistIbcApril2026.sh` | Optional: sequential **`scanIbcRecvDay`** for fixed UTC days (example IST/`uist` validation vs **`ibc_transfer_amount_in`**); long-running. |
+| `scripts/backfillIbcTransferFlowIn.ts` | Backfill **`ibc_transfer_flow_in`** for full indexed span without touching other metrics (see **`npm run backfill:ibc-flow-in`**) |
 | `src/lib/ibcRecvEventAmounts.ts` | **`sumRecvCoinAmountsFromTxEvents`** — parses `coin_received` / `transfer` amounts (shared with indexer + scan script) |
 | `src/config/denoms.json` | `match` (full on-chain denom) → symbol, decimals |
 | `src/db/schema.ts` | `daily_metrics`, `hourly_metrics`, `indexer_state`, `participant_day`, `address_volume_day`, … (Drizzle) |
@@ -144,8 +146,12 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `src/lib/metricsEnrichment.ts` | `resolveDenom`-based **metas** for `display` |
 | `src/lib/transferVolumeUsdEstimates.ts` | CoinGecko spot × volume; **USD** strings + **total** for the in-tx table |
 | `src/lib/grossTableUsdSort.ts` | Client-side **USD (EST)** column sort for the gross in-tx table |
+| `src/lib/rechartsTooltip.ts` | **`filterNonZeroTooltipPayload`** for multi-series chart tooltips |
+| `src/lib/ibcRollupDisplay.ts` | API/chart display: IBC recv flow vs legacy raw msg count |
 | `src/lib/coingecko/` | `resolveCoinGeckoId`, batched **simple/price** fetch + TTL cache |
-| `src/config/coingeckoDisplaySymbolToId.json` | `displaySymbol` → CoinGecko coin id (incl. **`AXL (router)`** → `axelar`) |
+| `src/lib/chartTheme.ts` | Grid/tooltip/series stroke tokens + **`trendLineProps`** (dashed trend overlays) |
+| `src/lib/linearTrend.ts` | **`linearTrendLine`** — OLS trend ordinates for chart overlays |
+| `src/config/coingeckoDisplaySymbolToId.json` | `displaySymbol` → CoinGecko coin id (e.g. **`AXL (router)`** → `axelar`, **`SEI`** → `sei-network`, **`PICA`** → `pica`) |
 | `src/config/coingeckoDenomOverrides.json` | Optional per-`match` CoinGecko id overrides |
 | `src/lib/resolveDenom.ts` | Resolves a denom string using `denoms.json` |
 | `src/app/api/metrics/route.ts` | JSON: `{ ...payload, display, transferVolumeUsd…, participation, concentration, indexedHistoryFromDay }` (clamps **`from`** before `buildMetricsPayload`) |
@@ -161,7 +167,7 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 
 ## Tests
 
-**Vitest** runs tests on pure modules (**15** files, **70** tests at last `npm run verify`; no Postgres or Next server by default):
+**Vitest** runs tests on pure modules (**21** files, **96** tests at last `npm run verify`; no Postgres or Next server by default):
 
 | File | Covers |
 |------|--------|
@@ -170,10 +176,15 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `src/lib/displayFormat.test.ts` | Chart/list display helpers |
 | `src/lib/transferVolumeUsdEstimates.test.ts` | USD estimate **formatting** (`formatUsdEstimate`) |
 | `src/lib/grossTableUsdSort.test.ts` | Gross in-tx table **USD column** sort keys and comparators |
-| `src/lib/coingecko/resolveCoinGeckoId.test.ts` | Symbol / override → CoinGecko id resolution (**`AXL (router)`**, stkATOM, etc.) |
+| `src/lib/rechartsTooltip.test.ts` | **`filterNonZeroTooltipPayload`** — tooltip rows omit zeros |
+| `src/lib/ibcRollupDisplay.test.ts` | IBC recv headline: **`ibc_transfer_flow_in`** vs legacy **`ibc_transfer_in_count`** |
+| `src/lib/ibcTransferFlowInRollup.test.ts` | **`addIbcTransferFlowInForTx`** map keys and recv_packet dedupe |
+| `src/lib/coingecko/resolveCoinGeckoId.test.ts` | Symbol / override → CoinGecko id resolution (**`AXL (router)`**, **SEI** / **sei-network**, stkATOM, etc.) |
+| `src/lib/linearTrend.test.ts` | Ordinary least-squares trend arrays for chart overlays |
+| `src/lib/chartTheme.contract.test.ts` | `chartTheme` tokens (`trendLineProps`, series stroke palette) |
 | `src/lib/metricsApiValidation.test.ts` | `GET /api/metrics` validation (range caps, ISO dates, **`clampMetricsRangeToIndexedHistory`**) |
 | `src/lib/metricsQuery.transferTable.test.ts` | `transferVolumeTableByDenom` rollup semantics |
-| `src/lib/envExample.contract.test.ts` | `.env.example` documents indexer env vars; **`INDEXER_START_DATE`** calendar day matches **`INDEXED_HISTORY_FROM_DAY`** |
+| `src/lib/envExample.contract.test.ts` | `.env.example` documents indexer env vars + **`scanIbcRecvDay`** overrides; **`INDEXER_START_DATE`** calendar day matches **`INDEXED_HISTORY_FROM_DAY`** |
 | `src/lib/denomsJson.contract.test.ts` | `denoms.json` shape, unique `match`, sorted entries |
 | `src/lib/concentrationMath.test.ts` | Herfindahl-style helpers, **top-N share** (used for gross USD concentration) |
 | `src/lib/transferVolumeAttribution.test.ts` | Sender-side legs for **MsgSend** / **MultiSend** / **ICS-20** (indexer + enrichment) |
@@ -193,6 +204,8 @@ npm test
 | `npm run dev` | Next.js dev server |
 | `npm run indexer` | Indexer worker |
 | `npm run scan:ibc-recv-day` | `tsx scripts/scanIbcRecvDay.ts` — inspect IBC recv totals for a UTC day |
+| `npm run validate:uist-apr2026` | `scripts/validateUistIbcApril2026.sh` — multi-day IBC-in replay vs DB (long-running; optional) |
+| `npm run backfill:ibc-flow-in` | `scripts/backfillIbcTransferFlowIn.ts` — delete **`ibc_transfer_flow_in`** rows, replay blocks to tip cursor, rewrite **only** that series (daily + hourly) |
 | `npm run db:push` | Apply Drizzle schema to Postgres |
 | `npm run db:generate` | Generate SQL migrations (optional) |
 | `npm test` | Run Vitest once (`vitest run`) |

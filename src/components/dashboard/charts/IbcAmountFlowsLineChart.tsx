@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { chartTheme } from "@/lib/chartTheme";
+import { filterNonZeroTooltipPayload, formatTooltipNumber } from "@/lib/rechartsTooltip";
 
 const LINE_STROKES = [
   chartTheme.lineA,
@@ -52,12 +53,12 @@ export default function IbcAmountFlowsLineChart({
         IBC amount flows (separate from bank sends above)
       </h3>
       <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">
-        In = recv / event-sourced; out = IBC out msg. One line per denom with in-range volume
-        (human-scaled when mapped in{" "}
-        <code className="text-[var(--accent)]">src/config/denoms.json</code>). One vertical scale;
-        legend labels each line as <span className="text-[var(--text)]">in</span> or{" "}
-        <span className="text-[var(--text)]">out</span>. Amounts are not cross-asset comparable. Not
-        comparable to the bank+IBC out “transfer” chart, or to BLD-denominated fees.
+        Native minimal units: <span className="text-[var(--text)]">in</span> ={" "}
+        <code className="text-[var(--accent)]">ibc_transfer_amount_in</code> (recv events);{" "}
+        <span className="text-[var(--text)]">out</span> ={" "}
+        <code className="text-[var(--accent)]">ibc_transfer_amount_out</code> (MsgTransfer token).
+        These are <strong className="font-medium text-[var(--color-text-secondary)]">amounts</strong>, not the message/flow count KPIs in Transaction activity. One line per denom (human-scaled when mapped in{" "}
+        <code className="text-[var(--accent)]">src/config/denoms.json</code>). Not comparable across assets or to fee KPIs.
       </p>
       {hasData ? (
         <div className={`w-full ${chartHeightClass}`}>
@@ -67,8 +68,9 @@ export default function IbcAmountFlowsLineChart({
               <XAxis {...timeAxis} />
               <YAxis yAxisId={0} tick={{ fill: chartTheme.axisTick, fontSize: 10 }} />
               <Tooltip
-                content={({ label: lb, active, payload: pl }) =>
-                  active && pl && pl.length ? (
+                content={({ label: lb, active, payload: pl }) => {
+                  const filtered = filterNonZeroTooltipPayload(pl);
+                  return active && filtered.length ? (
                     <div
                       className="max-h-64 overflow-y-auto rounded-md border p-2 text-xs"
                       style={{
@@ -77,20 +79,19 @@ export default function IbcAmountFlowsLineChart({
                       }}
                     >
                       <p style={{ color: chartTheme.tooltipMuted }}>{String(lb)}</p>
-                      {pl.map((e, i) => {
+                      {filtered.map((e, i) => {
                         const y = e.value;
-                        if (y == null || y === undefined) return null;
                         const meta = series.find((s) => s.chartKey === e.dataKey);
                         const title = meta?.denom ?? String(e.dataKey);
                         return (
                           <p key={i} style={{ color: chartTheme.tooltipText }} title={title}>
-                            {e.name}: {typeof y === "number" ? y.toLocaleString() : y}
+                            {String(e.name ?? "")}: {formatTooltipNumber(y)}
                           </p>
                         );
                       })}
                     </div>
-                  ) : null
-                }
+                  ) : null;
+                }}
               />
               <Legend
                 verticalAlign="bottom"

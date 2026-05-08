@@ -25,11 +25,18 @@ export function signerBech32AddressesFromAuthInfo(authInfo: AuthInfo): string[] 
 }
 
 /**
- * Fee payer: `fee.granter` when set (fee grant), otherwise first signer (typical Cosmos SDK payer).
+ * Economic fee payer for attribution (matches Cosmos SDK `Fee` fields + default signer).
+ * Precedence: `fee.granter` (fee grant payer) → `fee.payer` (explicit payer, incl. multi-signer /
+ * DIRECT_AUX-style assembly) → first `signerInfos` pubkey-derived address.
+ *
+ * Paid fee **amounts** still come from tx result events (`extractPaidFeesFromEvents`); this picks
+ * **which address** receives those attributed totals in `address_fee_day`.
  */
 export function feePayerBech32FromAuthInfo(authInfo: AuthInfo): string | null {
   const granter = authInfo.fee?.granter?.trim();
   if (granter) return granter;
+  const explicitPayer = authInfo.fee?.payer?.trim();
+  if (explicitPayer) return explicitPayer;
   const signers = signerBech32AddressesFromAuthInfo(authInfo);
   return signers[0] ?? null;
 }

@@ -35,6 +35,9 @@
 
 - **Page title** (`src/app/page.tsx`): primary heading uses **white** text for contrast with the dark shell; section jump links (`src/lib/dashboardNav.ts`, **`dashboardNavLinks`**) use **`--color-text-secondary`** with **`--color-accent`** on hover. The date-range toolbar (`id="filters"`) is **not** listed in the header nav—anchors remain available for direct `#filters` links.
 - **Date / granularity strip** uses **`--color-bg-control`** (lighter than **`--color-surface`** cards) plus optional card shadow so controls read as a **toolbar**, not a data panel. **`INDEXED_HISTORY_FROM_DAY`** is enforced as **`min`** on the **From** date input and via API clamping. See `globals.css` / §1 **Base** tokens.
+- **Toolbar layout** (`Dashboard.tsx`): preset row label **Date range** (CSS **`uppercase`**); **Granularity**, presets, and **Custom Range** rows are **horizontally centered**; the indexed-history note below is **center**-aligned with the **first sentence bold**, remainder normal weight.
+- **Date range presets**: inactive chips use **`border-2`** + **`--border`**; the **active** preset uses **`border-2`** + **`--color-accent`**, **`font-semibold`**, accent-tinted **`background`**, **`shadow-md`**, and **`ring-2`** (`chartTheme`-aligned emphasis).
+- **Indexer status** line above the toolbar: **left-aligned**, **`font-bold`** (including **`code`** height and parenthetical **`updatedAt`**).
 
 ---
 

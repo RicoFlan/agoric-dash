@@ -28,6 +28,12 @@ describe(".env.example", () => {
     expect(raw).toMatch(/COINGECKO_API_KEY/);
   });
 
+  it("documents optional scanIbcRecvDay env overrides", () => {
+    expect(raw).toMatch(/SCAN_CONCURRENCY/);
+    expect(raw).toMatch(/SCAN_HEIGHT_START/);
+    expect(raw).toMatch(/SCAN_HEIGHT_END_EXCLUSIVE/);
+  });
+
   it("default INDEXER_START_DATE calendar day matches INDEXED_HISTORY_FROM_DAY", () => {
     const line = raw.split("\n").find((l) => l.startsWith("INDEXER_START_DATE="));
     expect(line).toBeDefined();

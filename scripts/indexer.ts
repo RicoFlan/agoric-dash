@@ -2,8 +2,15 @@
  * Standalone indexer: polls RPC for block + block_results, updates daily_metrics,
  * hourly_metrics, participant_day, address_volume_day, and address_fee_day
  * (hour bucket from block time UTC for hourly_metrics).
- * IBC recv **amounts** sum `coin_received`/`transfer` events once per successful tx (see
- * `sumRecvCoinAmountsFromTxEvents`) so multiple MsgRecvPacket in one tx do not multiply totals.
+ *
+ * Source hierarchy (events vs decoded body): see `src/lib/rollupSourceHierarchy.ts`. In short: ABCI
+ * fields for outcomes/gas; **fee_paid** from tx events; bank / outbound ICS-20 **amounts** from
+ * decoded `Msg*` bodies; **IBC recv amounts** from `coin_received`/`transfer` events (once per tx);
+ * **`ibc_transfer_flow_in`** from recv_packet events when present, else MsgRecvPacket count.
+ *
+ * Scope: only **`block_results.txs_results`** are processed — not standalone finalize-block / BeginBlock /
+ * EndBlock event streams (`src/lib/indexerIngestScope.ts`). Chain upgrades may require decode/event tweaks
+ * (`src/lib/protocolCompatibilityNotes.ts`).
  * Run: DATABASE_URL=... RPC_URL=... tsx scripts/indexer.ts
  */
 import "dotenv/config";
@@ -15,12 +22,19 @@ import pg from "pg";
 import * as schema from "../src/db/schema";
 import { decodeMsg, decodeTxRawTx, extractPaidFeesFromEvents } from "../src/lib/cosmos";
 import { attributedTransferLegsFromDecodedMsg } from "../src/lib/transferVolumeAttribution";
+import { PARTICIPANT_ROLES } from "../src/lib/participantRollupPolicy";
 import {
   feePayerBech32FromAuthInfo,
   signerBech32AddressesFromAuthInfo,
 } from "../src/lib/txParticipantAddresses";
+import {
+  describeTxResultsLengthMismatch,
+  pairedTxCount,
+} from "../src/lib/blockTxResultsPairing";
 import { rpcCall, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
+import { addIbcTransferFlowInForTx } from "../src/lib/ibcTransferFlowInRollup";
 import { sumRecvCoinAmountsFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
+import { msgIndicesMatchingTypeUrl } from "../src/lib/txEventMsgIndex";
 import {
   MSG_IBC_TRANSFER,
   MSG_RECV_PACKET,
@@ -120,8 +134,20 @@ function bumpAddrDenom(
   m.set(key, (m.get(key) ?? BigInt(0)) + delta);
 }
 
-async function flushRollupMaps(daily: Map<string, bigint>, hourly: Map<string, bigint>) {
-  if (daily.size === 0 && hourly.size === 0) return;
+/**
+ * Persist one processed chunk atomically: rollups + participation + cursor.
+ * Previously rollups, participants, and `indexer_state` used separate transactions; a crash or RPC
+ * error after the first commit but before `setCursor` caused the same heights to be processed again,
+ * and `onConflictDoUpdate` **adds** deltas → double-counted metrics and misleading “gaps” vs chain.
+ */
+async function persistIndexedChunk(
+  daily: Map<string, bigint>,
+  hourly: Map<string, bigint>,
+  participantTriples: Set<string>,
+  volumeDeltas: Map<string, bigint>,
+  feeDeltas: Map<string, bigint>,
+  lastIndexedHeight: bigint
+) {
   await db.transaction(async (tx) => {
     for (const [key, delta] of daily) {
       if (delta === BigInt(0)) continue;
@@ -148,16 +174,6 @@ async function flushRollupMaps(daily: Map<string, bigint>, hourly: Map<string, b
           set: { value: sql`${hourlyMetrics.value} + ${sql.raw("excluded.value")}` },
         });
     }
-  });
-}
-
-async function flushParticipantMaps(
-  participantTriples: Set<string>,
-  volumeDeltas: Map<string, bigint>,
-  feeDeltas: Map<string, bigint>
-) {
-  if (participantTriples.size === 0 && volumeDeltas.size === 0 && feeDeltas.size === 0) return;
-  await db.transaction(async (tx) => {
     for (const key of participantTriples) {
       const [day, address, role] = key.split(ROLLUP_KEY_DELIM);
       await tx.insert(participantDay).values({ day, address, role }).onConflictDoNothing();
@@ -186,6 +202,18 @@ async function flushParticipantMaps(
           set: { fee: sql`${addressFeeDay.fee} + ${sql.raw("excluded.fee")}` },
         });
     }
+
+    await tx
+      .insert(schema.indexerState)
+      .values({
+        id: "singleton",
+        lastIndexedHeight: lastIndexedHeight,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: schema.indexerState.id,
+        set: { lastIndexedHeight: lastIndexedHeight, updatedAt: new Date() },
+      });
   });
 }
 
@@ -196,16 +224,6 @@ async function getCursor(): Promise<bigint> {
     .where(eq(schema.indexerState.id, "singleton"))
     .limit(1);
   return rows[0]?.lastIndexedHeight ?? BigInt(0);
-}
-
-async function setCursor(h: bigint) {
-  await db
-    .insert(schema.indexerState)
-    .values({ id: "singleton", lastIndexedHeight: h, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: schema.indexerState.id,
-      set: { lastIndexedHeight: h, updatedAt: new Date() },
-    });
 }
 
 function asEventKV(
@@ -223,16 +241,31 @@ function asEventKV(
   );
 }
 
+const RPC_RETRIES = Math.max(1, Number(process.env.INDEXER_RPC_RETRIES ?? "6"));
+
 async function fetchBlockPair(height: bigint): Promise<{
   block: RpcBlockResponse;
   results: RpcBlockResultsResponse;
 }> {
   const hStr = height.toString();
-  const [block, results] = await Promise.all([
-    rpcCall<RpcBlockResponse>(RPC_URL, "block", { height: hStr }),
-    rpcCall<RpcBlockResultsResponse>(RPC_URL, "block_results", { height: hStr }),
-  ]);
-  return { block, results };
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= RPC_RETRIES; attempt++) {
+    try {
+      const [block, results] = await Promise.all([
+        rpcCall<RpcBlockResponse>(RPC_URL, "block", { height: hStr }),
+        rpcCall<RpcBlockResultsResponse>(RPC_URL, "block_results", { height: hStr }),
+      ]);
+      return { block, results };
+    } catch (e) {
+      lastErr = e;
+      const backoff = Math.min(30_000, 400 * 2 ** (attempt - 1));
+      console.warn(
+        `RPC height ${hStr} attempt ${attempt}/${RPC_RETRIES} failed: ${e instanceof Error ? e.message : String(e)}; retry in ${backoff}ms`
+      );
+      if (attempt < RPC_RETRIES) await sleep(backoff);
+    }
+  }
+  throw lastErr;
 }
 
 function accumulateBlock(
@@ -252,24 +285,30 @@ function accumulateBlock(
   const txResults = results.txs_results ?? [];
   const eventsPerTx = asEventKV(txResults);
 
-  if (txsB64.length !== txResults.length) {
-    console.warn(`height ${hStr}: txs len ${txsB64.length} != results ${txResults.length}`);
+  const blockTxCount = txsB64.length;
+  const resultsCount = txResults.length;
+  const mismatchDetail = describeTxResultsLengthMismatch(blockTxCount, resultsCount);
+  if (mismatchDetail) {
+    console.warn(`height ${hStr}: ${mismatchDetail}`);
   }
 
-  const n = Math.min(txsB64.length, txResults.length);
+  const n = pairedTxCount(blockTxCount, resultsCount);
 
   for (let i = 0; i < n; i++) {
     const raw = fromBase64(txsB64[i]!);
     const tr = txResults[i]!;
     const ok = tr.code === TX_SUCCESS_CODE;
 
+    // Tx outcome: exactly one of tx_success / tx_failed per matched pair (TX_RESULT_ROLLUP_POLICY).
     addRollupDelta(daily, hourly, day, hour, ok ? SERIES.TX_SUCCESS : SERIES.TX_FAILED, "", BigInt(1));
 
+    // Gas: every inclusion (success + failure). Fees and decoded-body metrics only below after `continue`.
     const gas = BigInt(tr.gas_used ?? "0");
     addRollupDelta(daily, hourly, day, hour, SERIES.GAS_USED, "", gas);
 
     if (!ok) continue;
 
+    // fee_paid: tx_result events (`tx.fee`), not AuthInfo.max fees — see SERIES_ROLLUP_SOURCE.
     const fees = extractPaidFeesFromEvents(eventsPerTx[i] ?? []);
     for (const [denom, amt] of fees) {
       addRollupDelta(daily, hourly, day, hour, SERIES.FEE_PAID, denom, amt);
@@ -284,16 +323,17 @@ function accumulateBlock(
     }
 
     for (const s of signerBech32AddressesFromAuthInfo(decoded.authInfo)) {
-      noteParticipant(day, s, "signer", participantTriples);
+      noteParticipant(day, s, PARTICIPANT_ROLES.SIGNER, participantTriples);
     }
     const feePayer = feePayerBech32FromAuthInfo(decoded.authInfo);
     if (feePayer) {
-      noteParticipant(day, feePayer, "fee_payer", participantTriples);
+      noteParticipant(day, feePayer, PARTICIPANT_ROLES.FEE_PAYER, participantTriples);
       for (const [denom, amt] of fees) {
         bumpAddrDenom(feeDeltas, day, feePayer, denom, amt);
       }
     }
 
+    // transfer_volume, ibc out count/amount: decoded Msg* intent — see SERIES_ROLLUP_SOURCE.
     const msgs = decoded.body.messages;
 
     let recvPacketCount = 0;
@@ -360,7 +400,12 @@ function accumulateBlock(
       }
     }
 
+    // IBC recv: ibc_transfer_amount_in + flow_in use tx events (recv_packet / coin_received); gated by MsgRecvPacket presence.
     if (recvPacketCount > 0) {
+      const recvPacketMsgIndices = msgIndicesMatchingTypeUrl(
+        msgs as ReadonlyArray<{ typeUrl: string }>,
+        MSG_RECV_PACKET
+      );
       addRollupDelta(
         daily,
         hourly,
@@ -370,7 +415,10 @@ function accumulateBlock(
         "",
         BigInt(recvPacketCount)
       );
-      for (const [denom, amt] of sumRecvCoinAmountsFromTxEvents(eventsPerTx[i] ?? [])) {
+      addIbcTransferFlowInForTx(daily, hourly, day, hour, eventsPerTx[i] ?? [], recvPacketCount);
+      for (const [denom, amt] of sumRecvCoinAmountsFromTxEvents(eventsPerTx[i] ?? [], {
+        recvPacketMsgIndices: recvPacketMsgIndices,
+      })) {
         addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
       }
     }
@@ -503,11 +551,8 @@ async function loop(startFloorHeight: bigint) {
         feeDeltas
       );
     }
-    await flushRollupMaps(daily, hourly);
-    await flushParticipantMaps(participantTriples, volumeDeltas, feeDeltas);
-
     const lastH = heights[heights.length - 1]!;
-    await setCursor(lastH);
+    await persistIndexedChunk(daily, hourly, participantTriples, volumeDeltas, feeDeltas, lastH);
     cursor = lastH;
     next = lastH + BigInt(1);
     processed += chunkN;

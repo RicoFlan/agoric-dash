@@ -18,8 +18,16 @@ describe("resolveCoinGeckoId", () => {
     );
   });
 
-  it("uses CoinGecko id 'sei' for SEI (not sei-network)", () => {
-    expect(resolveCoinGeckoId("ibc/2A041EEB0C09F7F174FCA5679C7325B1B4151310B6407CB48092C52BCC03BE4E")).toBe("sei");
+  it("maps SEI IBC path to sei-network", () => {
+    expect(resolveCoinGeckoId("ibc/2A041EEB0C09F7F174FCA5679C7325B1B4151310B6407CB48092C52BCC03BE4E")).toBe(
+      "sei-network"
+    );
+  });
+
+  it("maps PICA IBC path to pica", () => {
+    expect(resolveCoinGeckoId("ibc/2FAD8D00A958B0A5509A4ECF9E719B65EE268DAFB38FED98FF9B90B720F04C28")).toBe(
+      "pica"
+    );
   });
 
   it("uses pSTAKE staked ATOM id for stkATOM (not Stride stATOM)", () => {

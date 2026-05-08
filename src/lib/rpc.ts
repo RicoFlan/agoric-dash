@@ -44,4 +44,6 @@ export interface RpcTxResult {
 export interface RpcBlockResultsResponse {
   readonly height: string;
   readonly txs_results?: readonly RpcTxResult[];
+  /** ABCI++ may attach finalize-block events; indexer ignores these unless explicitly wired. */
+  readonly finalize_block_events?: unknown;
 }

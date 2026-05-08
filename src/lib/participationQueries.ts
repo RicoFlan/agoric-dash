@@ -1,9 +1,11 @@
+/**
+ * Participation aggregates over `participant_day` — semantics match {@link PARTICIPANT_ROLES}
+ * and `participantRollupPolicy.ts`.
+ */
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { db, pool } from "@/db/client";
 import { addressVolumeDay, participantDay } from "@/db/schema";
-
-const SIGNER = "signer";
-const FEE_PAYER = "fee_payer";
+import { PARTICIPANT_ROLES } from "@/lib/participantRollupPolicy";
 
 export type ParticipationRangeStats = {
   distinctSigners: number;
@@ -22,7 +24,7 @@ export async function queryParticipationRange(
     .from(participantDay)
     .where(
       and(
-        eq(participantDay.role, SIGNER),
+        eq(participantDay.role, PARTICIPANT_ROLES.SIGNER),
         gte(participantDay.day, fromDay),
         lte(participantDay.day, toDay)
       )
@@ -33,7 +35,7 @@ export async function queryParticipationRange(
     .from(participantDay)
     .where(
       and(
-        eq(participantDay.role, FEE_PAYER),
+        eq(participantDay.role, PARTICIPANT_ROLES.FEE_PAYER),
         gte(participantDay.day, fromDay),
         lte(participantDay.day, toDay)
       )

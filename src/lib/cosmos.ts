@@ -4,6 +4,7 @@ import type { EncodeObject } from "@cosmjs/proto-signing";
 import { wasmTypes } from "@cosmjs/cosmwasm-stargate";
 import { defaultRegistryTypes } from "@cosmjs/stargate";
 
+/** Msg decode registry — must stay aligned with on-chain protos after upgrades (`protocolCompatibilityNotes.ts`). */
 export const txRegistry = new Registry([...defaultRegistryTypes, ...wasmTypes]);
 
 export interface EventKV {
@@ -26,7 +27,8 @@ export function parseCoinsAmounts(amountStr: string): Map<string, bigint> {
 }
 
 /**
- * Paid fees: prefer `tx` event attribute `fee` (Cosmos SDK / CometBFT indexing).
+ * Paid fees: `tx` event attribute `fee` after execution (Cosmos SDK indexing).
+ * Prefer over signed max fee in TxRaw — see `SERIES_ROLLUP_SOURCE` in rollupSourceHierarchy.ts.
  */
 export function extractPaidFeesFromEvents(events: readonly EventKV[]): Map<string, bigint> {
   const merged = new Map<string, bigint>();

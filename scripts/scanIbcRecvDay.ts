@@ -1,7 +1,8 @@
 /**
  * Scan Agoric blocks for a UTC calendar day and list MsgRecvPacket txs whose
- * coin_received / transfer events include given IBC denoms (same **once-per-tx** parsing as
- * `sumRecvCoinAmountsFromTxEvents` / the indexer). Use to investigate IBC "in" spikes in daily_metrics.
+ * coin_received / transfer events include given IBC denoms (same parsing as
+ * `sumRecvCoinAmountsFromTxEvents` / the indexer, including msg_index scoping when present). Use to
+ * investigate IBC "in" spikes in daily_metrics.
  *
  * Usage:
  *   RPC_URL=https://main.rpc.agoric.net npx tsx scripts/scanIbcRecvDay.ts --day=2026-04-01
@@ -9,7 +10,9 @@
  *
  * Env:
  *   RPC_URL (default: https://main.rpc.agoric.net)
- *   SCAN_CONCURRENCY — parallel block fetches (default 12)
+ *   SCAN_CONCURRENCY — parallel block fetches (default 12; use 4 if the node rate-limits)
+ *   SCAN_HEIGHT_START + SCAN_HEIGHT_END_EXCLUSIVE — optional decimal heights (skip time→height search;
+ *     both required together; end is exclusive). Block RPC calls retry on transient failures.
  */
 import "dotenv/config";
 import { createHash } from "node:crypto";
@@ -17,11 +20,16 @@ import { fromBase64 } from "@cosmjs/encoding";
 import type { EncodeObject } from "@cosmjs/proto-signing";
 import { decodeTxRawTx } from "../src/lib/cosmos";
 import { sumRecvCoinAmountsFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
+import { msgIndicesMatchingTypeUrl } from "../src/lib/txEventMsgIndex";
 import {
   rpcCall,
   type RpcBlockResponse,
   type RpcBlockResultsResponse,
 } from "../src/lib/rpc";
+import {
+  describeTxResultsLengthMismatch,
+  pairedTxCount,
+} from "../src/lib/blockTxResultsPairing";
 import { MSG_RECV_PACKET, TX_SUCCESS_CODE } from "../src/lib/semantics";
 
 const DEFAULT_RPC = "https://main.rpc.agoric.net";
@@ -60,6 +68,26 @@ function txHashFromB64(b64: string): string {
   return createHash("sha256").update(raw).digest("hex").toUpperCase();
 }
 
+async function sleep(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
+/** Batch scanners hit rate limits and transient node faults — retry any RPC failure with backoff. */
+async function rpcCallRetry<T>(rpcUrl: string, method: string, params: unknown): Promise<T> {
+  const max = 8;
+  let last: unknown;
+  for (let attempt = 1; attempt <= max; attempt++) {
+    try {
+      return await rpcCall<T>(rpcUrl, method, params);
+    } catch (e) {
+      last = e;
+      if (attempt === max) throw e;
+      await sleep(250 * 2 ** (attempt - 1));
+    }
+  }
+  throw last;
+}
+
 async function latestHeight(rpcUrl: string): Promise<bigint> {
   const st = await rpcCall<{ sync_info: { latest_block_height: string } }>(rpcUrl, "status", {});
   return BigInt(st.sync_info.latest_block_height);
@@ -68,17 +96,14 @@ async function latestHeight(rpcUrl: string): Promise<bigint> {
 /**
  * Some RPC nodes report a "lowest height" but still return `result.block: null` at that edge.
  * Treat missing header time like pruned / unavailable.
+ * Retries transient HTTP failures — treating them as "no block" corrupts binary search for heights.
  */
 async function blockTimeMsAtHeightOrNull(rpcUrl: string, height: bigint): Promise<number | null> {
-  try {
-    const block = await rpcCall<RpcBlockResponse>(rpcUrl, "block", { height: height.toString() });
-    const t = block.block?.header?.time;
-    if (!t) return null;
-    const ms = new Date(t).getTime();
-    return Number.isFinite(ms) ? ms : null;
-  } catch {
-    return null;
-  }
+  const block = await rpcCallRetry<RpcBlockResponse>(rpcUrl, "block", { height: height.toString() });
+  const t = block.block?.header?.time;
+  if (!t) return null;
+  const ms = new Date(t).getTime();
+  return Number.isFinite(ms) ? ms : null;
 }
 
 async function findEarliestQueryableHeight(rpcUrl: string, tip: bigint): Promise<bigint> {
@@ -140,8 +165,8 @@ async function fetchBlockPair(
 ): Promise<{ block: RpcBlockResponse; results: RpcBlockResultsResponse }> {
   const hStr = height.toString();
   const [block, results] = await Promise.all([
-    rpcCall<RpcBlockResponse>(rpcUrl, "block", { height: hStr }),
-    rpcCall<RpcBlockResultsResponse>(rpcUrl, "block_results", { height: hStr }),
+    rpcCallRetry<RpcBlockResponse>(rpcUrl, "block", { height: hStr }),
+    rpcCallRetry<RpcBlockResultsResponse>(rpcUrl, "block_results", { height: hStr }),
   ]);
   return { block, results };
 }
@@ -180,8 +205,18 @@ async function main() {
   const concurrency = Math.max(1, Math.min(64, Number(process.env.SCAN_CONCURRENCY ?? "12")));
 
   const tip = await latestHeight(rpc);
-  const hStart = await findHeightAtOrAfterTime(rpc, startMs, tip);
-  const hEndExclusive = await findHeightAtOrAfterTime(rpc, endMs, tip);
+  const hs = process.env.SCAN_HEIGHT_START;
+  const he = process.env.SCAN_HEIGHT_END_EXCLUSIVE;
+  let hStart: bigint;
+  let hEndExclusive: bigint;
+  if (hs !== undefined && he !== undefined && hs.length > 0 && he.length > 0) {
+    hStart = BigInt(hs);
+    hEndExclusive = BigInt(he);
+    console.error("[scanIbcRecvDay] using SCAN_HEIGHT_START / SCAN_HEIGHT_END_EXCLUSIVE (skip time lookup)");
+  } else {
+    hStart = await findHeightAtOrAfterTime(rpc, startMs, tip);
+    hEndExclusive = await findHeightAtOrAfterTime(rpc, endMs, tip);
+  }
 
   console.error(
     `[scanIbcRecvDay] RPC=${rpc} day=${dayLabel} UTC [${new Date(startMs).toISOString()}, ${new Date(endMs).toISOString()})`
@@ -224,7 +259,13 @@ async function main() {
       const txsB64 = block.block.data?.txs ?? [];
       const txResults = results.txs_results ?? [];
       const eventsPerTx = eventsFromTxResults(txResults);
-      const n = Math.min(txsB64.length, txResults.length);
+      const blockTxCount = txsB64.length;
+      const resultsCount = txResults.length;
+      const mismatchDetail = describeTxResultsLengthMismatch(blockTxCount, resultsCount);
+      if (mismatchDetail) {
+        console.warn(`[scanIbcRecvDay] height ${heightStr}: ${mismatchDetail}`);
+      }
+      const n = pairedTxCount(blockTxCount, resultsCount);
 
       for (let i = 0; i < n; i++) {
         const tr = txResults[i]!;
@@ -246,7 +287,13 @@ async function main() {
         }
         if (recvPacketCount === 0) continue;
 
-        const allRecv = sumRecvCoinAmountsFromTxEvents(eventsPerTx[i] ?? []);
+        const recvIdx = msgIndicesMatchingTypeUrl(
+          msgs as ReadonlyArray<{ typeUrl: string }>,
+          MSG_RECV_PACKET
+        );
+        const allRecv = sumRecvCoinAmountsFromTxEvents(eventsPerTx[i] ?? [], {
+          recvPacketMsgIndices: recvIdx,
+        });
         const amounts = new Map<string, bigint>();
         for (const [d, v] of allRecv) {
           if (targetSet.has(d)) amounts.set(d, v);

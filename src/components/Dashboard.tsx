@@ -67,12 +67,14 @@ interface MetricsPayload {
   kpis: {
     txSuccess: { current: string; previous: string; pctChange: number | null };
     gasUsed: { current: string; previous: string; pctChange: number | null };
-    ibcTransferOutCount: {
+    /** MsgTransfer message totals (`ibc_transfer_out_count`). */
+    ibcOutboundMsgCount: {
       current: string;
       previous: string;
       pctChange: number | null;
     };
-    ibcTransferInCount: {
+    /** Inbound recv-flow headline totals (ibc_transfer_flow_in display rollup). */
+    ibcInboundRecvFlowCount: {
       current: string;
       previous: string;
       pctChange: number | null;
@@ -86,9 +88,9 @@ interface MetricsPayload {
   };
   series: {
     txTotal: { bucket: string; value: string }[];
-    ibcMsgCombined: { bucket: string; value: string }[];
-    ibcTransferOut: { bucket: string; value: string }[];
-    ibcTransferIn: { bucket: string; value: string }[];
+    ibcCombinedCounts: { bucket: string; value: string }[];
+    ibcOutboundMsgs: { bucket: string; value: string }[];
+    ibcInboundRecvFlows: { bucket: string; value: string }[];
     transferVolumeSeries: { denom: string; data: { bucket: string; value: string }[] }[];
     ibcAmountInSeries: { denom: string; data: { bucket: string; value: string }[] }[];
     ibcAmountOutSeries: { denom: string; data: { bucket: string; value: string }[] }[];
@@ -134,10 +136,10 @@ function clampDayNotBeforeIndexed(day: string): string {
 }
 
 const QUICK_RANGE_BTN =
-  "rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]";
+  "rounded-md border-2 border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]";
 
 const QUICK_RANGE_BTN_ACTIVE =
-  "border-[var(--accent)] bg-[var(--color-bg-secondary)] shadow-sm ring-1 ring-[var(--accent)]/25";
+  "border-2 border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_14%,var(--bg))] font-semibold text-[var(--color-text-primary)] shadow-md ring-2 ring-[var(--color-accent)]/45";
 
 function activeQuickPreset(
   from: string,
@@ -334,21 +336,21 @@ export function Dashboard() {
   const chartAllTxVsIbc = useMemo(() => {
     if (!data) return [];
     const tx = data.series?.txTotal ?? [];
-    const ibc = data.series?.ibcMsgCombined ?? [];
+    const ibc = data.series?.ibcCombinedCounts ?? [];
     const txM = new Map(tx.map((r) => [r.bucket, finiteN(Number(r.value))]));
     const ibcM = new Map(ibc.map((r) => [r.bucket, finiteN(Number(r.value))]));
     const keys = [...new Set([...txM.keys(), ...ibcM.keys()])].sort();
     return keys.map((bucket) => ({
       bucket,
-      totalTx: txM.get(bucket) ?? 0,
-      ibcMsgs: ibcM.get(bucket) ?? 0,
+      successfulTx: txM.get(bucket) ?? 0,
+      ibcFlows: ibcM.get(bucket) ?? 0,
     }));
   }, [data]);
 
   const chartIbcTraffic = useMemo(() => {
     if (!data) return [];
-    const o = data.series?.ibcTransferOut ?? [];
-    const i = data.series?.ibcTransferIn ?? [];
+    const o = data.series?.ibcOutboundMsgs ?? [];
+    const i = data.series?.ibcInboundRecvFlows ?? [];
     const outM = new Map(o.map((r) => [r.bucket, finiteN(Number(r.value))]));
     const inM = new Map(i.map((r) => [r.bucket, finiteN(Number(r.value))]));
     const keys = [...new Set([...outM.keys(), ...inM.keys()])].sort();
@@ -559,11 +561,11 @@ export function Dashboard() {
   return (
     <div className="space-y-10">
       {data?.indexer?.lastIndexedHeight && (
-        <p className="text-xs text-[var(--color-text-secondary)]">
+        <p className="text-left text-xs font-bold text-[var(--color-text-secondary)]">
           Last indexed block height:{" "}
-          <code className="text-[var(--accent)]">{data.indexer.lastIndexedHeight}</code>
+          <code className="font-bold text-[var(--accent)]">{data.indexer.lastIndexedHeight}</code>
           {data.indexer.updatedAt && (
-            <span className="ml-2">
+            <span className="ml-2 font-bold">
               (indexer updated {new Date(data.indexer.updatedAt).toLocaleString()})
             </span>
           )}
@@ -590,7 +592,7 @@ export function Dashboard() {
         id={dashboardSectionIds.filters}
         className="scroll-mt-6 flex flex-wrap items-end gap-4 rounded-lg border border-[var(--border)] bg-[var(--color-bg-control)] p-5 shadow-[var(--shadow-card)]"
       >
-        <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-3 border-b border-[var(--border)]/60 pb-4">
+        <div className="flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-3 border-b border-[var(--border)]/60 pb-4">
           <label className="flex shrink-0 flex-row items-center gap-2 text-sm leading-[1.4]">
             <span className="whitespace-nowrap text-sm font-medium text-[var(--color-text-secondary)]">
               Granularity
@@ -605,9 +607,9 @@ export function Dashboard() {
               <option value="week">Week (UTC Monday)</option>
             </select>
           </label>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="flex min-h-0 min-w-0 flex-wrap items-center justify-center gap-2">
             <span className="mr-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
-              Quick range
+              Date range
             </span>
             <button
               type="button"
@@ -674,7 +676,7 @@ export function Dashboard() {
         </div>
 
         {customRangeOpen && (
-          <div className="flex w-full flex-wrap items-center gap-4 border-b border-[var(--border)]/60 pb-4">
+          <div className="flex w-full flex-wrap items-center justify-center gap-4 border-b border-[var(--border)]/60 pb-4">
             <label className="flex flex-row items-center gap-2 text-sm leading-[1.4]">
               <span className="whitespace-nowrap text-sm font-medium text-[var(--color-text-secondary)]">
                 From
@@ -700,10 +702,12 @@ export function Dashboard() {
             </label>
           </div>
         )}
-        <p className="w-full text-xs leading-[1.4] text-[var(--muted)]">
-          Indexed rollups and participation metrics start{" "}
-          <time dateTime={INDEXED_HISTORY_FROM_DAY}>{INDEXED_HISTORY_FROM_DAY}</time> UTC. The API
-          clamps <strong className="font-medium text-[var(--color-text-secondary)]">From</strong> to
+        <p className="w-full text-center text-xs leading-[1.4] text-[var(--muted)]">
+          <span className="font-bold">
+            Indexed rollups and participation metrics start{" "}
+            <time dateTime={INDEXED_HISTORY_FROM_DAY}>{INDEXED_HISTORY_FROM_DAY}</time> UTC.
+          </span>{" "}
+          The API clamps <strong className="font-medium text-[var(--color-text-secondary)]">From</strong> to
           that day when needed so results match the indexer window.
         </p>
       </section>
@@ -862,7 +866,10 @@ export function Dashboard() {
                         >
                           —
                         </td>
-                        <td className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2">
+                        <td
+                          className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
+                          title="Sum of per-asset USD estimates (current spot); not a single-token total or net economic figure — do not treat like TVL or GDP"
+                        >
                           {data.transferVolumeUsdTotal ?? "—"}
                         </td>
                         <td aria-hidden className="min-w-0 px-1.5 py-3 sm:px-2" />
@@ -881,17 +888,23 @@ export function Dashboard() {
 
           <section id={dashboardSectionIds.gasFees} className="scroll-mt-6 space-y-4">
             <h2 className={SECTION_HEADING_CLASS}>Gas and fees</h2>
+            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+              KPI % change compares your selected range to an{" "}
+              <strong className="font-medium text-[var(--color-text-secondary)]">equal-length prior window</strong>{" "}
+              ending immediately before <strong className="font-medium text-[var(--color-text-secondary)]">From</strong>{" "}
+              (UTC, same granularity). It is descriptive only — upgrades, price action, and traffic mix can differ between windows.
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <KpiCard
                 title="Gas used"
-                subtitle="ABCI / consensus gas units, not a token or BLD"
+                subtitle="ABCI gas units (successful + failed inclusions); not a token"
                 current={data.kpis.gasUsed.current}
                 previous={data.kpis.gasUsed.previous}
                 pct={data.kpis.gasUsed.pctChange}
               />
               <KpiCard
                 title="Paid fees (uBLD → BLD)"
-                subtitle={`On-chain paid fee total in ${FEE_DENOM_UBLB} (shown as BLD).`}
+                subtitle={`Successful txs only · on-chain paid total in ${FEE_DENOM_UBLB} (shown as BLD)`}
                 current={
                   /^\d+$/.test(data.kpis.feePaidUbld.current)
                     ? `${atomicToHumanString(data.kpis.feePaidUbld.current, 6)} BLD`
@@ -909,30 +922,42 @@ export function Dashboard() {
 
           <section id={dashboardSectionIds.transactionActivity} className="scroll-mt-6 space-y-4">
             <h2 className={SECTION_HEADING_CLASS}>Transaction activity</h2>
+            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+              Successful txs are whole transactions (ABCI code 0). They are{" "}
+              <strong className="font-medium text-[var(--color-text-secondary)]">not</strong> unique users or
+              wallets — compare only to participation metrics below with that in mind. IBC KPIs count messages or inbound
+              flows, not txs — see subtitles.
+            </p>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <KpiCard
                 title="Successful txs"
+                subtitle="Whole txs (ABCI 0), not unique addresses"
                 current={data.kpis.txSuccess.current}
                 previous={data.kpis.txSuccess.previous}
                 pct={data.kpis.txSuccess.pctChange}
               />
               <KpiCard
-                title="IBC transfers out (msgs)"
-                current={data.kpis.ibcTransferOutCount.current}
-                previous={data.kpis.ibcTransferOutCount.previous}
-                pct={data.kpis.ibcTransferOutCount.pctChange}
+                title="IBC outbound messages"
+                subtitle="MsgTransfer count (several per tx possible)"
+                current={data.kpis.ibcOutboundMsgCount.current}
+                previous={data.kpis.ibcOutboundMsgCount.previous}
+                pct={data.kpis.ibcOutboundMsgCount.pctChange}
               />
               <KpiCard
-                title="IBC recv packets (msgs)"
-                current={data.kpis.ibcTransferInCount.current}
-                previous={data.kpis.ibcTransferInCount.previous}
-                pct={data.kpis.ibcTransferInCount.pctChange}
+                title="IBC inbound (recv flows)"
+                subtitle="Headline count: ibc_transfer_flow_in when indexed; else MsgRecvPacket msgs"
+                current={data.kpis.ibcInboundRecvFlowCount.current}
+                previous={data.kpis.ibcInboundRecvFlowCount.previous}
+                pct={data.kpis.ibcInboundRecvFlowCount.pctChange}
               />
             </div>
           </section>
 
           <section id={dashboardSectionIds.volumeIbc} className="scroll-mt-6 space-y-3">
             <h2 className={SECTION_HEADING_CLASS}>Volume and IBC (time series)</h2>
+            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+              Activity counts only (successful txs vs outbound msgs + inbound recv-flow headline). Native token amounts live under Value handled. Series are agoric-3-local — see methodology for cross-chain interpretation.
+            </p>
             <div className="space-y-8 lg:space-y-10">
               <AllTxVsIbcLineChart data={chartAllTxVsIbc} timeAxis={timeAxis} />
               <IbcTrafficLineChart data={chartIbcTraffic} timeAxis={timeAxis} />
@@ -943,9 +968,11 @@ export function Dashboard() {
             <section id={dashboardSectionIds.participation} className="scroll-mt-6 space-y-4">
               <h2 className={SECTION_HEADING_CLASS}>Economic participation &amp; concentration</h2>
               <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
-                Addresses are not end users: bots, vaults, and protocol wallets can inflate counts.
-                The top-10 gross share uses USD spot estimates (same caveats as gross movement) on
-                sender-side transfer legs only — see methodology.
+                On-chain accounts, not people — signers (all pubkeys in the tx) and fee payers are counted separately; distinct lines dedupe per day across roles. Bots, vaults, relayers, and contracts count like any account.{" "}
+                <strong className="font-medium text-[var(--color-text-secondary)]">
+                  Do not rank or ratio these counts against successful tx totals without normalization
+                </strong>{" "}
+                — one address can authorize many txs per day. Top-10 gross share: USD spot on sender-side transfer legs only (same spot caveat as Value handled) — see methodology.
               </p>
               {data.participation && chartDistinctAccountsRows.length > 0 && (
                 <DistinctAccountsLineChart
@@ -956,8 +983,16 @@ export function Dashboard() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {data.participation && (
                   <>
-                    <KpiCardLite title="Distinct signers (range)" value={data.participation.distinctSigners} />
-                    <KpiCardLite title="Distinct fee payers (range)" value={data.participation.distinctFeePayers} />
+                    <KpiCardLite
+                      title="Distinct signers (range)"
+                      subtitle="Unique signer addresses (multi-signer txs count each pubkey)"
+                      value={data.participation.distinctSigners}
+                    />
+                    <KpiCardLite
+                      title="Distinct fee payers (range)"
+                      subtitle="Unique resolved fee payers — not deduped vs signers"
+                      value={data.participation.distinctFeePayers}
+                    />
                     <KpiCardLite
                       title="Active 1 day only (in range)"
                       subtitle="Calendar days with any signer/fee role"
@@ -973,7 +1008,7 @@ export function Dashboard() {
                 {data.concentration && (
                   <KpiCardLite
                     title="Top 10 addresses — gross USD share"
-                    subtitle="Sender-attributed transfer legs"
+                    subtitle="Sender-attributed transfer legs · USD uses current spot like Value handled"
                     value={data.concentration.top10AddressShareGrossUsd ?? "—"}
                   />
                 )}
@@ -983,6 +1018,10 @@ export function Dashboard() {
                 data.participation.distinctUnionPerDay.length > 0 && (
                   <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
                     <h3 className={IN_CARD_TITLE_CLASS}>Distinct account addresses per calendar day</h3>
+                    <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+                      Daily union of signer ∪ fee payer for successful txs (deduped that day). Unlike successful-tx counts,
+                      each address is counted at most once per UTC day — many txs can still map to one row in this table.
+                    </p>
                     <div className="max-h-48 overflow-y-auto">
                       <table className="w-full border-collapse text-xs sm:text-sm">
                         <thead>
@@ -1045,7 +1084,7 @@ function KpiCard({
       {subtitle && <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p>}
       <p className="mt-2 font-mono text-2xl text-[var(--text)]">{current}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">
-        Prior window: <span className="font-mono text-[var(--text)]">{previous}</span>
+        Prior window (equal length): <span className="font-mono text-[var(--text)]">{previous}</span>
         {" · "}
         <span
           className={

@@ -1,6 +1,11 @@
 import { and, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/db/client";
 import { dailyMetrics, hourlyMetrics, indexerState } from "@/db/schema";
+import {
+  seriesIbcMsgCombinedOverTime,
+  seriesIbcRecvDisplayOverTime,
+  sumIbcRecvDisplay,
+} from "@/lib/ibcRollupDisplay";
 import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
 
 export type Granularity = "hour" | "day" | "week";
@@ -176,22 +181,6 @@ function seriesTransferVolumePlusIbcRecv(
   });
 }
 
-/** Per-bucket sum of several series (same dimension) — e.g. success+failed, or IBC out+in */
-function sumSeriesOverTime(
-  bucketMap: Map<string, Map<string, Map<string, bigint>>>,
-  seriesNames: readonly string[],
-  dimension = ""
-): { bucket: string; value: string }[] {
-  const keys = [...bucketMap.keys()].sort();
-  return keys.map((bucket) => {
-    let t = BigInt(0);
-    for (const s of seriesNames) {
-      t += bucketMap.get(bucket)?.get(s)?.get(dimension) ?? BigInt(0);
-    }
-    return { bucket, value: t.toString() };
-  });
-}
-
 function pctChange(current: bigint, previous: bigint): number | null {
   if (previous === BigInt(0)) return current === BigInt(0) ? 0 : null;
   return Number((current - previous) * BigInt(10000) / previous) / 100;
@@ -282,8 +271,8 @@ export async function buildMetricsPayload(
   const ibcOutCur = sumSeries(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
   const ibcOutPrev = sumSeries(prevBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
 
-  const ibcInCur = sumSeries(curBuckets, SERIES.IBC_TRANSFER_IN_COUNT);
-  const ibcInPrev = sumSeries(prevBuckets, SERIES.IBC_TRANSFER_IN_COUNT);
+  const ibcInCur = sumIbcRecvDisplay(curBuckets);
+  const ibcInPrev = sumIbcRecvDisplay(prevBuckets);
 
   /** Sum fees across all denoms (native units per denom kept separate in breakdown) */
   function sumAllFees(m: Map<string, Map<string, Map<string, bigint>>>) {
@@ -298,13 +287,10 @@ export async function buildMetricsPayload(
   const feeUbldCur = sumSeries(curBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
   const feeUbldPrev = sumSeries(prevBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
 
-  const txTotal = sumSeriesOverTime(curBuckets, [SERIES.TX_SUCCESS, SERIES.TX_FAILED]);
-  const ibcMsgCombined = sumSeriesOverTime(curBuckets, [
-    SERIES.IBC_TRANSFER_OUT_COUNT,
-    SERIES.IBC_TRANSFER_IN_COUNT,
-  ]);
+  const txTotal = seriesOverTime(curBuckets, SERIES.TX_SUCCESS);
+  const ibcMsgCombined = seriesIbcMsgCombinedOverTime(curBuckets);
   const ibcOutSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
-  const ibcInSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_IN_COUNT);
+  const ibcInSeries = seriesIbcRecvDisplayOverTime(curBuckets);
 
   const feeByDenomCurrent = feeDenomBreakdown(curBuckets);
 
@@ -362,12 +348,14 @@ export async function buildMetricsPayload(
         previous: gasPrev.toString(),
         pctChange: pctChange(gasCur, gasPrev),
       },
-      ibcTransferOutCount: {
+      /** Sum of MsgTransfer messages (`ibc_transfer_out_count`), not token amounts. */
+      ibcOutboundMsgCount: {
         current: ibcOutCur.toString(),
         previous: ibcOutPrev.toString(),
         pctChange: pctChange(ibcOutCur, ibcOutPrev),
       },
-      ibcTransferInCount: {
+      /** Display inbound recv headline (`ibc_transfer_flow_in` preferred; else `ibc_transfer_in_count`). */
+      ibcInboundRecvFlowCount: {
         current: ibcInCur.toString(),
         previous: ibcInPrev.toString(),
         pctChange: pctChange(ibcInCur, ibcInPrev),
@@ -386,11 +374,14 @@ export async function buildMetricsPayload(
     },
     series: {
       txTotal,
-      ibcMsgCombined,
-      ibcTransferOut: ibcOutSeries,
-      ibcTransferIn: ibcInSeries,
+      /** Outbound MsgTransfer msgs + inbound recv-flow headline counts per bucket (not amounts). */
+      ibcCombinedCounts: ibcMsgCombined,
+      ibcOutboundMsgs: ibcOutSeries,
+      ibcInboundRecvFlows: ibcInSeries,
       transferVolumeSeries,
+      /** Native minimal units from IBC recv events (`ibc_transfer_amount_in`). */
       ibcAmountInSeries,
+      /** Native minimal units from decoded MsgTransfer (`ibc_transfer_amount_out`). */
       ibcAmountOutSeries,
     },
     transferVolumeByDenom: transferByDenom,

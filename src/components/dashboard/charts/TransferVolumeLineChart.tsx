@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { chartTheme } from "@/lib/chartTheme";
+import { filterNonZeroTooltipPayload, formatTooltipNumber } from "@/lib/rechartsTooltip";
 
 const LINE_STROKES = [
   chartTheme.lineA,
@@ -76,7 +77,8 @@ export default function TransferVolumeLineChart({
         Gross in-tx movement (per asset)
       </h3>
       <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">
-        Per-bucket total = transfer messages (send / multi / out) + IBC <strong className="font-medium text-[var(--color-text-secondary)]">recv</strong> for that denom — same as the table above. Human-scaled when mapped in{" "}
+        Per-bucket total = transfer <strong className="font-medium text-[var(--color-text-secondary)]">message</strong> amounts (send / multi / out) + IBC{" "}
+        <strong className="font-medium text-[var(--color-text-secondary)]">recv</strong> for that denom — same as the table above; a single tx with several msgs adds several legs. Human-scaled when mapped in{" "}
         <code className="text-[var(--accent)]">src/config/denoms.json</code>. Y-axis mixes assets. IBC flow chart below keeps recv/out split.
       </p>
       {hasData ? (
@@ -125,8 +127,9 @@ export default function TransferVolumeLineChart({
                   <XAxis {...timeAxis} />
                   <YAxis yAxisId={0} tick={{ fill: chartTheme.axisTick, fontSize: 10 }} />
                   <Tooltip
-                    content={({ label: lb, active, payload: pl }) =>
-                      active && pl && pl.length ? (
+                    content={({ label: lb, active, payload: pl }) => {
+                      const filtered = filterNonZeroTooltipPayload(pl);
+                      return active && filtered.length ? (
                         <div
                           className="max-h-64 overflow-y-auto rounded-md border p-2 text-xs"
                           style={{
@@ -135,20 +138,19 @@ export default function TransferVolumeLineChart({
                           }}
                         >
                           <p style={{ color: chartTheme.tooltipMuted }}>{String(lb)}</p>
-                          {pl.map((e, i) => {
+                          {filtered.map((e, i) => {
                             const y = e.value;
-                            if (y == null || y === undefined) return null;
                             const meta = visibleSeries.find((s) => s.chartKey === e.dataKey);
                             const title = meta?.denom ?? String(e.dataKey);
                             return (
                               <p key={i} style={{ color: chartTheme.tooltipText }} title={title}>
-                                {e.name}: {typeof y === "number" ? y.toLocaleString() : y}
+                                {String(e.name ?? "")}: {formatTooltipNumber(y)}
                               </p>
                             );
                           })}
                         </div>
-                      ) : null
-                    }
+                      ) : null;
+                    }}
                   />
                   <Legend
                     verticalAlign="bottom"
