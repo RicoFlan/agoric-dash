@@ -20,8 +20,11 @@
     "db:push": "drizzle-kit push",
     "indexer": "tsx scripts/indexer.ts",
     "scan:ibc-recv-day": "tsx scripts/scanIbcRecvDay.ts",
+    "inspect:ibc-recv-tx-events": "tsx scripts/inspectIbcRecvTxEventAmounts.ts",
     "validate:uist-apr2026": "bash scripts/validateUistIbcApril2026.sh",
     "backfill:ibc-flow-in": "tsx scripts/backfillIbcTransferFlowIn.ts",
+    "backfill:bank-credits": "tsx scripts/backfillBankCreditsVolume.ts",
+    "enumerate:module-accounts": "tsx scripts/enumerateModuleAccounts.ts",
     "parity:rollup": "tsx scripts/verifyRollupParity.ts",
     "test": "vitest run",
     "test:watch": "vitest"

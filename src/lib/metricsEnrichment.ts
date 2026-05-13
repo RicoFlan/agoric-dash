@@ -10,8 +10,12 @@ function collectTransferRelatedDenoms(p: MetricsApiPayload): Set<string> {
   for (const d of Object.keys(p.feePaidByDenom)) s.add(d);
   for (const d of Object.keys(p.feePaidByDenomPrevious)) s.add(d);
   for (const d of Object.keys(p.transferVolumeByDenom)) s.add(d);
+  for (const d of Object.keys(p.bankCreditsVolumeByDenom ?? {})) s.add(d);
   for (const tv of p.series.transferVolumeSeries) {
     if (tv.denom) s.add(tv.denom);
+  }
+  for (const bc of p.series.bankCreditsVolumeSeries ?? []) {
+    if (bc.denom) s.add(bc.denom);
   }
   for (const ibc of p.series.ibcAmountInSeries) {
     if (ibc.denom) s.add(ibc.denom);

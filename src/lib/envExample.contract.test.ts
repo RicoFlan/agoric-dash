@@ -19,6 +19,7 @@ describe(".env.example", () => {
 
   it("documents tail mode and RPC", () => {
     expect(raw).toMatch(/RPC_URL=/);
+    expect(raw).toMatch(/^RPC_URL_FALLBACK=/m);
     expect(raw).toMatch(/INDEXER_BATCH=/);
     expect(raw).toMatch(/INDEXER_POLL_MS=/);
     expect(raw).toMatch(/INDEXER_LAG=/);
@@ -26,6 +27,14 @@ describe(".env.example", () => {
 
   it("documents optional CoinGecko key for USD estimates", () => {
     expect(raw).toMatch(/COINGECKO_API_KEY/);
+  });
+
+  it("documents per-block RPC retries for indexer and backfills", () => {
+    expect(raw).toMatch(/INDEXER_RPC_RETRIES=/);
+  });
+
+  it("documents optional backfill skip-delete flag", () => {
+    expect(raw).toMatch(/BACKFILL_SKIP_DELETE/);
   });
 
   it("documents optional scanIbcRecvDay env overrides", () => {

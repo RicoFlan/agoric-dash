@@ -17,4 +17,9 @@ describe("METRIC_DICTIONARY", () => {
     const ids = METRIC_DICTIONARY.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it("ibc_transfer_amount_in inclusionRule references investigation doc", () => {
+    const row = METRIC_DICTIONARY.find((d) => d.seriesKey === SERIES.IBC_TRANSFER_AMOUNT_IN);
+    expect(row?.inclusionRule).toContain("ibcTransferAmountInEventInvestigation.md");
+  });
 });

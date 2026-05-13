@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -39,9 +39,24 @@ type XAxisSpread = ComponentProps<typeof XAxis>;
 export default function TransferVolumeLineChart({
   model,
   timeAxis,
+  heading = "Gross in-tx movement (per asset)",
+  description = (
+    <>
+      Per-bucket total = transfer <strong className="font-medium text-[var(--color-text-secondary)]">message</strong> amounts (send / multi / out) + IBC{" "}
+      <strong className="font-medium text-[var(--color-text-secondary)]">recv</strong> for that denom — same as the table above; a single tx with several msgs adds several legs. Human-scaled when mapped in{" "}
+      <code className="text-[var(--accent)]">src/config/denoms.json</code>. Y-axis mixes assets. IBC flow chart below keeps recv/out split.
+    </>
+  ),
+  emptyMessage = "No bank / outbound IBC transfer amounts in the selected range.",
 }: {
   model: TransferVolumeModel;
   timeAxis: XAxisSpread;
+  /** Card title (default: gross movement). */
+  heading?: string;
+  /** Intro paragraph under the title. */
+  description?: ReactNode;
+  /** Shown when the model has no series. */
+  emptyMessage?: string;
 }) {
   const { rows, series } = model;
   const hasData = series.length > 0;
@@ -74,13 +89,9 @@ export default function TransferVolumeLineChart({
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
       <h3 className="mb-3 border-b border-[var(--border)] pb-2 text-lg font-semibold leading-tight text-[var(--color-text-primary)]">
-        Gross in-tx movement (per asset)
+        {heading}
       </h3>
-      <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">
-        Per-bucket total = transfer <strong className="font-medium text-[var(--color-text-secondary)]">message</strong> amounts (send / multi / out) + IBC{" "}
-        <strong className="font-medium text-[var(--color-text-secondary)]">recv</strong> for that denom — same as the table above; a single tx with several msgs adds several legs. Human-scaled when mapped in{" "}
-        <code className="text-[var(--accent)]">src/config/denoms.json</code>. Y-axis mixes assets. IBC flow chart below keeps recv/out split.
-      </p>
+      <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">{description}</p>
       {hasData ? (
         <>
           <fieldset className="mb-4 rounded-md border border-[var(--border)]/80 bg-[var(--bg)]/40 p-3">
@@ -183,7 +194,7 @@ export default function TransferVolumeLineChart({
           )}
         </>
       ) : (
-        <p className="text-sm text-[var(--muted)]">No bank / outbound IBC transfer amounts in the selected range.</p>
+        <p className="text-sm text-[var(--muted)]">{emptyMessage}</p>
       )}
     </div>
   );

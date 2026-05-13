@@ -18,14 +18,26 @@ function anyCoinTransferHasMsgIndex(events: ReadonlyArray<TxEventLike>): boolean
   return false;
 }
 
+export type SumRecvCoinOptions = {
+  /**
+   * Indices in `TxBody.messages` that are MsgRecvPacket. When tx events include `msg_index` on
+   * `coin_received` / `transfer`, only those events are summed; otherwise legacy full-tx sum applies.
+   */
+  recvPacketMsgIndices?: Set<number>;
+};
+
 function mergeAmountsInto(
   merged: Map<string, bigint>,
   events: ReadonlyArray<TxEventLike>,
   recvPacketMsgIndices: Set<number> | undefined,
-  filterByMsgIndex: boolean
+  filterByMsgIndex: boolean,
+  /** When set, only these event types contribute (subset of coin_received / transfer). */
+  onlyTypes?: ReadonlySet<string>
 ) {
   for (const ev of events) {
-    if (!isCoinOrTransfer(ev)) continue;
+    if (onlyTypes) {
+      if (!onlyTypes.has(ev.type)) continue;
+    } else if (!isCoinOrTransfer(ev)) continue;
     if (filterByMsgIndex && recvPacketMsgIndices && recvPacketMsgIndices.size > 0) {
       const mi = parseMsgIndexFromAttributes(ev.attributes);
       if (mi === undefined || !recvPacketMsgIndices.has(mi)) continue;
@@ -39,13 +51,76 @@ function mergeAmountsInto(
   }
 }
 
-export type SumRecvCoinOptions = {
-  /**
-   * Indices in `TxBody.messages` that are MsgRecvPacket. When tx events include `msg_index` on
-   * `coin_received` / `transfer`, only those events are summed; otherwise legacy full-tx sum applies.
-   */
-  recvPacketMsgIndices?: Set<number>;
+function mergeAmountsCopy(
+  events: ReadonlyArray<TxEventLike>,
+  recvPacketMsgIndices: Set<number> | undefined,
+  filterByMsgIndex: boolean,
+  onlyTypes?: ReadonlySet<string>
+): Map<string, bigint> {
+  const merged = new Map<string, bigint>();
+  mergeAmountsInto(merged, events, recvPacketMsgIndices, filterByMsgIndex, onlyTypes);
+  return merged;
+}
+
+export type DiagnoseRecvCoinAmountsResult = {
+  /** Same result as {@link sumRecvCoinAmountsFromTxEvents}. */
+  combined: Map<string, bigint>;
+  /** Amounts parsed only from `coin_received` events (same msg_index / legacy rules as combined). */
+  fromCoinReceived: Map<string, bigint>;
+  /** Amounts parsed only from `transfer` events (same rules). */
+  fromTransfer: Map<string, bigint>;
+  /** Whether msg_index scoping was applied for the winning branch. */
+  usedMsgIndexFilter: boolean;
+  /** True only when msg_index filtering was attempted, yielded no amounts, and tx-wide sum was used. */
+  usedLegacyFallback: boolean;
 };
+
+/**
+ * Diagnostic split for investigating whether `coin_received` and `transfer` emissions double-count
+ * the same movement for IBC-in-style event sums. Used by `scripts/inspectIbcRecvTxEventAmounts.ts`.
+ */
+export function diagnoseRecvCoinAmountsByEventType(
+  events: ReadonlyArray<TxEventLike>,
+  options?: SumRecvCoinOptions
+): DiagnoseRecvCoinAmountsResult {
+  const recvIdx = options?.recvPacketMsgIndices;
+  const shouldTryFilter =
+    recvIdx !== undefined && recvIdx.size > 0 && anyCoinTransferHasMsgIndex(events);
+
+  const coinTypes = new Set<string>(["coin_received"]);
+  const xferTypes = new Set<string>(["transfer"]);
+
+  if (!shouldTryFilter) {
+    const combined = mergeAmountsCopy(events, recvIdx, false);
+    return {
+      combined,
+      fromCoinReceived: mergeAmountsCopy(events, recvIdx, false, coinTypes),
+      fromTransfer: mergeAmountsCopy(events, recvIdx, false, xferTypes),
+      usedMsgIndexFilter: false,
+      usedLegacyFallback: false,
+    };
+  }
+
+  const filteredCombined = mergeAmountsCopy(events, recvIdx, true);
+  if (filteredCombined.size > 0) {
+    return {
+      combined: filteredCombined,
+      fromCoinReceived: mergeAmountsCopy(events, recvIdx, true, coinTypes),
+      fromTransfer: mergeAmountsCopy(events, recvIdx, true, xferTypes),
+      usedMsgIndexFilter: true,
+      usedLegacyFallback: false,
+    };
+  }
+
+  const legacyCombined = mergeAmountsCopy(events, recvIdx, false);
+  return {
+    combined: legacyCombined,
+    fromCoinReceived: mergeAmountsCopy(events, recvIdx, false, coinTypes),
+    fromTransfer: mergeAmountsCopy(events, recvIdx, false, xferTypes),
+    usedMsgIndexFilter: false,
+    usedLegacyFallback: true,
+  };
+}
 
 /**
  * Event type / attribute keys match Cosmos SDK & ibc-go emission conventions — verify on major upgrades
@@ -68,18 +143,13 @@ export function sumRecvCoinAmountsFromTxEvents(
     recvIdx !== undefined && recvIdx.size > 0 && anyCoinTransferHasMsgIndex(events);
 
   if (!shouldTryFilter) {
-    const merged = new Map<string, bigint>();
-    mergeAmountsInto(merged, events, recvIdx, false);
-    return merged;
+    return mergeAmountsCopy(events, recvIdx, false);
   }
 
-  const filtered = new Map<string, bigint>();
-  mergeAmountsInto(filtered, events, recvIdx, true);
+  const filtered = mergeAmountsCopy(events, recvIdx, true);
   if (filtered.size > 0) return filtered;
 
-  const legacy = new Map<string, bigint>();
-  mergeAmountsInto(legacy, events, recvIdx, false);
-  return legacy;
+  return mergeAmountsCopy(events, recvIdx, false);
 }
 
 /**

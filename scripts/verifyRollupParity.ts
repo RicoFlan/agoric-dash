@@ -24,14 +24,21 @@ import {
   utcDayMillisBounds,
 } from "../src/lib/metricsRollupParity";
 import {
-  rpcCall,
+  rpcCallWithFallback,
   type RpcBlockResponse,
   type RpcBlockResultsResponse,
 } from "../src/lib/rpc";
 import { SERIES } from "../src/lib/semantics";
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const RPC_URL = process.env.RPC_URL ?? "https://main.rpc.agoric.net";
+/**
+ * Primary CometBFT RPC. Defaults to the canonical Agoric mainnet RPC when unset.
+ * `RPC_URL_FALLBACK` is opt-in; when set, each call tries primary first and
+ * fails over per-call (no sticky state) — see {@link rpcCallWithFallback}.
+ */
+const RPC_URL_PRIMARY = process.env.RPC_URL ?? "https://main-a.rpc.agoric.net";
+const RPC_URL_FALLBACK = process.env.RPC_URL_FALLBACK ?? "";
+const RPC_URLS: readonly string[] = [RPC_URL_PRIMARY, RPC_URL_FALLBACK];
 
 const pool = DATABASE_URL ? new pg.Pool({ connectionString: DATABASE_URL }) : null;
 const db = pool ? drizzle(pool, { schema }) : null;
@@ -50,12 +57,12 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
 
-async function rpcCallRetry<T>(rpcUrl: string, method: string, params: unknown): Promise<T> {
+async function rpcCallRetry<T>(rpcUrls: readonly string[], method: string, params: unknown): Promise<T> {
   const max = 8;
   let last: unknown;
   for (let attempt = 1; attempt <= max; attempt++) {
     try {
-      return await rpcCall<T>(rpcUrl, method, params);
+      return await rpcCallWithFallback<T>(rpcUrls, method, params);
     } catch (e) {
       last = e;
       if (attempt === max) throw e;
@@ -65,14 +72,21 @@ async function rpcCallRetry<T>(rpcUrl: string, method: string, params: unknown):
   throw last;
 }
 
-async function latestHeight(rpcUrl: string): Promise<bigint> {
-  const st = await rpcCall<{ sync_info: { latest_block_height: string } }>(rpcUrl, "status", {});
+async function latestHeight(rpcUrls: readonly string[]): Promise<bigint> {
+  const st = await rpcCallWithFallback<{ sync_info: { latest_block_height: string } }>(
+    rpcUrls,
+    "status",
+    {}
+  );
   return BigInt(st.sync_info.latest_block_height);
 }
 
-async function blockTimeMsAtHeightOrNull(rpcUrl: string, height: bigint): Promise<number | null> {
+async function blockTimeMsAtHeightOrNull(
+  rpcUrls: readonly string[],
+  height: bigint
+): Promise<number | null> {
   try {
-    const block = await rpcCallRetry<RpcBlockResponse>(rpcUrl, "block", { height: height.toString() });
+    const block = await rpcCallRetry<RpcBlockResponse>(rpcUrls, "block", { height: height.toString() });
     const t = block.block?.header?.time;
     if (!t) return null;
     const ms = new Date(t).getTime();
@@ -82,12 +96,12 @@ async function blockTimeMsAtHeightOrNull(rpcUrl: string, height: bigint): Promis
   }
 }
 
-async function findEarliestQueryableHeight(rpcUrl: string, tip: bigint): Promise<bigint> {
+async function findEarliestQueryableHeight(rpcUrls: readonly string[], tip: bigint): Promise<bigint> {
   let lo = BigInt(1);
   let hi = tip;
   while (lo < hi) {
     const mid = (lo + hi) / BigInt(2);
-    const ok = (await blockTimeMsAtHeightOrNull(rpcUrl, mid)) !== null;
+    const ok = (await blockTimeMsAtHeightOrNull(rpcUrls, mid)) !== null;
     if (ok) hi = mid;
     else lo = mid + BigInt(1);
   }
@@ -95,30 +109,30 @@ async function findEarliestQueryableHeight(rpcUrl: string, tip: bigint): Promise
 }
 
 async function firstQueryableHeightFrom(
-  rpcUrl: string,
+  rpcUrls: readonly string[],
   start: bigint,
   tip: bigint
 ): Promise<bigint> {
   let h = start;
   while (h <= tip) {
-    if ((await blockTimeMsAtHeightOrNull(rpcUrl, h)) !== null) return h;
+    if ((await blockTimeMsAtHeightOrNull(rpcUrls, h)) !== null) return h;
     h += BigInt(1);
   }
   return tip + BigInt(1);
 }
 
 async function findHeightAtOrAfterTime(
-  rpcUrl: string,
+  rpcUrls: readonly string[],
   targetMs: number,
   tip: bigint
 ): Promise<bigint> {
-  let earliestQueryable = await findEarliestQueryableHeight(rpcUrl, tip);
-  earliestQueryable = await firstQueryableHeightFrom(rpcUrl, earliestQueryable, tip);
-  const earliestMs = await blockTimeMsAtHeightOrNull(rpcUrl, earliestQueryable);
+  let earliestQueryable = await findEarliestQueryableHeight(rpcUrls, tip);
+  earliestQueryable = await firstQueryableHeightFrom(rpcUrls, earliestQueryable, tip);
+  const earliestMs = await blockTimeMsAtHeightOrNull(rpcUrls, earliestQueryable);
   if (earliestMs === null) return tip + BigInt(1);
   if (targetMs <= earliestMs) return earliestQueryable;
 
-  const tipMs = await blockTimeMsAtHeightOrNull(rpcUrl, tip);
+  const tipMs = await blockTimeMsAtHeightOrNull(rpcUrls, tip);
   if (tipMs === null) throw new Error("Tip block has no header time");
   if (targetMs > tipMs) return tip + BigInt(1);
 
@@ -126,7 +140,7 @@ async function findHeightAtOrAfterTime(
   let hi = tip;
   while (lo < hi) {
     const mid = (lo + hi) / BigInt(2);
-    const midMs = await blockTimeMsAtHeightOrNull(rpcUrl, mid);
+    const midMs = await blockTimeMsAtHeightOrNull(rpcUrls, mid);
     if (midMs === null) {
       lo = mid + BigInt(1);
       continue;
@@ -134,32 +148,32 @@ async function findHeightAtOrAfterTime(
     if (midMs < targetMs) lo = mid + BigInt(1);
     else hi = mid;
   }
-  return await firstQueryableHeightFrom(rpcUrl, lo, tip);
+  return await firstQueryableHeightFrom(rpcUrls, lo, tip);
 }
 
 async function fetchBlockPair(
-  rpcUrl: string,
+  rpcUrls: readonly string[],
   height: bigint
 ): Promise<{ block: RpcBlockResponse; results: RpcBlockResultsResponse }> {
   const hStr = height.toString();
   const [block, results] = await Promise.all([
-    rpcCallRetry<RpcBlockResponse>(rpcUrl, "block", { height: hStr }),
-    rpcCallRetry<RpcBlockResultsResponse>(rpcUrl, "block_results", { height: hStr }),
+    rpcCallRetry<RpcBlockResponse>(rpcUrls, "block", { height: hStr }),
+    rpcCallRetry<RpcBlockResultsResponse>(rpcUrls, "block_results", { height: hStr }),
   ]);
   return { block, results };
 }
 
 async function replayIbcFlowInForDay(
-  rpcUrl: string,
+  rpcUrls: readonly string[],
   dayUtc: string,
   maxHeightInclusive: bigint
 ): Promise<bigint> {
   const { startMs, endMs } = utcDayMillisBounds(dayUtc);
-  const tip = await latestHeight(rpcUrl);
+  const tip = await latestHeight(rpcUrls);
   const tipBound = tip < maxHeightInclusive ? tip : maxHeightInclusive;
 
-  const hStart = await findHeightAtOrAfterTime(rpcUrl, startMs, tipBound);
-  const hEndExclusive = await findHeightAtOrAfterTime(rpcUrl, endMs, tipBound);
+  const hStart = await findHeightAtOrAfterTime(rpcUrls, startMs, tipBound);
+  const hEndExclusive = await findHeightAtOrAfterTime(rpcUrls, endMs, tipBound);
 
   if (hStart > tipBound || hStart >= hEndExclusive) {
     console.warn(
@@ -181,7 +195,7 @@ async function replayIbcFlowInForDay(
     for (let i = 0; i < concurrency && cursor <= last; i++, cursor++) {
       batch.push(cursor);
     }
-    const pairs = await Promise.all(batch.map((h) => fetchBlockPair(rpcUrl, h)));
+    const pairs = await Promise.all(batch.map((h) => fetchBlockPair(rpcUrls, h)));
     for (const { block, results } of pairs) {
       accumulateIbcTransferFlowInFromBlock(block, results, daily, hourly);
     }
@@ -253,7 +267,7 @@ async function main() {
       return;
     }
     const cursorH = BigInt(cursorStr);
-    const replayed = await replayIbcFlowInForDay(RPC_URL, day, cursorH);
+    const replayed = await replayIbcFlowInForDay(RPC_URLS, day, cursorH);
 
     const dbFlow = daily.find((r) => r.series === SERIES.IBC_TRANSFER_FLOW_IN && r.dimension === "");
     const dbVal = dbFlow ? BigInt(dbFlow.value || "0") : BigInt(0);

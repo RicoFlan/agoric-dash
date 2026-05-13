@@ -16,4 +16,10 @@ describe("SERIES_ROLLUP_SOURCE", () => {
       expect(doc.primary.trim().length).toBeGreaterThan(15);
     }
   });
+
+  it("ibc_transfer_amount_in secondary notes gross index and investigation doc", () => {
+    const doc = SERIES_ROLLUP_SOURCE[SERIES.IBC_TRANSFER_AMOUNT_IN];
+    expect(doc.secondary).toContain("ibcTransferAmountInEventInvestigation.md");
+    expect(doc.secondary).toMatch(/gross|same credit/i);
+  });
 });

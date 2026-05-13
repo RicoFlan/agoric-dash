@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transferVolumeTableByDenom } from "@/lib/metricsQuery";
+import { bankCreditsVolumeTableByDenom, transferVolumeTableByDenom } from "@/lib/metricsQuery";
 import { SERIES } from "@/lib/semantics";
 
 function makeBucketMap(
@@ -32,5 +32,26 @@ describe("transferVolumeTableByDenom", () => {
       [SERIES.IBC_TRANSFER_AMOUNT_IN]: { uatom: BigInt(5) },
     });
     expect(transferVolumeTableByDenom(m)).toEqual({ uatom: "15" });
+  });
+});
+
+describe("bankCreditsVolumeTableByDenom", () => {
+  it("returns only non-zero bank_credits_volume denoms", () => {
+    const m = makeBucketMap({
+      [SERIES.BANK_CREDITS_VOLUME]: { ubld: BigInt(1000), uist: BigInt(0) },
+    });
+    expect(bankCreditsVolumeTableByDenom(m)).toEqual({ ubld: "1000" });
+  });
+
+  it("sums across buckets for the same denom", () => {
+    const b1 = new Map<string, Map<string, bigint>>();
+    b1.set(SERIES.BANK_CREDITS_VOLUME, new Map([["ubld", BigInt(100)]]));
+    const b2 = new Map<string, Map<string, bigint>>();
+    b2.set(SERIES.BANK_CREDITS_VOLUME, new Map([["ubld", BigInt(50)]]));
+    const m = new Map([
+      ["2026-01-01", b1],
+      ["2026-01-02", b2],
+    ]);
+    expect(bankCreditsVolumeTableByDenom(m)).toEqual({ ubld: "150" });
   });
 });

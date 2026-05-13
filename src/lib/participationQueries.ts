@@ -1,11 +1,19 @@
 /**
  * Participation aggregates over `participant_day` — semantics match {@link PARTICIPANT_ROLES}
  * and `participantRollupPolicy.ts`.
+ *
+ * Agoric module accounts are excluded from every count and from per-address volume totals via
+ * `AGORIC_MODULE_ACCOUNT_ADDRESSES` (read-time filter; the indexer still writes every observed
+ * address into `participant_day` / `address_volume_day` so the blocklist can evolve without
+ * re-indexing).
  */
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, notInArray, sql } from "drizzle-orm";
 import { db, pool } from "@/db/client";
 import { addressVolumeDay, participantDay } from "@/db/schema";
+import { AGORIC_MODULE_ACCOUNT_ADDRESSES } from "@/lib/agoricModuleAccounts";
 import { PARTICIPANT_ROLES } from "@/lib/participantRollupPolicy";
+
+const MODULE_ACCOUNT_ADDRS: string[] = [...AGORIC_MODULE_ACCOUNT_ADDRESSES];
 
 export type ParticipationRangeStats = {
   distinctSigners: number;
@@ -26,7 +34,8 @@ export async function queryParticipationRange(
       and(
         eq(participantDay.role, PARTICIPANT_ROLES.SIGNER),
         gte(participantDay.day, fromDay),
-        lte(participantDay.day, toDay)
+        lte(participantDay.day, toDay),
+        notInArray(participantDay.address, MODULE_ACCOUNT_ADDRS)
       )
     );
 
@@ -37,7 +46,8 @@ export async function queryParticipationRange(
       and(
         eq(participantDay.role, PARTICIPANT_ROLES.FEE_PAYER),
         gte(participantDay.day, fromDay),
-        lte(participantDay.day, toDay)
+        lte(participantDay.day, toDay),
+        notInArray(participantDay.address, MODULE_ACCOUNT_ADDRS)
       )
     );
 
@@ -46,13 +56,14 @@ export async function queryParticipationRange(
        SELECT address, COUNT(DISTINCT day)::int AS da
        FROM participant_day
        WHERE day >= $1::date AND day <= $2::date
+         AND address <> ALL($3::text[])
        GROUP BY address
      )
      SELECT
        COUNT(*) FILTER (WHERE da = 1)::text AS single_d,
        COUNT(*) FILTER (WHERE da > 1)::text AS multi_d
      FROM per`,
-    [fromDay, toDay]
+    [fromDay, toDay, MODULE_ACCOUNT_ADDRS]
   );
   const splitRow = splitRes.rows[0];
 
@@ -60,9 +71,10 @@ export async function queryParticipationRange(
     `SELECT day::text AS d, COUNT(DISTINCT address)::text AS c
      FROM participant_day
      WHERE day >= $1::date AND day <= $2::date
+       AND address <> ALL($3::text[])
      GROUP BY day
      ORDER BY day`,
-    [fromDay, toDay]
+    [fromDay, toDay, MODULE_ACCOUNT_ADDRS]
   );
 
   return {
@@ -89,7 +101,13 @@ export async function queryAddressVolumeTotals(
       v: sql<string>`sum(${addressVolumeDay.volume})::text`,
     })
     .from(addressVolumeDay)
-    .where(and(gte(addressVolumeDay.day, fromDay), lte(addressVolumeDay.day, toDay)))
+    .where(
+      and(
+        gte(addressVolumeDay.day, fromDay),
+        lte(addressVolumeDay.day, toDay),
+        notInArray(addressVolumeDay.address, MODULE_ACCOUNT_ADDRS)
+      )
+    )
     .groupBy(addressVolumeDay.address, addressVolumeDay.denom);
 
   const volumeByAddressDenom = new Map<string, Map<string, bigint>>();

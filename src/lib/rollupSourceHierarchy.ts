@@ -46,6 +46,12 @@ export const SERIES_ROLLUP_SOURCE: Record<(typeof SERIES)[keyof typeof SERIES], 
     primary: "Decoded MsgSend / MsgMultiSend / MsgTransfer bodies (amount fields)",
     secondary: "Successful txs only",
   },
+  [SERIES.BANK_CREDITS_VOLUME]: {
+    primary:
+      "tx_result.events: `coin_received` amounts summed per denom across each successful tx",
+    secondary:
+      "Receiver filtered against AGORIC_MODULE_ACCOUNT_ADDRESSES (agoricModuleAccounts.ts); not gated by MsgRecvPacket — overlaps but is distinct from ibc_transfer_amount_in; finalize-block events out of scope per indexerIngestScope.ts",
+  },
   [SERIES.IBC_TRANSFER_OUT_COUNT]: {
     primary: "Decoded MsgTransfer messages (count per message in tx)",
     secondary: "Successful txs only",
@@ -65,6 +71,6 @@ export const SERIES_ROLLUP_SOURCE: Record<(typeof SERIES)[keyof typeof SERIES], 
   [SERIES.IBC_TRANSFER_AMOUNT_IN]: {
     primary: "tx_result.events: coin_received + transfer attribute amounts (sumRecvCoinAmountsFromTxEvents)",
     secondary:
-      "When events expose msg_index, amounts are summed only for MsgRecvPacket message indices; legacy RPC without msg_index falls back to tx-wide sum",
+      "When events expose msg_index, amounts are summed only for MsgRecvPacket message indices; legacy RPC without msg_index falls back to tx-wide sum; typical paths emit both event types for the same credit (gross index — docs/ibcTransferAmountInEventInvestigation.md)",
   },
 };

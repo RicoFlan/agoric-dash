@@ -43,6 +43,15 @@ export type MetricDefinition = {
  */
 export const METRIC_DICTIONARY: readonly MetricDefinition[] = [
   {
+    id: SERIES.BANK_CREDITS_VOLUME,
+    seriesKey: SERIES.BANK_CREDITS_VOLUME,
+    storage: "daily_metrics_hourly_metrics",
+    grain: "mixed",
+    successScope: "successful_tx_only",
+    inclusionRule:
+      "Per successful tx: sum `coin_received` event `amount` fields per denom for events whose `receiver` is not in `AGORIC_MODULE_ACCOUNT_ADDRESSES` (agoricModuleAccounts.ts). Captures value moved to user-owned addresses via any encompassing message — bank sends, IBC recv credits, Agoric bridge messages — independent of decoded Msg* coverage; routing legs through module accounts (e.g., vbank/*) are excluded; multi-recipient credits each contribute.",
+  },
+  {
     id: SERIES.FEE_PAID,
     seriesKey: SERIES.FEE_PAID,
     storage: "daily_metrics_hourly_metrics",
@@ -67,7 +76,7 @@ export const METRIC_DICTIONARY: readonly MetricDefinition[] = [
     grain: "mixed",
     successScope: "successful_tx_only",
     inclusionRule:
-      "Per successful tx with MsgRecvPacket: sum coin_received/transfer credits (`sumRecvCoinAmountsFromTxEvents`), scoped by msg_index to MsgRecvPacket indices when present — once per tx.",
+      "Per successful tx with MsgRecvPacket: sum coin_received + transfer `amount` attributes (`sumRecvCoinAmountsFromTxEvents`), scoped by msg_index to MsgRecvPacket indices when present; both event types may repeat the same settlement (gross index, not deduped across families) — see docs/ibcTransferAmountInEventInvestigation.md.",
   },
   {
     id: SERIES.IBC_TRANSFER_AMOUNT_OUT,

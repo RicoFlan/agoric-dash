@@ -6,12 +6,12 @@
 #
 # Usage:
 #   ./scripts/validateUistIbcApril2026.sh | tee /tmp/uist-validation.log
-#   SCAN_CONCURRENCY=4 RPC_URL=https://main.rpc.agoric.net ./scripts/validateUistIbcApril2026.sh
+#   SCAN_CONCURRENCY=4 RPC_URL=https://main-a.rpc.agoric.net ./scripts/validateUistIbcApril2026.sh
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-export RPC_URL="${RPC_URL:-https://main.rpc.agoric.net}"
+export RPC_URL="${RPC_URL:-https://main-a.rpc.agoric.net}"
 export SCAN_CONCURRENCY="${SCAN_CONCURRENCY:-4}"
 
 # First height on/after day D 00:00 UTC -> first height on/after (D+1) 00:00 UTC (exclusive end).

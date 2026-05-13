@@ -3,7 +3,7 @@ import { clampMetricsRangeToIndexedHistory, validateMetricsQuery } from "@/lib/m
 import { enrichParticipationAndConcentration } from "@/lib/enrichParticipationConcentration";
 import { enrichMetricsForDisplay } from "@/lib/metricsEnrichment";
 import { buildMetricsPayload, type Granularity } from "@/lib/metricsQuery";
-import { enrichTransferVolumeUsdEstimates } from "@/lib/transferVolumeUsdEstimates";
+import { enrichTransferAndBankCreditsUsdEstimates } from "@/lib/transferVolumeUsdEstimates";
 import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
 
 export const dynamic = "force-dynamic";
@@ -46,13 +46,21 @@ export async function GET(req: NextRequest) {
   try {
     const payload = await buildMetricsPayload(qFrom, qTo, granularity);
     const display = enrichMetricsForDisplay(payload);
-    const usd = await enrichTransferVolumeUsdEstimates(payload.transferVolumeByDenom ?? {}, display);
+    const usd = await enrichTransferAndBankCreditsUsdEstimates(
+      payload.transferVolumeByDenom ?? {},
+      payload.bankCreditsVolumeByDenom ?? {},
+      display
+    );
     const fromDay = qFrom.slice(0, 10);
     const toDay = qTo.slice(0, 10);
+    const denomUnionForPricing: Record<string, string> = {
+      ...payload.bankCreditsVolumeByDenom,
+      ...payload.transferVolumeByDenom,
+    };
     const participationConcentration = await enrichParticipationAndConcentration(
       fromDay,
       toDay,
-      payload.transferVolumeByDenom ?? {},
+      denomUnionForPricing,
       display
     );
     return NextResponse.json({

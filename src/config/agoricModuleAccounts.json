@@ -1,0 +1,55 @@
+{
+  "$comment": "Module accounts on agoric-3. Cosmos SDK derives these deterministically from module names, so they only change when a chain upgrade adds a module. Refresh with `npm run enumerate:module-accounts`. Validated by src/lib/agoricModuleAccounts.contract.test.ts.",
+  "chainId": "agoric-3",
+  "fetchedAt": "2026-05-12T22:53:51.294Z",
+  "entries": [
+    {
+      "address": "agoric10d07y265gmmuvt4z0w9aw880jnsr700jgl36x9",
+      "name": "gov"
+    },
+    {
+      "address": "agoric125gtllckpj6vl7akjdcnuv93t5a4ly5920zedq",
+      "name": "vbank"
+    },
+    {
+      "address": "agoric17xpfvakm2amg962yls6f84z3kell8c5lzyplmt",
+      "name": "fee_collector"
+    },
+    {
+      "address": "agoric1ae0lmtzlgrcnla9xjkpaarq5d5dfez63h3nucl",
+      "name": "vbank/reserve"
+    },
+    {
+      "address": "agoric1dqu0urtys3zy5tdqq0ugeje5a27qf52k3zwucv",
+      "name": "vbank/giveaway"
+    },
+    {
+      "address": "agoric1fl48vsnmsdzcv85q5d2q4z5ajdha8yu38xtsfp",
+      "name": "bonded_tokens_pool"
+    },
+    {
+      "address": "agoric1jv65s3grqf6v6jl3dp4t6c9t9rk99cd84zxref",
+      "name": "distribution"
+    },
+    {
+      "address": "agoric1m3h30wlvsf8llruxtpukdvsy0km2kum86v98hk",
+      "name": "mint"
+    },
+    {
+      "address": "agoric1megzytg65cyrgzs6fvzxgrcqvwwl7ugpt62346",
+      "name": "vbank/provision"
+    },
+    {
+      "address": "agoric1tygms3xhhs3yv487phx3dw4a95jn7t7lnxhpl4",
+      "name": "not_bonded_tokens_pool"
+    },
+    {
+      "address": "agoric1vlthgax23ca9syk7xgaz347xmf4nunef445gux",
+      "name": "interchainaccounts"
+    },
+    {
+      "address": "agoric1yl6hdjhmkf37639730gffanpzndzdpmhuz5k84",
+      "name": "transfer"
+    }
+  ]
+}

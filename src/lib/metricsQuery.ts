@@ -296,6 +296,7 @@ export async function buildMetricsPayload(
 
   /** Table lists every denom with movement: bank + IBC out (transfer_volume) plus IBC recv (not double-counting IBC out). */
   const transferByDenom = transferVolumeTableByDenom(transferTableBuckets);
+  const bankCreditsByDenom = bankCreditsVolumeTableByDenom(transferTableBuckets);
   const feePaidByDenomPrevious = Object.fromEntries(feeDenomBreakdown(prevBuckets));
   const transferSums = aggregateDenomSeries(curBuckets, SERIES.TRANSFER_VOLUME);
   const ibcInSums = aggregateDenomSeries(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN);
@@ -314,6 +315,16 @@ export async function buildMetricsPayload(
   const transferVolumeSeries = transferDenomsSorted.map((denom) => ({
     denom,
     data: seriesTransferVolumePlusIbcRecv(curBuckets, denom),
+  }));
+
+  const bankCreditsSums = aggregateDenomSeries(curBuckets, SERIES.BANK_CREDITS_VOLUME);
+  const bankCreditsDenomsSorted = [...bankCreditsSums.entries()]
+    .filter(([, v]) => BigInt(v) > BigInt(0))
+    .sort((a, b) => (BigInt(b[1]) > BigInt(a[1]) ? 1 : BigInt(b[1]) < BigInt(a[1]) ? -1 : 0))
+    .map(([d]) => d);
+  const bankCreditsVolumeSeries = bankCreditsDenomsSorted.map((denom) => ({
+    denom,
+    data: seriesOverTime(curBuckets, SERIES.BANK_CREDITS_VOLUME, denom),
   }));
 
   const ibcInDenomsSorted = [...ibcInSums.entries()]
@@ -379,12 +390,15 @@ export async function buildMetricsPayload(
       ibcOutboundMsgs: ibcOutSeries,
       ibcInboundRecvFlows: ibcInSeries,
       transferVolumeSeries,
+      /** Native minimal units from `coin_received` to non-module receivers (`bank_credits_volume`). */
+      bankCreditsVolumeSeries,
       /** Native minimal units from IBC recv events (`ibc_transfer_amount_in`). */
       ibcAmountInSeries,
       /** Native minimal units from decoded MsgTransfer (`ibc_transfer_amount_out`). */
       ibcAmountOutSeries,
     },
     transferVolumeByDenom: transferByDenom,
+    bankCreditsVolumeByDenom: bankCreditsByDenom,
     feePaidByDenom: Object.fromEntries(feeByDenomCurrent),
     feePaidByDenomPrevious,
     indexer: await getIndexerStatus(),
@@ -428,6 +442,22 @@ export function transferVolumeTableByDenom(
   for (const d of keys) {
     const sum = BigInt(tv.get(d) ?? "0") + BigInt(ibcIn.get(d) ?? "0");
     if (sum > BigInt(0)) out[d] = sum.toString();
+  }
+  return out;
+}
+
+/**
+ * Range totals for `bank_credits_volume`: sums successful-tx `coin_received` credits to
+ * non-module-account receivers per denom (same indexer definition as `transferVolumeTableByDenom`
+ * grain — daily rows for the selected calendar range when used from `transferTableBuckets`).
+ */
+export function bankCreditsVolumeTableByDenom(
+  bucketMap: Map<string, Map<string, Map<string, bigint>>>
+): Record<string, string> {
+  const bc = aggregateDenomSeries(bucketMap, SERIES.BANK_CREDITS_VOLUME);
+  const out: Record<string, string> = {};
+  for (const [d, v] of bc) {
+    if (BigInt(v) > BigInt(0)) out[d] = v;
   }
   return out;
 }

@@ -5,11 +5,11 @@
  * investigate IBC "in" spikes in daily_metrics.
  *
  * Usage:
- *   RPC_URL=https://main.rpc.agoric.net npx tsx scripts/scanIbcRecvDay.ts --day=2026-04-01
+ *   RPC_URL=https://main-a.rpc.agoric.net npx tsx scripts/scanIbcRecvDay.ts --day=2026-04-01
  *   npx tsx scripts/scanIbcRecvDay.ts --day=2026-04-01 --denom=ibc/ABC... --denom=ibc/DEF...
  *
  * Env:
- *   RPC_URL (default: https://main.rpc.agoric.net)
+ *   RPC_URL (default: https://main-a.rpc.agoric.net)
  *   SCAN_CONCURRENCY — parallel block fetches (default 12; use 4 if the node rate-limits)
  *   SCAN_HEIGHT_START + SCAN_HEIGHT_END_EXCLUSIVE — optional decimal heights (skip time→height search;
  *     both required together; end is exclusive). Block RPC calls retry on transient failures.
@@ -22,7 +22,7 @@ import { decodeTxRawTx } from "../src/lib/cosmos";
 import { sumRecvCoinAmountsFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
 import { msgIndicesMatchingTypeUrl } from "../src/lib/txEventMsgIndex";
 import {
-  rpcCall,
+  rpcCallWithFallback,
   type RpcBlockResponse,
   type RpcBlockResultsResponse,
 } from "../src/lib/rpc";
@@ -32,7 +32,7 @@ import {
 } from "../src/lib/blockTxResultsPairing";
 import { MSG_RECV_PACKET, TX_SUCCESS_CODE } from "../src/lib/semantics";
 
-const DEFAULT_RPC = "https://main.rpc.agoric.net";
+const DEFAULT_RPC = "https://main-a.rpc.agoric.net";
 
 /** Default: both "AXL" ibc hash rows in src/config/denoms.json (different paths). */
 const DEFAULT_TARGET_DENOMS = [
@@ -42,14 +42,19 @@ const DEFAULT_TARGET_DENOMS = [
 
 function parseArgs(argv: string[]) {
   let day = "";
-  let rpc = process.env.RPC_URL ?? DEFAULT_RPC;
+  let rpcCliOverride: string | null = null;
   const denoms: string[] = [];
   for (const a of argv) {
     if (a.startsWith("--day=")) day = a.slice("--day=".length);
-    else if (a.startsWith("--rpc=")) rpc = a.slice("--rpc=".length);
+    else if (a.startsWith("--rpc=")) rpcCliOverride = a.slice("--rpc=".length);
     else if (a.startsWith("--denom=")) denoms.push(a.slice("--denom=".length));
   }
-  return { day, rpc, denoms: denoms.length > 0 ? denoms : DEFAULT_TARGET_DENOMS };
+  // Explicit --rpc=URL disables the env-based fallback so debug invocations stay scoped to one node.
+  const rpcUrls: readonly string[] =
+    rpcCliOverride !== null
+      ? [rpcCliOverride]
+      : [process.env.RPC_URL ?? DEFAULT_RPC, process.env.RPC_URL_FALLBACK ?? ""];
+  return { day, rpcUrls, denoms: denoms.length > 0 ? denoms : DEFAULT_TARGET_DENOMS };
 }
 
 function utcDayBounds(dayStr: string): { startMs: number; endMs: number; day: string } {
@@ -73,12 +78,16 @@ async function sleep(ms: number): Promise<void> {
 }
 
 /** Batch scanners hit rate limits and transient node faults — retry any RPC failure with backoff. */
-async function rpcCallRetry<T>(rpcUrl: string, method: string, params: unknown): Promise<T> {
+async function rpcCallRetry<T>(
+  rpcUrls: readonly string[],
+  method: string,
+  params: unknown
+): Promise<T> {
   const max = 8;
   let last: unknown;
   for (let attempt = 1; attempt <= max; attempt++) {
     try {
-      return await rpcCall<T>(rpcUrl, method, params);
+      return await rpcCallWithFallback<T>(rpcUrls, method, params);
     } catch (e) {
       last = e;
       if (attempt === max) throw e;
@@ -88,8 +97,12 @@ async function rpcCallRetry<T>(rpcUrl: string, method: string, params: unknown):
   throw last;
 }
 
-async function latestHeight(rpcUrl: string): Promise<bigint> {
-  const st = await rpcCall<{ sync_info: { latest_block_height: string } }>(rpcUrl, "status", {});
+async function latestHeight(rpcUrls: readonly string[]): Promise<bigint> {
+  const st = await rpcCallWithFallback<{ sync_info: { latest_block_height: string } }>(
+    rpcUrls,
+    "status",
+    {}
+  );
   return BigInt(st.sync_info.latest_block_height);
 }
 
@@ -98,20 +111,23 @@ async function latestHeight(rpcUrl: string): Promise<bigint> {
  * Treat missing header time like pruned / unavailable.
  * Retries transient HTTP failures — treating them as "no block" corrupts binary search for heights.
  */
-async function blockTimeMsAtHeightOrNull(rpcUrl: string, height: bigint): Promise<number | null> {
-  const block = await rpcCallRetry<RpcBlockResponse>(rpcUrl, "block", { height: height.toString() });
+async function blockTimeMsAtHeightOrNull(
+  rpcUrls: readonly string[],
+  height: bigint
+): Promise<number | null> {
+  const block = await rpcCallRetry<RpcBlockResponse>(rpcUrls, "block", { height: height.toString() });
   const t = block.block?.header?.time;
   if (!t) return null;
   const ms = new Date(t).getTime();
   return Number.isFinite(ms) ? ms : null;
 }
 
-async function findEarliestQueryableHeight(rpcUrl: string, tip: bigint): Promise<bigint> {
+async function findEarliestQueryableHeight(rpcUrls: readonly string[], tip: bigint): Promise<bigint> {
   let lo = BigInt(1);
   let hi = tip;
   while (lo < hi) {
     const mid = (lo + hi) / BigInt(2);
-    const ok = (await blockTimeMsAtHeightOrNull(rpcUrl, mid)) !== null;
+    const ok = (await blockTimeMsAtHeightOrNull(rpcUrls, mid)) !== null;
     if (ok) hi = mid;
     else lo = mid + BigInt(1);
   }
@@ -119,10 +135,14 @@ async function findEarliestQueryableHeight(rpcUrl: string, tip: bigint): Promise
 }
 
 /** Walk forward until we see a real header (handles sparse null `block` responses at prune edge). */
-async function firstQueryableHeightFrom(rpcUrl: string, start: bigint, tip: bigint): Promise<bigint> {
+async function firstQueryableHeightFrom(
+  rpcUrls: readonly string[],
+  start: bigint,
+  tip: bigint
+): Promise<bigint> {
   let h = start;
   while (h <= tip) {
-    if ((await blockTimeMsAtHeightOrNull(rpcUrl, h)) !== null) return h;
+    if ((await blockTimeMsAtHeightOrNull(rpcUrls, h)) !== null) return h;
     h += BigInt(1);
   }
   return tip + BigInt(1);
@@ -130,17 +150,17 @@ async function firstQueryableHeightFrom(rpcUrl: string, start: bigint, tip: bigi
 
 /** First height whose block time is >= targetMs. */
 async function findHeightAtOrAfterTime(
-  rpcUrl: string,
+  rpcUrls: readonly string[],
   targetMs: number,
   tip: bigint
 ): Promise<bigint> {
-  let earliestQueryable = await findEarliestQueryableHeight(rpcUrl, tip);
-  earliestQueryable = await firstQueryableHeightFrom(rpcUrl, earliestQueryable, tip);
-  const earliestMs = await blockTimeMsAtHeightOrNull(rpcUrl, earliestQueryable);
+  let earliestQueryable = await findEarliestQueryableHeight(rpcUrls, tip);
+  earliestQueryable = await firstQueryableHeightFrom(rpcUrls, earliestQueryable, tip);
+  const earliestMs = await blockTimeMsAtHeightOrNull(rpcUrls, earliestQueryable);
   if (earliestMs === null) return tip + BigInt(1);
   if (targetMs <= earliestMs) return earliestQueryable;
 
-  const tipMs = await blockTimeMsAtHeightOrNull(rpcUrl, tip);
+  const tipMs = await blockTimeMsAtHeightOrNull(rpcUrls, tip);
   if (tipMs === null) throw new Error("Tip block has no header time");
   if (targetMs > tipMs) return tip + BigInt(1);
 
@@ -148,7 +168,7 @@ async function findHeightAtOrAfterTime(
   let hi = tip;
   while (lo < hi) {
     const mid = (lo + hi) / BigInt(2);
-    const midMs = await blockTimeMsAtHeightOrNull(rpcUrl, mid);
+    const midMs = await blockTimeMsAtHeightOrNull(rpcUrls, mid);
     if (midMs === null) {
       lo = mid + BigInt(1);
       continue;
@@ -156,17 +176,17 @@ async function findHeightAtOrAfterTime(
     if (midMs < targetMs) lo = mid + BigInt(1);
     else hi = mid;
   }
-  return await firstQueryableHeightFrom(rpcUrl, lo, tip);
+  return await firstQueryableHeightFrom(rpcUrls, lo, tip);
 }
 
 async function fetchBlockPair(
-  rpcUrl: string,
+  rpcUrls: readonly string[],
   height: bigint
 ): Promise<{ block: RpcBlockResponse; results: RpcBlockResultsResponse }> {
   const hStr = height.toString();
   const [block, results] = await Promise.all([
-    rpcCallRetry<RpcBlockResponse>(rpcUrl, "block", { height: hStr }),
-    rpcCallRetry<RpcBlockResultsResponse>(rpcUrl, "block_results", { height: hStr }),
+    rpcCallRetry<RpcBlockResponse>(rpcUrls, "block", { height: hStr }),
+    rpcCallRetry<RpcBlockResultsResponse>(rpcUrls, "block_results", { height: hStr }),
   ]);
   return { block, results };
 }
@@ -194,7 +214,7 @@ interface HitRow {
 }
 
 async function main() {
-  const { day, rpc, denoms } = parseArgs(process.argv.slice(2));
+  const { day, rpcUrls, denoms } = parseArgs(process.argv.slice(2));
   if (!day) {
     console.error("Usage: npx tsx scripts/scanIbcRecvDay.ts --day=YYYY-MM-DD [--rpc=URL] [--denom=ibc/... ...]");
     process.exit(1);
@@ -204,7 +224,7 @@ async function main() {
   const targetSet = new Set(denoms);
   const concurrency = Math.max(1, Math.min(64, Number(process.env.SCAN_CONCURRENCY ?? "12")));
 
-  const tip = await latestHeight(rpc);
+  const tip = await latestHeight(rpcUrls);
   const hs = process.env.SCAN_HEIGHT_START;
   const he = process.env.SCAN_HEIGHT_END_EXCLUSIVE;
   let hStart: bigint;
@@ -214,12 +234,12 @@ async function main() {
     hEndExclusive = BigInt(he);
     console.error("[scanIbcRecvDay] using SCAN_HEIGHT_START / SCAN_HEIGHT_END_EXCLUSIVE (skip time lookup)");
   } else {
-    hStart = await findHeightAtOrAfterTime(rpc, startMs, tip);
-    hEndExclusive = await findHeightAtOrAfterTime(rpc, endMs, tip);
+    hStart = await findHeightAtOrAfterTime(rpcUrls, startMs, tip);
+    hEndExclusive = await findHeightAtOrAfterTime(rpcUrls, endMs, tip);
   }
 
   console.error(
-    `[scanIbcRecvDay] RPC=${rpc} day=${dayLabel} UTC [${new Date(startMs).toISOString()}, ${new Date(endMs).toISOString()})`
+    `[scanIbcRecvDay] RPC primary=${rpcUrls[0]} fallback=${rpcUrls[1] || "<none>"} day=${dayLabel} UTC [${new Date(startMs).toISOString()}, ${new Date(endMs).toISOString()})`
   );
   console.error(
     `[scanIbcRecvDay] heights ${hStart.toString()} .. ${(hEndExclusive - BigInt(1)).toString()} (${(hEndExclusive - hStart).toString()} blocks), concurrency=${concurrency}`
@@ -250,7 +270,7 @@ async function main() {
     }
     cursor += chunkSize;
 
-    const pairs = await Promise.all(heights.map((h) => fetchBlockPair(rpc, h)));
+    const pairs = await Promise.all(heights.map((h) => fetchBlockPair(rpcUrls, h)));
 
     for (let pi = 0; pi < pairs.length; pi++) {
       const { block, results } = pairs[pi]!;
@@ -335,7 +355,10 @@ async function main() {
 
   console.log(
     JSON.stringify(
-      { day: dayLabel, rpc, denoms, hits, totals: totalsOut },
+      // Preserve historical `rpc` field shape (primary URL string). Fallback,
+      // when set, is visible in stderr logs above — not in stdout JSON, to
+      // avoid changing the consumed output schema.
+      { day: dayLabel, rpc: rpcUrls[0], denoms, hits, totals: totalsOut },
       (_, v) => (typeof v === "bigint" ? v.toString() : v),
       2
     )

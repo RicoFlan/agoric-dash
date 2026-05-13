@@ -10,7 +10,13 @@ import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
 import { sortGrossMovementRows, type GrossMovementRow } from "@/lib/grossTableUsdSort";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
-import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, METHODOLOGY_BLURB } from "@/lib/semantics";
+import {
+  FEE_DENOM_UBLB,
+  INDEXED_HISTORY_FROM_DAY,
+  INDEXER_SCOPE_CAVEAT_INLINE,
+  INDEXER_SCOPE_CAVEAT_SUBTITLE,
+  METHODOLOGY_BLURB,
+} from "@/lib/semantics";
 
 const TransferVolumeLineChart = dynamic(
   () => import("@/components/dashboard/charts/TransferVolumeLineChart"),
@@ -92,12 +98,16 @@ interface MetricsPayload {
     ibcOutboundMsgs: { bucket: string; value: string }[];
     ibcInboundRecvFlows: { bucket: string; value: string }[];
     transferVolumeSeries: { denom: string; data: { bucket: string; value: string }[] }[];
+    bankCreditsVolumeSeries: { denom: string; data: { bucket: string; value: string }[] }[];
     ibcAmountInSeries: { denom: string; data: { bucket: string; value: string }[] }[];
     ibcAmountOutSeries: { denom: string; data: { bucket: string; value: string }[] }[];
   };
   transferVolumeByDenom: Record<string, string>;
+  bankCreditsVolumeByDenom: Record<string, string>;
   transferVolumeUsdByDenom: Record<string, string | null>;
+  bankCreditsVolumeUsdByDenom: Record<string, string | null>;
   transferVolumeUsdTotal: string | null;
+  bankCreditsVolumeUsdTotal: string | null;
   usdPricingMeta: {
     source: "coingecko";
     spotFetchedAt: string | null;
@@ -402,6 +412,47 @@ export function Dashboard() {
     return { rows, series: seriesMeta };
   }, [data]);
 
+  const chartBankCreditsValue = useMemo(() => {
+    if (!data) {
+      return {
+        rows: [] as Array<{ bucket: string } & Record<string, number>>,
+        series: [] as { chartKey: string; denom: string; displaySymbol: string | null }[],
+      };
+    }
+    const bcs = data.series?.bankCreditsVolumeSeries ?? [];
+    if (bcs.length === 0) {
+      return {
+        rows: [] as Array<{ bucket: string } & Record<string, number>>,
+        series: [] as { chartKey: string; denom: string; displaySymbol: string | null }[],
+      };
+    }
+    const disp = data.display;
+    const seriesMeta = bcs.map((s, i) => ({
+      chartKey: `bc${i}`,
+      denom: s.denom,
+      displaySymbol: disp?.metas[s.denom]?.displaySymbol ?? null,
+    }));
+    const maps = bcs.map((s) =>
+      new Map(
+        (s.data ?? []).map((r) => [
+          r.bucket,
+          finiteN(valueToChartNumber(r.value, s.denom, disp)),
+        ])
+      )
+    );
+    const bucketSet = new Set<string>();
+    for (const m of maps) for (const k of m.keys()) bucketSet.add(k);
+    const keys = [...bucketSet].sort();
+    const rows = keys.map((bucket) => {
+      const row = { bucket } as { bucket: string } & Record<string, number>;
+      for (let i = 0; i < seriesMeta.length; i++) {
+        row[seriesMeta[i].chartKey] = finiteN(maps[i].get(bucket) ?? 0);
+      }
+      return row;
+    });
+    return { rows, series: seriesMeta };
+  }, [data]);
+
   const grossInTxRows = useMemo((): GrossMovementRow[] => {
     const tv = data?.transferVolumeByDenom;
     if (!tv) return [];
@@ -417,6 +468,31 @@ export function Dashboard() {
       const grossDisplay = rounded ?? r.amountHuman;
       return {
         key: denom,
+        denom,
+        ticker,
+        grossDisplay,
+        grossUnknown: !r.symbol,
+        usd,
+      };
+    });
+    return sortGrossMovementRows(mapped, usdSort);
+  }, [data, usdSort]);
+
+  const bankCreditsInTxRows = useMemo((): GrossMovementRow[] => {
+    const bc = data?.bankCreditsVolumeByDenom;
+    if (!bc) return [];
+    const disp = data.display;
+    const mapped: GrossMovementRow[] = Object.entries(bc).map(([denom, amt]) => {
+      const r = disp
+        ? listRow(amt, denom, disp)
+        : { amountHuman: amt, symbol: "", rawDenom: denom };
+      const ticker = r.symbol || "—";
+      const usd = data.bankCreditsVolumeUsdByDenom[denom] ?? null;
+      const dec = disp?.metas[denom]?.decimals;
+      const rounded = formatNativeVolumeRounded(amt, dec);
+      const grossDisplay = rounded ?? r.amountHuman;
+      return {
+        key: `bc-${denom}`,
         denom,
         ticker,
         grossDisplay,
@@ -734,7 +810,11 @@ export function Dashboard() {
         <>
           <section id={dashboardSectionIds.valueHandled} className="scroll-mt-6 min-w-0 space-y-6">
             <h2 className={SECTION_HEADING_CLASS}>Value handled</h2>
-            <div className="w-full min-w-0">
+            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+              Native-denom amounts moved inside indexed transactions on agoric-3.{" "}
+              <IndexerScopeCaveatInline />
+            </p>
+            <div className="w-full min-w-0 space-y-6">
               <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
                 <h3 className={IN_CARD_TITLE_CLASS}>Gross in-tx movement by denom (range total)</h3>
                 <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
@@ -878,10 +958,152 @@ export function Dashboard() {
                   </table>
                 </div>
               </div>
+
+              <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+                <h3 className={IN_CARD_TITLE_CLASS}>Bank credits to user addresses (range total)</h3>
+                <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+                  Per-denom sum of <code className="text-[var(--accent)]">coin_received</code> event amounts on successful txs where the receiver is{" "}
+                  <strong className="font-medium text-[var(--color-text-secondary)]">not</strong> an Agoric module account (
+                  <code className="text-[var(--accent)]">bank_credits_volume</code>). Captures smart-contract / vbank flows that may be missing from the gross table. USD uses the same spot snapshot as gross movement.
+                </p>
+                <div className="min-w-0 max-w-full overflow-x-auto">
+                  <table className="w-full min-w-0 table-fixed border-collapse text-xs sm:text-sm">
+                    <colgroup>
+                      <col className="w-[10%]" />
+                      <col className="w-[20%]" />
+                      <col className="w-[20%]" />
+                      <col className="w-[50%]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="rounded-t-sm bg-[var(--color-bg-secondary)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-accent)] border-b-2 border-[var(--color-accent)]/55 sm:text-xs sm:tracking-wider">
+                        <th
+                          scope="col"
+                          className="px-1.5 py-2 text-left align-bottom font-semibold normal-case sm:px-2"
+                        >
+                          Ticker
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
+                          title="bank_credits_volume (coin_received to non-module receivers)"
+                        >
+                          Credits
+                        </th>
+                        <th
+                          scope="col"
+                          aria-sort={
+                            usdSort === "default"
+                              ? "none"
+                              : usdSort === "asc"
+                                ? "ascending"
+                                : "descending"
+                          }
+                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setUsdSort((s) =>
+                                s === "default" ? "desc" : s === "desc" ? "asc" : "default"
+                              )
+                            }
+                            className="inline-flex w-full max-w-full items-center justify-end gap-1 rounded px-1 py-0.5 text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-primary)]/70 hover:text-[var(--text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+                            aria-label={
+                              usdSort === "default"
+                                ? "Sort bank credits by USD estimate, highest first"
+                                : usdSort === "desc"
+                                  ? "Sort bank credits by USD estimate, lowest first"
+                                  : "Clear USD sort (ticker order)"
+                            }
+                          >
+                            <span>USD (EST)</span>
+                            <span
+                              className="font-mono text-[10px] leading-none text-[var(--color-text-secondary)]"
+                              aria-hidden
+                            >
+                              {usdSort === "desc" ? "▼" : usdSort === "asc" ? "▲" : "⇅"}
+                            </span>
+                          </button>
+                        </th>
+                        <th
+                          scope="col"
+                          className="min-w-0 px-1.5 py-2 text-left align-bottom font-semibold normal-case sm:px-2"
+                        >
+                          Denom
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bankCreditsInTxRows.map((row) => (
+                        <tr
+                          key={row.key}
+                          className="border-b border-[var(--border)]/50 odd:bg-[var(--color-bg-primary)] even:bg-[var(--color-border)]"
+                        >
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle font-medium leading-tight text-[var(--text)] sm:px-2">
+                            {row.ticker}
+                          </td>
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
+                            {row.grossUnknown ? (
+                              <code className="text-xs text-amber-200/90">{row.grossDisplay}</code>
+                            ) : (
+                              row.grossDisplay
+                            )}
+                          </td>
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
+                            {row.usd ?? "—"}
+                          </td>
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle sm:px-2">
+                            <code
+                              className="block w-max whitespace-nowrap text-left text-[11px] leading-tight text-[var(--muted)] sm:text-xs"
+                              title={row.denom}
+                            >
+                              {row.denom}
+                            </code>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr
+                        className="border-t-2 border-[var(--border)] text-xs font-semibold text-[var(--color-text-primary)] sm:text-sm"
+                        aria-label="Bank credits USD total"
+                      >
+                        <td className="px-1.5 py-3 text-[var(--color-accent)] sm:px-2">TOTAL</td>
+                        <td
+                          className="px-1.5 py-3 text-center text-[var(--muted)] sm:px-2"
+                          title="Not summed across assets"
+                        >
+                          —
+                        </td>
+                        <td
+                          className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
+                          title="Sum of per-asset USD estimates for bank credits (current spot)"
+                        >
+                          {data.bankCreditsVolumeUsdTotal ?? "—"}
+                        </td>
+                        <td aria-hidden className="min-w-0 px-1.5 py-3 sm:px-2" />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
             </div>
 
             <section className="space-y-8 lg:space-y-10">
               <TransferVolumeLineChart model={chartTransferValue} timeAxis={timeAxis} />
+              <TransferVolumeLineChart
+                model={chartBankCreditsValue}
+                timeAxis={timeAxis}
+                heading="Bank credits to user addresses (per asset)"
+                description={
+                  <>
+                    Per-bucket sum of native amounts from <code className="text-[var(--accent)]">coin_received</code> events whose receiver is not in the Agoric module-account blocklist (
+                    <code className="text-[var(--accent)]">src/config/agoricModuleAccounts.json</code>). Includes value moved via smart-contract / vbank paths that may not appear in decoded transfer messages. Human scaling uses{" "}
+                    <code className="text-[var(--accent)]">denoms.json</code> when mapped. IBC settlement lines stay on the gross movement and IBC charts.
+                  </>
+                }
+                emptyMessage="No bank credit events in the selected range (run the indexer and npm run backfill:bank-credits for full history)."
+              />
               <IbcAmountFlowsLineChart model={chartIbcValueAmounts} timeAxis={timeAxis} />
             </section>
           </section>
@@ -892,19 +1114,20 @@ export function Dashboard() {
               KPI % change compares your selected range to an{" "}
               <strong className="font-medium text-[var(--color-text-secondary)]">equal-length prior window</strong>{" "}
               ending immediately before <strong className="font-medium text-[var(--color-text-secondary)]">From</strong>{" "}
-              (UTC, same granularity). It is descriptive only — upgrades, price action, and traffic mix can differ between windows.
+              (UTC, same granularity). It is descriptive only — upgrades, price action, and traffic mix can differ between windows.{" "}
+              <IndexerScopeCaveatInline />
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <KpiCard
                 title="Gas used"
-                subtitle="ABCI gas units (successful + failed inclusions); not a token"
+                subtitle={`ABCI gas units (successful + failed inclusions); not a token. ${INDEXER_SCOPE_CAVEAT_SUBTITLE}`}
                 current={data.kpis.gasUsed.current}
                 previous={data.kpis.gasUsed.previous}
                 pct={data.kpis.gasUsed.pctChange}
               />
               <KpiCard
                 title="Paid fees (uBLD → BLD)"
-                subtitle={`Successful txs only · on-chain paid total in ${FEE_DENOM_UBLB} (shown as BLD)`}
+                subtitle={`Successful txs only · on-chain paid total in ${FEE_DENOM_UBLB} (shown as BLD). ${INDEXER_SCOPE_CAVEAT_SUBTITLE}`}
                 current={
                   /^\d+$/.test(data.kpis.feePaidUbld.current)
                     ? `${atomicToHumanString(data.kpis.feePaidUbld.current, 6)} BLD`
@@ -972,7 +1195,8 @@ export function Dashboard() {
                 <strong className="font-medium text-[var(--color-text-secondary)]">
                   Do not rank or ratio these counts against successful tx totals without normalization
                 </strong>{" "}
-                — one address can authorize many txs per day. Top-10 gross share: USD spot on sender-side transfer legs only (same spot caveat as Value handled) — see methodology.
+                — one address can authorize many txs per day. Top-10 gross share: USD spot on sender-side transfer legs only (same spot caveat as Value handled) — see methodology.{" "}
+                <IndexerScopeCaveatInline />
               </p>
               {data.participation && chartDistinctAccountsRows.length > 0 && (
                 <DistinctAccountsLineChart
@@ -1062,6 +1286,29 @@ export function Dashboard() {
         )}
       </footer>
     </div>
+  );
+}
+
+/**
+ * Renders {@link INDEXER_SCOPE_CAVEAT_INLINE} with the literal word "Methodology" linked to the
+ * dashboard's methodology footer anchor (`dashboardSectionIds.methodology`). The caveat string in
+ * `semantics.ts` stays the source of truth so wording cannot drift between surfaces.
+ */
+function IndexerScopeCaveatInline() {
+  const parts = INDEXER_SCOPE_CAVEAT_INLINE.split("Methodology");
+  if (parts.length !== 2) return <>{INDEXER_SCOPE_CAVEAT_INLINE}</>;
+  const [before, after] = parts;
+  return (
+    <>
+      {before}
+      <a
+        href={`#${dashboardSectionIds.methodology}`}
+        className="underline decoration-dotted underline-offset-2 hover:text-[var(--accent)]"
+      >
+        Methodology
+      </a>
+      {after}
+    </>
   );
 }
 

@@ -5,7 +5,7 @@
  *
  * Source hierarchy (events vs decoded body): see `src/lib/rollupSourceHierarchy.ts`. In short: ABCI
  * fields for outcomes/gas; **fee_paid** from tx events; bank / outbound ICS-20 **amounts** from
- * decoded `Msg*` bodies; **IBC recv amounts** from `coin_received`/`transfer` events (once per tx);
+ * decoded `Msg*` bodies; **IBC recv amounts** from `coin_received` + `transfer` events per successful recv tx (`sumRecvCoinAmountsFromTxEvents`; see `docs/ibcTransferAmountInEventInvestigation.md`);
  * **`ibc_transfer_flow_in`** from recv_packet events when present, else MsgRecvPacket count.
  *
  * Scope: only **`block_results.txs_results`** are processed — not standalone finalize-block / BeginBlock /
@@ -31,10 +31,16 @@ import {
   describeTxResultsLengthMismatch,
   pairedTxCount,
 } from "../src/lib/blockTxResultsPairing";
-import { rpcCall, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
+import { rpcCallWithFallback, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
 import { addIbcTransferFlowInForTx } from "../src/lib/ibcTransferFlowInRollup";
 import { sumRecvCoinAmountsFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
+import { addBankCreditsForTx } from "../src/lib/bankCreditsRollup";
+import { isAgoricModuleAccount } from "../src/lib/agoricModuleAccounts";
 import { msgIndicesMatchingTypeUrl } from "../src/lib/txEventMsgIndex";
+import {
+  formatNewTypeUrlLog,
+  noteFirstSeenTypeUrl,
+} from "../src/lib/typeUrlObservability";
 import {
   MSG_IBC_TRANSFER,
   MSG_RECV_PACKET,
@@ -44,7 +50,14 @@ import {
 } from "../src/lib/semantics";
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const RPC_URL = process.env.RPC_URL ?? "https://main.rpc.agoric.net";
+/**
+ * Primary CometBFT RPC. Defaults to the canonical Agoric mainnet RPC when unset.
+ * `RPC_URL_FALLBACK` is opt-in; when set, each call tries primary first and
+ * fails over per-call (no sticky state) — see {@link rpcCallWithFallback}.
+ */
+const RPC_URL_PRIMARY = process.env.RPC_URL ?? "https://main-a.rpc.agoric.net";
+const RPC_URL_FALLBACK = process.env.RPC_URL_FALLBACK ?? "";
+const RPC_URLS: readonly string[] = [RPC_URL_PRIMARY, RPC_URL_FALLBACK];
 const POLL_MS = Number(process.env.INDEXER_POLL_MS ?? "20000");
 const BATCH = Number(process.env.INDEXER_BATCH ?? "25");
 const LAG = Number(process.env.INDEXER_LAG ?? "3");
@@ -68,6 +81,13 @@ const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
 
 const { dailyMetrics, hourlyMetrics, participantDay, addressVolumeDay, addressFeeDay } = schema;
+
+/**
+ * In-memory set of message typeUrls observed in successfully decoded txs since this
+ * indexer process started. Used purely for first-seen diagnostic logging via
+ * `noteFirstSeenTypeUrl`; not persisted, not read by downstream rollup logic.
+ */
+const observedTypeUrls = new Set<string>();
 
 const START_DATE_MS = new Date(START_DATE_ISO).getTime();
 if (!Number.isFinite(START_DATE_MS)) {
@@ -252,8 +272,8 @@ async function fetchBlockPair(height: bigint): Promise<{
   for (let attempt = 1; attempt <= RPC_RETRIES; attempt++) {
     try {
       const [block, results] = await Promise.all([
-        rpcCall<RpcBlockResponse>(RPC_URL, "block", { height: hStr }),
-        rpcCall<RpcBlockResultsResponse>(RPC_URL, "block_results", { height: hStr }),
+        rpcCallWithFallback<RpcBlockResponse>(RPC_URLS, "block", { height: hStr }),
+        rpcCallWithFallback<RpcBlockResultsResponse>(RPC_URLS, "block_results", { height: hStr }),
       ]);
       return { block, results };
     } catch (e) {
@@ -314,6 +334,11 @@ function accumulateBlock(
       addRollupDelta(daily, hourly, day, hour, SERIES.FEE_PAID, denom, amt);
     }
 
+    // bank_credits_volume: shared helper used by indexer + backfillBankCreditsVolume.ts.
+    // Captures value moved via smart-contract / vbank flows that decoded-Msg-body sums
+    // (transfer_volume) miss. See metricDictionary.ts and bankCreditsRollup.ts.
+    addBankCreditsForTx(daily, hourly, day, hour, eventsPerTx[i] ?? [], isAgoricModuleAccount);
+
     let decoded;
     try {
       decoded = decodeTxRawTx(raw);
@@ -335,6 +360,13 @@ function accumulateBlock(
 
     // transfer_volume, ibc out count/amount: decoded Msg* intent — see SERIES_ROLLUP_SOURCE.
     const msgs = decoded.body.messages;
+
+    for (const msg of msgs) {
+      const t = (msg as EncodeObject).typeUrl;
+      if (noteFirstSeenTypeUrl(observedTypeUrls, t)) {
+        console.warn(formatNewTypeUrlLog(t, hStr, i));
+      }
+    }
 
     let recvPacketCount = 0;
     for (const msg of msgs) {
@@ -426,12 +458,18 @@ function accumulateBlock(
 }
 
 async function latestHeight(): Promise<bigint> {
-  const st = await rpcCall<{ sync_info: { latest_block_height: string } }>(RPC_URL, "status", {});
+  const st = await rpcCallWithFallback<{ sync_info: { latest_block_height: string } }>(
+    RPC_URLS,
+    "status",
+    {}
+  );
   return BigInt(st.sync_info.latest_block_height);
 }
 
 async function blockTimeMsAtHeight(height: bigint): Promise<number> {
-  const block = await rpcCall<RpcBlockResponse>(RPC_URL, "block", { height: height.toString() });
+  const block = await rpcCallWithFallback<RpcBlockResponse>(RPC_URLS, "block", {
+    height: height.toString(),
+  });
   const ms = new Date(block.block.header.time).getTime();
   if (!Number.isFinite(ms)) throw new Error(`Invalid block time at height ${height.toString()}`);
   return ms;
@@ -572,7 +610,7 @@ async function main() {
   const startFloorHeight = await findStartHeightByTime(START_DATE_MS, tip);
 
   console.log(
-    `Indexer RPC=${RPC_URL} startDate=${START_DATE_ISO} startHeight=${startFloorHeight.toString()} tailPoll=${POLL_MS}ms catchupPoll=${CATCHUP_POLL_MS}ms catchupConcurrency=${CATCHUP_CONCURRENCY}`
+    `Indexer RPC primary=${RPC_URL_PRIMARY} fallback=${RPC_URL_FALLBACK || "<none>"} startDate=${START_DATE_ISO} startHeight=${startFloorHeight.toString()} tailPoll=${POLL_MS}ms catchupPoll=${CATCHUP_POLL_MS}ms catchupConcurrency=${CATCHUP_CONCURRENCY}`
   );
 
   for (;;) {

@@ -1,10 +1,18 @@
 /**
- * One-time (or repeatable) backfill: delete all `ibc_transfer_flow_in` rows, then replay blocks
+ * One-time (or repeatable) backfill: delete all `bank_credits_volume` rows, then replay blocks
  * from INDEXER_START_DATE through indexer cursor height and **only** upsert that series in
  * daily_metrics + hourly_metrics. Does **not** update indexer_state or any other series.
  *
+ * Source: `coin_received` events on successful txs, per-denom sum of amounts whose `receiver`
+ * is not in `AGORIC_MODULE_ACCOUNT_ADDRESSES`. See `bankCreditsRollup.ts`.
+ *
+ * Idempotency: by default the script deletes **all existing** rows for `bank_credits_volume` from
+ * daily_metrics and hourly_metrics, then replays (same as `backfillIbcTransferFlowIn.ts`). Set
+ * `BACKFILL_SKIP_DELETE=1` to skip the DELETE and only upsert — use with `BACKFILL_FROM_HEIGHT` after
+ * a partial run so earlier committed rows are not wiped.
+ *
  * Usage:
- *   DATABASE_URL=... RPC_URL=... npx tsx scripts/backfillIbcTransferFlowIn.ts
+ *   DATABASE_URL=... RPC_URL=... npx tsx scripts/backfillBankCreditsVolume.ts
  *
  * Optional:
  *   BACKFILL_FROM_HEIGHT — decimal height (skip time lookup)
@@ -21,7 +29,8 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "../src/db/schema";
-import { accumulateIbcTransferFlowInFromBlock } from "../src/lib/ibcTransferFlowInRollup";
+import { accumulateBankCreditsFromBlock } from "../src/lib/bankCreditsRollup";
+import { isAgoricModuleAccount } from "../src/lib/agoricModuleAccounts";
 import { rpcCallWithFallback, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
 import { SERIES } from "../src/lib/semantics";
 
@@ -152,18 +161,20 @@ async function fetchBlockPair(height: bigint): Promise<{
   throw lastErr;
 }
 
-async function deleteExistingFlowInRows() {
-  await db.delete(dailyMetrics).where(eq(dailyMetrics.series, SERIES.IBC_TRANSFER_FLOW_IN));
-  await db.delete(hourlyMetrics).where(eq(hourlyMetrics.series, SERIES.IBC_TRANSFER_FLOW_IN));
-  console.error(`[backfillIbcTransferFlowIn] deleted existing ${SERIES.IBC_TRANSFER_FLOW_IN} from daily_metrics and hourly_metrics`);
+async function deleteExistingBankCreditsRows() {
+  await db.delete(dailyMetrics).where(eq(dailyMetrics.series, SERIES.BANK_CREDITS_VOLUME));
+  await db.delete(hourlyMetrics).where(eq(hourlyMetrics.series, SERIES.BANK_CREDITS_VOLUME));
+  console.error(
+    `[backfillBankCreditsVolume] deleted existing ${SERIES.BANK_CREDITS_VOLUME} from daily_metrics and hourly_metrics`
+  );
 }
 
-async function persistFlowInMaps(daily: Map<string, bigint>, hourly: Map<string, bigint>) {
+async function persistBankCreditsMaps(daily: Map<string, bigint>, hourly: Map<string, bigint>) {
   await db.transaction(async (tx) => {
     for (const [key, delta] of daily) {
       if (delta === BigInt(0)) continue;
       const [day, series, dimension] = key.split(ROLLUP_KEY_DELIM);
-      if (series !== SERIES.IBC_TRANSFER_FLOW_IN) continue;
+      if (series !== SERIES.BANK_CREDITS_VOLUME) continue;
       const dStr = delta.toString();
       await tx
         .insert(dailyMetrics)
@@ -176,7 +187,7 @@ async function persistFlowInMaps(daily: Map<string, bigint>, hourly: Map<string,
     for (const [key, delta] of hourly) {
       if (delta === BigInt(0)) continue;
       const [iso, series, dimension] = key.split(ROLLUP_KEY_DELIM);
-      if (series !== SERIES.IBC_TRANSFER_FLOW_IN) continue;
+      if (series !== SERIES.BANK_CREDITS_VOLUME) continue;
       const hour = new Date(iso);
       const dStr = delta.toString();
       await tx
@@ -198,7 +209,7 @@ async function main() {
   const tip = await latestHeight();
   const cursor = await getCursor();
   if (cursor === BigInt(0)) {
-    console.error("[backfillIbcTransferFlowIn] indexer_state cursor is 0 — run the indexer first.");
+    console.error("[backfillBankCreditsVolume] indexer_state cursor is 0 — run the indexer first.");
     process.exit(1);
   }
 
@@ -217,25 +228,25 @@ async function main() {
   }
 
   if (fromH > toH) {
-    console.error(`[backfillIbcTransferFlowIn] fromHeight ${fromH} > toHeight ${toH}, nothing to do.`);
+    console.error(`[backfillBankCreditsVolume] fromHeight ${fromH} > toHeight ${toH}, nothing to do.`);
     process.exit(0);
   }
 
   console.error(
-    `[backfillIbcTransferFlowIn] RPC primary=${RPC_URL_PRIMARY} fallback=${RPC_URL_FALLBACK || "<none>"} heights ${fromH}..${toH} (${(toH - fromH + BigInt(1)).toString()} blocks) batch=${BATCH} concurrency=${CONCURRENCY} skipDelete=${BACKFILL_SKIP_DELETE}`
+    `[backfillBankCreditsVolume] RPC primary=${RPC_URL_PRIMARY} fallback=${RPC_URL_FALLBACK || "<none>"} heights ${fromH}..${toH} (${(toH - fromH + BigInt(1)).toString()} blocks) batch=${BATCH} concurrency=${CONCURRENCY} skipDelete=${BACKFILL_SKIP_DELETE}`
   );
   if (process.env.BACKFILL_FROM_HEIGHT && !BACKFILL_SKIP_DELETE) {
     console.error(
-      "[backfillIbcTransferFlowIn] WARNING: BACKFILL_FROM_HEIGHT is set but the default startup DELETE still wipes ALL existing ibc_transfer_flow_in rows. Set BACKFILL_SKIP_DELETE=1 to resume from a height without losing prior commits."
+      `[backfillBankCreditsVolume] WARNING: BACKFILL_FROM_HEIGHT is set but the default startup DELETE still wipes ALL existing ${SERIES.BANK_CREDITS_VOLUME} rows. Set BACKFILL_SKIP_DELETE=1 to resume from a height without losing prior commits.`
     );
   }
   if (BACKFILL_SKIP_DELETE) {
     console.error(
-      "[backfillIbcTransferFlowIn] BACKFILL_SKIP_DELETE is set — skipping DELETE; replay will upsert on top of existing rows."
+      "[backfillBankCreditsVolume] BACKFILL_SKIP_DELETE is set — skipping DELETE; replay will upsert on top of existing rows."
     );
   } else {
-    console.error("[backfillIbcTransferFlowIn] deleting existing ibc_transfer_flow_in metrics…");
-    await deleteExistingFlowInRows();
+    console.error("[backfillBankCreditsVolume] deleting existing bank_credits_volume metrics…");
+    await deleteExistingBankCreditsRows();
   }
 
   let h = fromH;
@@ -258,20 +269,20 @@ async function main() {
       for (let i = 0; i < nNum; i++) heights.push(x + BigInt(i));
       const pairs = await Promise.all(heights.map((ht) => fetchBlockPair(ht)));
       for (const p of pairs) {
-        accumulateIbcTransferFlowInFromBlock(p.block, p.results, daily, hourly);
+        accumulateBankCreditsFromBlock(p.block, p.results, daily, hourly, isAgoricModuleAccount);
       }
       x += n;
     }
 
-    await persistFlowInMaps(daily, hourly);
+    await persistBankCreditsMaps(daily, hourly);
     done += batchBlocks;
     console.error(
-      `[backfillIbcTransferFlowIn] committed through height ${batchEnd.toString()} (${done.toString()} / ${span.toString()} blocks)…`
+      `[backfillBankCreditsVolume] committed through height ${batchEnd.toString()} (${done.toString()} / ${span.toString()} blocks)…`
     );
     h = batchEnd + BigInt(1);
   }
 
-  console.error("[backfillIbcTransferFlowIn] done.");
+  console.error("[backfillBankCreditsVolume] done.");
   await pool.end();
 }
 

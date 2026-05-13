@@ -17,8 +17,10 @@ export const PARTICIPANT_ROLES = {
  * (`feePayerBech32FromAuthInfo`).
  *
  * Scope: successful txs only (ABCI code 0). No inference of end-user identity; one entity may use
- * many accounts. Module accounts, contracts, relayers, and vaults appear like any other account if
- * they sign or pay fees — there is no exclusion list.
+ * many accounts. Agoric module accounts are excluded from these counts at read time via
+ * `AGORIC_MODULE_ACCOUNT_ADDRESSES` (see `agoricModuleAccounts.ts` for the current list and
+ * refresh procedure). Non-module addresses — contracts, relayers, vaults, smart-wallet accounts —
+ * still count when they sign or pay fees; the dashboard does not attempt to classify them further.
  *
  * KPI distinct signers / distinct fee payers count unique addresses **within each role** across the
  * selected UTC day range. “Active 1 day only” vs “2+ days” counts unique addresses by how many UTC
