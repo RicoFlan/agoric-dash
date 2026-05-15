@@ -43,7 +43,7 @@ export default function TransferVolumeLineChart({
   description = (
     <>
       Per-bucket total = transfer <strong className="font-medium text-[var(--color-text-secondary)]">message</strong> amounts (send / multi / out) + IBC{" "}
-      <strong className="font-medium text-[var(--color-text-secondary)]">recv</strong> for that denom — same as the table above; a single tx with several msgs adds several legs. Human-scaled when mapped in{" "}
+      <strong className="font-medium text-[var(--color-text-secondary)]">recv</strong> for that denom — same basis as the <strong className="font-medium text-[var(--color-text-secondary)]">Gross in-tx</strong> column of the Value handled table; a single tx with several msgs adds several legs. Human-scaled when mapped in{" "}
       <code className="text-[var(--accent)]">src/config/denoms.json</code>. Y-axis mixes assets. IBC flow chart below keeps recv/out split.
     </>
   ),

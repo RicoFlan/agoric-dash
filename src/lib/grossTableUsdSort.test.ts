@@ -14,6 +14,9 @@ function row(partial: Partial<GrossMovementRow> & Pick<GrossMovementRow, "denom"
     grossDisplay: partial.grossDisplay ?? "0",
     grossUnknown: partial.grossUnknown ?? false,
     usd: partial.usd ?? null,
+    creditsDisplay: partial.creditsDisplay ?? "—",
+    creditsUnknown: partial.creditsUnknown ?? false,
+    creditsUsd: partial.creditsUsd ?? null,
     denom: partial.denom,
   };
 }
@@ -37,6 +40,12 @@ describe("compareGrossRowsDefault", () => {
     const b = row({ denom: "b", ticker: "BBB" });
     expect(compareGrossRowsDefault(a, b)).toBeLessThan(0);
     expect(compareGrossRowsDefault(b, a)).toBeGreaterThan(0);
+  });
+
+  it("breaks ties by denom when tickers match (creditsUsd ignored)", () => {
+    const first = row({ denom: "denom-a", ticker: "SAME", creditsUsd: "$999.00" });
+    const second = row({ denom: "denom-z", ticker: "SAME", creditsUsd: "$0.01" });
+    expect(compareGrossRowsDefault(first, second)).toBeLessThan(0);
   });
 });
 
@@ -73,5 +82,14 @@ describe("sortGrossMovementRows", () => {
 
     const desc = sortGrossMovementRows(rows, "desc");
     expect(desc.map((r) => r.denom)).toEqual(["d2", "d1"]);
+  });
+
+  it("sorts by gross USD (usd), not creditsUsd", () => {
+    const rows = [
+      row({ denom: "lowGross", ticker: "L", usd: "$1.00", creditsUsd: "$999.00" }),
+      row({ denom: "highGross", ticker: "H", usd: "$50.00", creditsUsd: "$0.01" }),
+    ];
+    const desc = sortGrossMovementRows(rows, "desc");
+    expect(desc.map((r) => r.denom)).toEqual(["highGross", "lowGross"]);
   });
 });

@@ -428,7 +428,7 @@ function feeDenomBreakdown(
 }
 
 /**
- * Range totals for the gross in-tx movement table: sums `transfer_volume` (MsgSend, MsgMultiSend,
+ * Range totals for the gross in-tx column of the value-handled denom table: sums `transfer_volume` (MsgSend, MsgMultiSend,
  * IBC MsgTransfer) and `ibc_transfer_amount_in` per denom. IBC outbound amounts are included only in
  * `transfer_volume` — we do **not** add `ibc_transfer_amount_out` (would duplicate MsgTransfer amounts).
  */

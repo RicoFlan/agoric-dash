@@ -3,6 +3,7 @@ import { METRIC_DICTIONARY } from "@/lib/metricDictionary";
 import {
   INDEXER_SCOPE_CAVEAT_INLINE,
   INDEXER_SCOPE_CAVEAT_SUBTITLE,
+  METHODOLOGY_BLURB,
   SERIES,
   TX_RESULT_ROLLUP_POLICY,
 } from "@/lib/semantics";
@@ -31,5 +32,20 @@ describe("INDEXER_SCOPE_CAVEAT_*", () => {
     expect(INDEXER_SCOPE_CAVEAT_SUBTITLE).toContain("Tx-attributed only");
     expect(INDEXER_SCOPE_CAVEAT_SUBTITLE).toContain("inflation");
     expect(INDEXER_SCOPE_CAVEAT_SUBTITLE.length).toBeLessThan(INDEXER_SCOPE_CAVEAT_INLINE.length);
+  });
+});
+
+describe("METHODOLOGY_BLURB", () => {
+  it("documents the combined Value handled table, View Denom UX, and non-additive framing", () => {
+    expect(METHODOLOGY_BLURB).toContain("Value by denom: gross in-tx vs bank credits");
+    expect(METHODOLOGY_BLURB).toContain("View Denom");
+    expect(METHODOLOGY_BLURB).toContain("document.body");
+    expect(METHODOLOGY_BLURB).toMatch(/not additive|non-additive/i);
+  });
+
+  it("documents indexer line, hour fallback, and participation conditional", () => {
+    expect(METHODOLOGY_BLURB).toContain("indexer_state");
+    expect(METHODOLOGY_BLURB).toContain("hourly_metrics");
+    expect(METHODOLOGY_BLURB).toContain("participation and/or concentration");
   });
 });

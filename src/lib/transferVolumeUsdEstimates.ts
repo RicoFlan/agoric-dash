@@ -65,7 +65,8 @@ function usdCellsForDenomTotals(
 
 /**
  * One CoinGecko fetch for the union of denoms in both maps — used by `/api/metrics` so bank-credits
- * rows do not double-hit the price API.
+ * rows do not double-hit the price API. Populates **USD gross** and **USD credits** cells (and separate
+ * footer totals) for the combined Value handled denom table in `Dashboard.tsx`.
  */
 export async function enrichTransferAndBankCreditsUsdEstimates(
   transferVolumeByDenom: Record<string, string>,

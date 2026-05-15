@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChartChunkFallback } from "@/components/dashboard/ChartChunkFallback";
 import { atomicToFloat, atomicToHumanString } from "@/lib/amountFormat";
 import { listRow, valueToChartNumber } from "@/lib/displayFormat";
@@ -252,6 +253,46 @@ export function Dashboard() {
   /** Gross table: default = ticker/denom order from API; asc/desc = USD (EST) estimate. */
   const [usdSort, setUsdSort] = useState<"default" | "asc" | "desc">("default");
 
+  /** Fixed-position denom tooltip (portal) so it is not clipped by the table scroll wrapper. */
+  const [denomTip, setDenomTip] = useState<{ text: string; left: number; top: number } | null>(null);
+  const denomTipHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [denomTipPortalReady, setDenomTipPortalReady] = useState(false);
+
+  const clearDenomTipHideTimer = useCallback(() => {
+    if (denomTipHideTimerRef.current) {
+      clearTimeout(denomTipHideTimerRef.current);
+      denomTipHideTimerRef.current = null;
+    }
+  }, []);
+
+  const showDenomTip = useCallback(
+    (text: string, anchor: HTMLElement) => {
+      clearDenomTipHideTimer();
+      const r = anchor.getBoundingClientRect();
+      const margin = 8;
+      const maxW = 448;
+      const left = Math.max(margin, Math.min(r.left, window.innerWidth - margin - maxW));
+      setDenomTip({ text, left, top: r.bottom + 6 });
+    },
+    [clearDenomTipHideTimer]
+  );
+
+  const scheduleHideDenomTip = useCallback(() => {
+    clearDenomTipHideTimer();
+    denomTipHideTimerRef.current = setTimeout(() => {
+      setDenomTip(null);
+      denomTipHideTimerRef.current = null;
+    }, 140);
+  }, [clearDenomTipHideTimer]);
+
+  useEffect(() => {
+    setDenomTipPortalReady(true);
+    return () => {
+      clearDenomTipHideTimer();
+      setDenomTip(null);
+    };
+  }, [clearDenomTipHideTimer]);
+
   /** Latest metrics fetch; `finally` clears `loading` only when this controller is still current. */
   const metricsFlightRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(loading);
@@ -340,7 +381,9 @@ export function Dashboard() {
 
   useEffect(() => {
     setUsdSort("default");
-  }, [from, to, granularity]);
+    clearDenomTipHideTimer();
+    setDenomTip(null);
+  }, [from, to, granularity, clearDenomTipHideTimer]);
 
   /** Join bucket streams for aligned line charts (handles sparse edges). */
   const chartAllTxVsIbc = useMemo(() => {
@@ -453,53 +496,63 @@ export function Dashboard() {
     return { rows, series: seriesMeta };
   }, [data]);
 
-  const grossInTxRows = useMemo((): GrossMovementRow[] => {
-    const tv = data?.transferVolumeByDenom;
-    if (!tv) return [];
+  const valueHandledBreakdownRows = useMemo((): GrossMovementRow[] => {
+    if (!data) return [];
+    const tv = data.transferVolumeByDenom;
+    const bc = data.bankCreditsVolumeByDenom;
+    const denoms = [...new Set([...Object.keys(tv), ...Object.keys(bc)])];
     const disp = data.display;
-    const mapped: GrossMovementRow[] = Object.entries(tv).map(([denom, amt]) => {
+    const mapped: GrossMovementRow[] = [];
+
+    for (const denom of denoms) {
+      const gRaw = tv[denom];
+      const cRaw = bc[denom];
+      const metaAmt = gRaw ?? cRaw ?? "0";
       const r = disp
-        ? listRow(amt, denom, disp)
-        : { amountHuman: amt, symbol: "", rawDenom: denom };
+        ? listRow(metaAmt, denom, disp)
+        : { amountHuman: metaAmt, symbol: "", rawDenom: denom };
       const ticker = r.symbol || "—";
-      const usd = data.transferVolumeUsdByDenom[denom] ?? null;
       const dec = disp?.metas[denom]?.decimals;
-      const rounded = formatNativeVolumeRounded(amt, dec);
-      const grossDisplay = rounded ?? r.amountHuman;
-      return {
+
+      let grossDisplay = "—";
+      let grossUnknown = false;
+      if (gRaw !== undefined && BigInt(gRaw) > BigInt(0)) {
+        const gr = disp ? listRow(gRaw, denom, disp) : { amountHuman: gRaw, symbol: "", rawDenom: denom };
+        grossUnknown = !gr.symbol;
+        const rounded = formatNativeVolumeRounded(gRaw, dec);
+        grossDisplay = rounded ?? gr.amountHuman;
+      }
+
+      let creditsDisplay = "—";
+      let creditsUnknown = false;
+      if (cRaw !== undefined && BigInt(cRaw) > BigInt(0)) {
+        const cr = disp ? listRow(cRaw, denom, disp) : { amountHuman: cRaw, symbol: "", rawDenom: denom };
+        creditsUnknown = !cr.symbol;
+        const rounded = formatNativeVolumeRounded(cRaw, dec);
+        creditsDisplay = rounded ?? cr.amountHuman;
+      }
+
+      const grossUsd =
+        gRaw !== undefined && BigInt(gRaw) > BigInt(0)
+          ? (data.transferVolumeUsdByDenom[denom] ?? null)
+          : null;
+      const creditsUsd =
+        cRaw !== undefined && BigInt(cRaw) > BigInt(0)
+          ? (data.bankCreditsVolumeUsdByDenom[denom] ?? null)
+          : null;
+
+      mapped.push({
         key: denom,
         denom,
         ticker,
         grossDisplay,
-        grossUnknown: !r.symbol,
-        usd,
-      };
-    });
-    return sortGrossMovementRows(mapped, usdSort);
-  }, [data, usdSort]);
-
-  const bankCreditsInTxRows = useMemo((): GrossMovementRow[] => {
-    const bc = data?.bankCreditsVolumeByDenom;
-    if (!bc) return [];
-    const disp = data.display;
-    const mapped: GrossMovementRow[] = Object.entries(bc).map(([denom, amt]) => {
-      const r = disp
-        ? listRow(amt, denom, disp)
-        : { amountHuman: amt, symbol: "", rawDenom: denom };
-      const ticker = r.symbol || "—";
-      const usd = data.bankCreditsVolumeUsdByDenom[denom] ?? null;
-      const dec = disp?.metas[denom]?.decimals;
-      const rounded = formatNativeVolumeRounded(amt, dec);
-      const grossDisplay = rounded ?? r.amountHuman;
-      return {
-        key: `bc-${denom}`,
-        denom,
-        ticker,
-        grossDisplay,
-        grossUnknown: !r.symbol,
-        usd,
-      };
-    });
+        grossUnknown,
+        usd: grossUsd,
+        creditsDisplay,
+        creditsUnknown,
+        creditsUsd,
+      });
+    }
     return sortGrossMovementRows(mapped, usdSort);
   }, [data, usdSort]);
 
@@ -816,13 +869,19 @@ export function Dashboard() {
             </p>
             <div className="w-full min-w-0 space-y-6">
               <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-                <h3 className={IN_CARD_TITLE_CLASS}>Gross in-tx movement by denom (range total)</h3>
+                <h3 className={IN_CARD_TITLE_CLASS}>
+                  Value by denom: gross in-tx vs bank credits (range total)
+                </h3>
                 <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
-                  Sum of transfer-message legs plus IBC receive per denom for the range (same definition as the line chart below). USD estimates multiply each asset&apos;s{" "}
+                  One row per on-chain denom. <strong className="font-medium text-[var(--color-text-secondary)]">Gross in-tx</strong> is{" "}
+                  <code className="text-[var(--accent)]">transfer_volume</code> + indexed IBC receive (same as the gross line chart).{" "}
+                  <strong className="font-medium text-[var(--color-text-secondary)]">Bank credits</strong> is{" "}
+                  <code className="text-[var(--accent)]">coin_received</code> to non-module receivers (
+                  <code className="text-[var(--accent)]">bank_credits_volume</code>). The two native columns often overlap the same settlement —{" "}
+                  <strong className="font-medium text-[var(--color-text-secondary)]">do not add them</strong> or the two USD columns to infer a single
+                  &quot;total value moved.&quot; USD estimates multiply each column&apos;s{" "}
                   <strong className="font-medium text-[var(--color-text-secondary)]">full-period native total</strong> by{" "}
-                  <strong className="font-medium text-[var(--color-text-secondary)]">current CoinGecko spot USD</strong>. That is{" "}
-                  <strong className="font-medium text-[var(--color-text-secondary)]">not</strong> a historically accurate mark-to-market over the selected range, but it makes
-                  cross-asset sizes easier to compare. Native amounts remain the on-chain record.
+                  <strong className="font-medium text-[var(--color-text-secondary)]">current CoinGecko spot USD</strong> — not a historical mark-to-market.
                   {data.usdPricingMeta.partialOrStale && (
                     <span> Some USD cells may be empty when the price feed is rate-limited.</span>
                   )}
@@ -840,10 +899,12 @@ export function Dashboard() {
                 <div className="min-w-0 max-w-full overflow-x-auto">
                   <table className="w-full min-w-0 table-fixed border-collapse text-xs sm:text-sm">
                     <colgroup>
-                      <col className="w-[10%]" />
-                      <col className="w-[20%]" />
-                      <col className="w-[20%]" />
-                      <col className="w-[50%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[11%]" />
                     </colgroup>
                     <thead>
                       <tr className="rounded-t-sm bg-[var(--color-bg-secondary)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-accent)] border-b-2 border-[var(--color-accent)]/55 sm:text-xs sm:tracking-wider">
@@ -858,7 +919,14 @@ export function Dashboard() {
                           className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
                           title="transfer_volume + IBC recv (gross in-tx movement)"
                         >
-                          Gross
+                          Gross in-tx
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
+                          title="bank_credits_volume (coin_received to non-module receivers)"
+                        >
+                          Bank credits
                         </th>
                         <th
                           scope="col"
@@ -881,13 +949,13 @@ export function Dashboard() {
                             className="inline-flex w-full max-w-full items-center justify-end gap-1 rounded px-1 py-0.5 text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-primary)]/70 hover:text-[var(--text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
                             aria-label={
                               usdSort === "default"
-                                ? "Sort by USD estimate, highest first"
+                                ? "Sort by gross in-tx USD estimate, highest first"
                                 : usdSort === "desc"
-                                  ? "Sort by USD estimate, lowest first"
+                                  ? "Sort by gross in-tx USD estimate, lowest first"
                                   : "Clear USD sort (ticker order)"
                             }
                           >
-                            <span>USD (EST)</span>
+                            <span>USD gross (EST)</span>
                             <span
                               className="font-mono text-[10px] leading-none text-[var(--color-text-secondary)]"
                               aria-hidden
@@ -898,14 +966,22 @@ export function Dashboard() {
                         </th>
                         <th
                           scope="col"
+                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
+                          title="Same spot snapshot as gross; not additive with USD gross"
+                        >
+                          USD credits (EST)
+                        </th>
+                        <th
+                          scope="col"
                           className="min-w-0 px-1.5 py-2 text-left align-bottom font-semibold normal-case sm:px-2"
+                          title="Hover or focus View Denom in each row for the full on-chain denom string"
                         >
                           Denom
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {grossInTxRows.map((row) => (
+                      {valueHandledBreakdownRows.map((row) => (
                         <tr
                           key={row.key}
                           className="border-b border-[var(--border)]/50 odd:bg-[var(--color-bg-primary)] even:bg-[var(--color-border)]"
@@ -913,23 +989,43 @@ export function Dashboard() {
                           <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle font-medium leading-tight text-[var(--text)] sm:px-2">
                             {row.ticker}
                           </td>
-                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
-                            {row.grossUnknown ? (
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight sm:px-2 sm:text-sm">
+                            {row.grossDisplay === "—" ? (
+                              <span className="text-[var(--muted)]">—</span>
+                            ) : row.grossUnknown ? (
                               <code className="text-xs text-amber-200/90">{row.grossDisplay}</code>
                             ) : (
-                              row.grossDisplay
+                              <span className="text-[var(--text)]">{row.grossDisplay}</span>
+                            )}
+                          </td>
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight sm:px-2 sm:text-sm">
+                            {row.creditsDisplay === "—" ? (
+                              <span className="text-[var(--muted)]">—</span>
+                            ) : row.creditsUnknown ? (
+                              <code className="text-xs text-amber-200/90">{row.creditsDisplay}</code>
+                            ) : (
+                              <span className="text-[var(--text)]">{row.creditsDisplay}</span>
                             )}
                           </td>
                           <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
                             {row.usd ?? "—"}
                           </td>
-                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle sm:px-2">
-                            <code
-                              className="block w-max whitespace-nowrap text-left text-[11px] leading-tight text-[var(--muted)] sm:text-xs"
+                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
+                            {row.creditsUsd ?? "—"}
+                          </td>
+                          <td className="max-w-0 min-w-0 px-1.5 py-2 align-middle sm:px-2">
+                            <button
+                              type="button"
+                              className="max-w-full cursor-help rounded-md border border-[var(--border)] bg-[color-mix(in_srgb,var(--color-bg-secondary)_88%,var(--surface))] px-1.5 py-1 text-left text-[10px] font-semibold leading-tight text-[var(--color-accent)] shadow-sm transition-colors hover:border-[var(--color-accent)]/50 hover:bg-[var(--color-bg-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-accent)] sm:px-2 sm:text-xs"
+                              aria-label={`On-chain denom: ${row.denom}`}
                               title={row.denom}
+                              onPointerEnter={(e) => showDenomTip(row.denom, e.currentTarget)}
+                              onPointerLeave={scheduleHideDenomTip}
+                              onFocus={(e) => showDenomTip(row.denom, e.currentTarget)}
+                              onBlur={scheduleHideDenomTip}
                             >
-                              {row.denom}
-                            </code>
+                              View Denom
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -947,129 +1043,6 @@ export function Dashboard() {
                           —
                         </td>
                         <td
-                          className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
-                          title="Sum of per-asset USD estimates (current spot); not a single-token total or net economic figure — do not treat like TVL or GDP"
-                        >
-                          {data.transferVolumeUsdTotal ?? "—"}
-                        </td>
-                        <td aria-hidden className="min-w-0 px-1.5 py-3 sm:px-2" />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-
-              <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-                <h3 className={IN_CARD_TITLE_CLASS}>Bank credits to user addresses (range total)</h3>
-                <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
-                  Per-denom sum of <code className="text-[var(--accent)]">coin_received</code> event amounts on successful txs where the receiver is{" "}
-                  <strong className="font-medium text-[var(--color-text-secondary)]">not</strong> an Agoric module account (
-                  <code className="text-[var(--accent)]">bank_credits_volume</code>). Captures smart-contract / vbank flows that may be missing from the gross table. USD uses the same spot snapshot as gross movement.
-                </p>
-                <div className="min-w-0 max-w-full overflow-x-auto">
-                  <table className="w-full min-w-0 table-fixed border-collapse text-xs sm:text-sm">
-                    <colgroup>
-                      <col className="w-[10%]" />
-                      <col className="w-[20%]" />
-                      <col className="w-[20%]" />
-                      <col className="w-[50%]" />
-                    </colgroup>
-                    <thead>
-                      <tr className="rounded-t-sm bg-[var(--color-bg-secondary)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-accent)] border-b-2 border-[var(--color-accent)]/55 sm:text-xs sm:tracking-wider">
-                        <th
-                          scope="col"
-                          className="px-1.5 py-2 text-left align-bottom font-semibold normal-case sm:px-2"
-                        >
-                          Ticker
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
-                          title="bank_credits_volume (coin_received to non-module receivers)"
-                        >
-                          Credits
-                        </th>
-                        <th
-                          scope="col"
-                          aria-sort={
-                            usdSort === "default"
-                              ? "none"
-                              : usdSort === "asc"
-                                ? "ascending"
-                                : "descending"
-                          }
-                          className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setUsdSort((s) =>
-                                s === "default" ? "desc" : s === "desc" ? "asc" : "default"
-                              )
-                            }
-                            className="inline-flex w-full max-w-full items-center justify-end gap-1 rounded px-1 py-0.5 text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-primary)]/70 hover:text-[var(--text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-                            aria-label={
-                              usdSort === "default"
-                                ? "Sort bank credits by USD estimate, highest first"
-                                : usdSort === "desc"
-                                  ? "Sort bank credits by USD estimate, lowest first"
-                                  : "Clear USD sort (ticker order)"
-                            }
-                          >
-                            <span>USD (EST)</span>
-                            <span
-                              className="font-mono text-[10px] leading-none text-[var(--color-text-secondary)]"
-                              aria-hidden
-                            >
-                              {usdSort === "desc" ? "▼" : usdSort === "asc" ? "▲" : "⇅"}
-                            </span>
-                          </button>
-                        </th>
-                        <th
-                          scope="col"
-                          className="min-w-0 px-1.5 py-2 text-left align-bottom font-semibold normal-case sm:px-2"
-                        >
-                          Denom
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bankCreditsInTxRows.map((row) => (
-                        <tr
-                          key={row.key}
-                          className="border-b border-[var(--border)]/50 odd:bg-[var(--color-bg-primary)] even:bg-[var(--color-border)]"
-                        >
-                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle font-medium leading-tight text-[var(--text)] sm:px-2">
-                            {row.ticker}
-                          </td>
-                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
-                            {row.grossUnknown ? (
-                              <code className="text-xs text-amber-200/90">{row.grossDisplay}</code>
-                            ) : (
-                              row.grossDisplay
-                            )}
-                          </td>
-                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 text-right font-mono text-xs tabular-nums leading-tight text-[var(--text)] sm:px-2 sm:text-sm">
-                            {row.usd ?? "—"}
-                          </td>
-                          <td className="max-w-0 min-w-0 overflow-x-auto whitespace-nowrap px-1.5 py-2 align-middle sm:px-2">
-                            <code
-                              className="block w-max whitespace-nowrap text-left text-[11px] leading-tight text-[var(--muted)] sm:text-xs"
-                              title={row.denom}
-                            >
-                              {row.denom}
-                            </code>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr
-                        className="border-t-2 border-[var(--border)] text-xs font-semibold text-[var(--color-text-primary)] sm:text-sm"
-                        aria-label="Bank credits USD total"
-                      >
-                        <td className="px-1.5 py-3 text-[var(--color-accent)] sm:px-2">TOTAL</td>
-                        <td
                           className="px-1.5 py-3 text-center text-[var(--muted)] sm:px-2"
                           title="Not summed across assets"
                         >
@@ -1077,7 +1050,13 @@ export function Dashboard() {
                         </td>
                         <td
                           className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
-                          title="Sum of per-asset USD estimates for bank credits (current spot)"
+                          title="Sum of per-asset gross USD (current spot); not additive with USD credits — do not treat like TVL"
+                        >
+                          {data.transferVolumeUsdTotal ?? "—"}
+                        </td>
+                        <td
+                          className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
+                          title="Sum of per-asset bank-credits USD (current spot); not additive with USD gross — overlapping bases"
                         >
                           {data.bankCreditsVolumeUsdTotal ?? "—"}
                         </td>
@@ -1086,6 +1065,20 @@ export function Dashboard() {
                     </tfoot>
                   </table>
                 </div>
+                {denomTipPortalReady &&
+                  denomTip &&
+                  createPortal(
+                    <div
+                      role="tooltip"
+                      className="pointer-events-auto fixed z-[9999] max-h-[min(70vh,24rem)] max-w-[min(28rem,calc(100vw-1rem))] overflow-y-auto whitespace-normal break-all rounded-md border border-[var(--border)] bg-[var(--color-surface)] px-2.5 py-2 font-mono text-[10px] leading-snug text-[var(--color-text-primary)] shadow-[0_8px_32px_rgba(0,0,0,0.45)] sm:text-xs"
+                      style={{ left: denomTip.left, top: denomTip.top }}
+                      onPointerEnter={clearDenomTipHideTimer}
+                      onPointerLeave={scheduleHideDenomTip}
+                    >
+                      {denomTip.text}
+                    </div>,
+                    document.body
+                  )}
               </div>
             </div>
 

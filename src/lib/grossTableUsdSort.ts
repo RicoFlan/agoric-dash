@@ -1,5 +1,6 @@
 /**
- * Client-side sort helpers for the gross in-tx movement table (`Dashboard.tsx`).
+ * Client-side sort helpers for the value-handled denom table (`Dashboard.tsx`):
+ * gross in-tx movement vs bank credits side-by-side (non-additive; sort uses gross USD only).
  * USD cells are formatted currency strings from `formatUsdEstimate`; missing pricing is `null` / "—".
  */
 
@@ -9,7 +10,11 @@ export type GrossMovementRow = {
   ticker: string;
   grossDisplay: string;
   grossUnknown: boolean;
+  /** Gross in-tx USD (EST); also the column used for USD sort (high→low / low→high). */
   usd: string | null;
+  creditsDisplay: string;
+  creditsUnknown: boolean;
+  creditsUsd: string | null;
 };
 
 /** Parse Intl currency / formatted USD for numeric sort; NaN = missing or unpriced. */
