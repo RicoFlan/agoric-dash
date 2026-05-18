@@ -16,7 +16,7 @@ COPY package-lock.json package.json ./
 RUN npm ci --include=dev
 
 COPY . .
-RUN npm run build && npm prune --omit=dev
+RUN npm run build
 
 FROM base
 COPY --from=build /app /app
