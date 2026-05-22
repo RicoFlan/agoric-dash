@@ -48,6 +48,12 @@ describe("resolveCoinGeckoId", () => {
     ).toBe("axelar");
   });
 
+  it("maps Provenance HASH (nhash) IBC path to hash-2", () => {
+    expect(
+      resolveCoinGeckoId("ibc/00A6285B20010D443BA2DDF0203D29B4FC5E2582D670181BBCAC1583744BA13B")
+    ).toBe("hash-2");
+  });
+
   it("returns null when denom is unknown to denoms.json", () => {
     expect(resolveCoinGeckoId("ibc/UNKNOWN00000000000000000000000000000000000000000000000000")).toBeNull();
   });

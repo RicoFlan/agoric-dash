@@ -2,6 +2,11 @@
   "note": "See README.md (Denoms, symbols, and IBC hashes). Agoric-3: full string match to bank/IBC minimal denoms. Traces: query /ibc/apps/transfer/v1/denom_traces on a mainnet node. Multiple ibc/\u2026 strings can be the same logical asset (different IBC paths). Decimals: verify against chain metadata if amounts look wrong; EVM/gravity often 18, Cosmos u* / micro often 6. To find missing hashes, diff GET /cosmos/bank/v1beta1/denoms_metadata (field base) against entries[].match. CoinGecko IDs for USD estimates: src/config/coingeckoDisplaySymbolToId.json (+ optional coingeckoDenomOverrides.json).",
   "entries": [
     {
+      "match": "ibc/00A6285B20010D443BA2DDF0203D29B4FC5E2582D670181BBCAC1583744BA13B",
+      "displaySymbol": "HASH",
+      "decimals": 9
+    },
+    {
       "match": "ibc/010704EDB319E4141299BBCB1CD8790362910509330824B88049DE3CE5D0A7AD",
       "displaySymbol": "USDC",
       "decimals": 6

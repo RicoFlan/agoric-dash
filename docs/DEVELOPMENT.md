@@ -58,11 +58,17 @@ ESLint extends `next/core-web-vitals` and `next/typescript`. Run `npm run lint` 
 
 Human labels and decimals for chart/table display come from **`src/config/denoms.json`**. When users see raw `ibc/…` strings in the UI:
 
-1. Query mainnet **`GET …/cosmos/bank/v1beta1/denoms_metadata`** (paginate if needed).
-2. For each metadata **`base`** not already in `entries[].match`, add `{ match, displaySymbol, decimals }` (decimals from denom units or asset conventions; verify if amounts look wrong).
-3. Keep **`entries` sorted alphabetically by `match`** — `src/lib/denomsJson.contract.test.ts` enforces this.
+1. Query mainnet **`GET …/cosmos/bank/v1beta1/denoms_metadata`** (paginate if needed) to list registered denoms.
+2. For each metadata **`base`** not already in `entries[].match`, resolve the asset:
+   - **`GET …/ibc/apps/transfer/v1/denom_traces/{hash}`** on an Agoric LCD (REST URLs in [cosmos/chain-registry `agoric/chain.json`](https://github.com/cosmos/chain-registry/blob/master/agoric/chain.json)) — returns **`path`** and **`base_denom`** (required for multi-hop IBC and correct decimals).
+   - Cross-check symbol, **`coingecko_id`**, and **`denom_units`** in [cosmos/chain-registry](https://github.com/cosmos/chain-registry) (e.g. counterparty **`assetlist.json`**, or **`provenance/assetlist.json`** for native **`nhash`** → **HASH**, 9 decimals).
+3. Add `{ match, displaySymbol, decimals }` to **`src/config/denoms.json`** (decimals from the **base** asset on the trace terminus, not assumed 6).
+4. Mirror the row in **`public/denom-translations.csv`** (`match,displaySymbol,decimals,coingeckoId,status,correction_notes`).
+5. Keep **`entries` sorted alphabetically by `match`** — `src/lib/denomsJson.contract.test.ts` enforces this.
 
-For **USD (EST)** cells in the value-handled denom table, add or adjust mappings in **`src/config/coingeckoDisplaySymbolToId.json`** (and **`coingeckoDenomOverrides.json`** when a specific `match` must differ). IDs must match CoinGecko’s **`/simple/price`** `ids` parameter.
+For **USD (EST)** cells in the value-handled denom table, add or adjust mappings in **`src/config/coingeckoDisplaySymbolToId.json`** (and **`coingeckoDenomOverrides.json`** when a specific `match` must differ). IDs must match CoinGecko’s **`/simple/price`** `ids` parameter (often copied from chain-registry **`coingecko_id`**). Add a case in **`src/lib/coingecko/resolveCoinGeckoId.test.ts`** when introducing a new priced IBC hash.
+
+**Example (Provenance HASH):** `ibc/00A6285B…` → trace `transfer/channel-1/transfer/channel-222` + `nhash` → **HASH**, **9** decimals, CoinGecko **`hash-2`**.
 
 ### Value-handled denom table (`Dashboard.tsx`)
 

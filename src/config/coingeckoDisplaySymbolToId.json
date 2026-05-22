@@ -1,5 +1,5 @@
 {
-  "note": "Maps denoms.json displaySymbol \u2192 CoinGecko `ids` for /simple/price. Generated from reviewed denom table; spot estimates only. Symbols with no reliable listing are omitted (resolve to no USD estimate).",
+  "note": "Maps denoms.json displaySymbol \u2192 CoinGecko `ids` for /simple/price. Generated from reviewed denom table (see public/denom-translations.csv); spot estimates only. Symbols with no reliable listing are omitted (resolve to no USD estimate).",
   "symbolToId": {
     "APOLLO": "apollo-2",
     "ATOM": "cosmos",
@@ -15,6 +15,7 @@
     "EVMOS": "evmos",
     "EVMOS (hop)": "evmos",
     "FLIX": "omniflix-network",
+    "HASH": "hash-2",
     "HUAHUA": "chihuahua-token",
     "INJ": "injective-protocol",
     "ION": "ion",
