@@ -94,44 +94,102 @@ export const SERIES = {
   IBC_TRANSFER_AMOUNT_IN: "ibc_transfer_amount_in",
 } as const;
 
-export const METHODOLOGY_BLURB = `
-Scope: Metrics reflect Agoric mainnet (agoric-3). Indexed history for this deployment begins UTC calendar day 2026-01-01 (aligned with default INDEXER_START_DATE). Requests with From earlier than that day are clamped server-side to 2026-01-01 so dashboards stay consistent with the indexed period. Rollups come from PostgreSQL tables populated by the indexer: daily_metrics and hourly_metrics for most charts and KPIs; participant_day and address_volume_day for the Economic participation & concentration section at the bottom of the page when present. If those participation counts stay at zero, run the indexer after applying the schema (npm run db:push).
+export type MethodologySection = { title: string; body: string };
 
-Layout (top to bottom): When /api/metrics returns indexer_state, last indexed block height (and optional updated-at text) may appear above the UTC date-range and granularity toolbar. Value handled — one denom table titled "Value by denom: gross in-tx vs bank credits (range total)" with gross in-tx and bank credits native totals side by side (non-additive); full on-chain denom strings are not shown inline — each row has a compact "View Denom" control; hover or keyboard focus opens a fixed-position tooltip (React portal to document.body) with the full string, and title plus aria-label also expose it for native tooltip / assistive tech; USD gross (EST) supports client-side sort (high / low / default ticker order); footer shows separate USD gross and USD credits totals (not additive with each other). Below the table: gross in-tx movement line chart (per-denom series can be toggled off via checkboxes), bank credits to user addresses line chart, IBC amount flows chart. Gas and fees; Transaction activity KPIs; Volume and IBC time-series (successful txs vs IBC message/flow counts, IBC traffic — each with dashed linear trend overlays). Economic participation & concentration renders only when the API includes participation and/or concentration payloads (distinct-account daily chart with trend, KPI cards, optional distinct-account-addresses-per-day table, top-10 gross USD share KPI). Hour granularity with no rows in hourly_metrics for the requested window triggers a dashboard banner: the API falls back to daily rollups for charts and KPIs for that request. Footer: expandable Methodology & caveats (this text).
+/** Structured sections for the Methodology & caveats panel (`MethodologyPanel.tsx`). */
+export const METHODOLOGY_SECTIONS: MethodologySection[] = [
+  {
+    title: "Scope",
+    body:
+      "Metrics reflect Agoric mainnet (agoric-3). Indexed history for this deployment begins UTC calendar day 2026-01-01 (aligned with default INDEXER_START_DATE). Requests with From earlier than that day are clamped server-side to 2026-01-01. Rollups come from PostgreSQL tables populated by the indexer: daily_metrics and hourly_metrics for charts and KPIs; participant_day and address_volume_day for Economic participation & concentration when present. If participation counts stay at zero, run the indexer after npm run db:push.",
+  },
+  {
+    title: "Layout",
+    body:
+      'When /api/metrics returns indexer_state, last indexed block height may appear above the date-range toolbar. Sections (top to bottom): Value handled (denom table, then Value Flow Map), Gas and fees KPIs, Transaction activity KPIs, Volume and IBC time-series (successful txs vs IBC message/flow counts; IBC traffic out vs recv — each with dashed trend overlays), Economic participation & concentration when the API includes participation and/or concentration (distinct-account chart, KPI cards, optional daily table, top-10 gross USD share). Hour granularity with no hourly_metrics rows triggers a banner: the API falls back to daily rollups for that request. This footer expands Methodology & caveats.',
+  },
+  {
+    title: "Value handled table",
+    body:
+      'The table "Value by denom: gross in-tx vs bank credits (range total)" lists one row per denom. Gross in-tx = transfer_volume + indexed IBC receive (ibc_transfer_amount_in). Bank credits = coin_received to non-module receivers (bank_credits_volume). The two native columns often overlap the same settlement — do not add them or the two USD (EST) columns. USD cells multiply each column\'s full-period native total by current CoinGecko spot (not historical mark-to-market). Optional COINGECKO_API_KEY helps rate limits. "View Denom" opens the full on-chain string in a fixed tooltip (portal to document.body). USD gross (EST) sorts client-side. Footer totals are per-column only, not additive with each other. Map symbols and decimals in src/config/denoms.json.',
+  },
+  {
+    title: "Value Flow Map",
+    body:
+      'Below the table: one asset at a time. Default selection = highest gross USD (EST) in range (fallback: highest gross native total). Range tiles: gross in-tx, transfer-like (range gross minus summed IBC-in), IBC-in recv, bank credits, IBC-out. "Momentum (last vs first bucket)" compares first and last time buckets in the span — not the KPI prior-window rule. Mini charts for the selected asset only: "Gross composition" (gross, transfer-like, IBC-in) and "Credits vs outbound IBC" (bank credits, IBC-out), each with dashed OLS trend overlays. Per bucket, transfer-like = gross minus IBC-in (floored at zero). Human units when mapped; use the table for cross-asset ranking.',
+  },
+  {
+    title: "Addresses",
+    body: "On-chain accounts are not unique humans. Bots, vaults, relayers, and contracts count like any address.",
+  },
+  {
+    title: "Tx outcomes",
+    body:
+      "Each indexed block tx + txs_results pair adds one count to successful txs (ABCI code 0) or failed txs. Gas used sums ABCI gas_used for every pair (successful and failed). Paid fees (fee_paid) count successful txs only from execution events — failed txs contribute gas_used but not fee_paid in these rollups.",
+  },
+  {
+    title: "Fees and gas",
+    body:
+      "Paid fees come from tx result events (e.g. tx/fee attributes), not the signed max-fee cap alone. Gas is ABCI gas units, not a token. The primary fee KPI shows uBLD as BLD.",
+  },
+  {
+    title: "Block pairing",
+    body:
+      "If block.data.txs and txs_results differ in length, the indexer pairs by index and rolls up only the first min(N, M) pairs; extra rows are omitted (src/lib/blockTxResultsPairing.ts).",
+  },
+  {
+    title: "Rollup sources",
+    body:
+      "Paid fees and IBC-in settlement amounts use tx_result events where noted; bank sends and outbound ICS-20 use decoded Msg bodies. bank_credits_volume sums coin_received to non-module receivers (src/config/agoricModuleAccounts.json). IBC recv headline counts prefer recv_packet events with MsgRecvPacket fallback. IBC-in amounts use msg_index when emitted so unrelated coin_received in the same tx are excluded — see src/lib/rollupSourceHierarchy.ts.",
+  },
+  {
+    title: "Indexer ingest scope",
+    body:
+      "Metrics come from block_results.txs_results paired with block transactions only. BeginBlock/EndBlock-only emissions (inflation, distribution, slashing, etc.) are out of scope unless mirrored in a tx result — see src/lib/indexerIngestScope.ts.",
+  },
+  {
+    title: "Transaction vs message grain",
+    body:
+      "Tx KPIs count one row per aligned tx result. Transfer-volume and IBC amount rollups sum message legs; multiple transfer msgs in one tx add multiple legs. ibc_transfer_out_count counts MsgTransfer messages. IBC-in headline counts use recv_packet flow semantics (or MsgRecvPacket fallback) — not whole-tx counts; do not sum them with tx counts without relabeling.",
+  },
+  {
+    title: "Gross flow (not supply)",
+    body:
+      "Totals are gross flow: legs can repeat as tokens move. They are not wallet balances, net changes, or comparable to supply. Do not sum human amounts across denoms for one economy-wide total.",
+  },
+  {
+    title: "Trend overlays",
+    body:
+      'On Volume and IBC charts, the distinct-accounts chart, and Value Flow Map mini charts, dashed "(trend)" lines are ordinary least-squares fits vs bucket index (0…n−1), not calendar-weighted regression.',
+  },
+  {
+    title: "IBC direction and amounts",
+    body:
+      "Out = ICS-20 MsgTransfer on agoric-3; in = MsgRecvPacket / recv_packet as indexed. ibc_transfer_amount_in sums coin_received and transfer events matching MsgRecvPacket msg_index when emitted; typical SDK paths emit both for one settlement, so the combined series is a gross index (often ~2× per-type legs) — see docs/ibcTransferAmountInEventInvestigation.md and npm run inspect:ibc-recv-tx-events. Value Flow Map IBC-in/gross use those recv amounts; IBC-out uses ibc_transfer_amount_out (decoded MsgTransfer), not bank credits.",
+  },
+  {
+    title: "IBC scope and cross-chain",
+    body:
+      "Rollups are block-local to agoric-3. Ack/timeouts/handshakes are not transfer traffic here. The same transfer can count on another chain too; out+recv on this dashboard is not net ecosystem flow.",
+  },
+  {
+    title: "Period-over-period",
+    body:
+      "KPI cards compare the current range to an equal-length prior window ending immediately before From (UTC, per granularity). Value Flow Map momentum tiles use first vs last bucket only, not that prior window.",
+  },
+  {
+    title: "Economic participation & concentration",
+    body:
+      "Successful txs only. Signers: every pubkey in signer_infos. Fee payer: fee.granter else fee.payer else first signer (participantRollupPolicy.ts). Distinct signers and fee payers are counted per role, not merged. Active 1 vs 2+ days uses UTC calendar days in participant_day. Distinct-accounts chart: one count per address per day (signer ∪ fee payer). Top 10 gross USD share: sender-side transfer_volume only (not IBC recv). Module accounts in agoricModuleAccounts.json are excluded from participation and top-10 at read time.",
+  },
+  {
+    title: "Rollup parity and upgrades",
+    body:
+      "Hourly buckets should match daily_metrics per UTC day per series; investigate drift with scripts/verifyRollupParity.ts. Protocol upgrades can change event shapes — see protocolCompatibilityNotes.ts; reindex after parser updates when needed.",
+  },
+];
 
-Addresses are accounts, not unique humans.
-
-Tx outcomes: Each indexed pair of block transaction bytes and the corresponding txs_results row adds exactly one count to either successful txs (ABCI code 0) or failed txs. Gas used sums ABCI gas_used for every such pair (successful and failed). Paid fees (fee_paid series) count successful txs only, from execution events—failed txs still contribute gas_used but not fee_paid in these rollups. Chart titles state when a series is success-only vs all inclusions.
-
-Block pairing: If block.data.txs and txs_results have different lengths, the indexer pairs by index and rolls up only the first min(N, M) pairs; any extra block txs or extra result rows are omitted from these metrics (implementation: src/lib/blockTxResultsPairing.ts).
-
-Rollup sources (Cosmos practice): Paid fees and IBC-in settlement amounts come from tx_result events where noted; bank sends and outbound ICS-20 lines decode Msg bodies (authoritative for declared movement). The bank_credits_volume series sums coin_received credits to non-module-account receivers per successful tx (module blocklist in src/config/agoricModuleAccounts.json). IBC recv headline flow counts prefer recv_packet events with MsgRecvPacket fallback. IBC-in credit sums use event msg_index when emitted so unrelated coin_received in the same tx are not folded into IBC-in — full matrix in src/lib/rollupSourceHierarchy.ts.
-
-Indexer ingest scope: Metrics come from block_results.txs_results paired with block transactions only. BeginBlock / EndBlock–style emissions that appear solely at finalize-block scope (inflation minting, distribution to validators, standalone slash records, etc.) are not rolled up here unless the node also reflects them inside a tx result — see indexerIngestScope.ts.
-
-Protocol upgrades: Agoric / Cosmos SDK / ibc-go releases can change protobuf message routes, typed-event layouts, or attribute keys. Indexed historical series may show step changes around upgrade heights until parsers and CosmJS types are updated and data is reprocessed — see protocolCompatibilityNotes.ts.
-
-Stored hourly buckets should sum to the same UTC calendar-day totals as daily_metrics for each series and dimension; investigate drift with scripts/verifyRollupParity.ts (optional RPC replay for ibc_transfer_flow_in matches indexer/backfill logic).
-
-Fees are paid amounts from transaction result events (e.g. tx/fee attributes), not the signed max fee cap alone. Gas is ABCI gas units, not a token. The primary fee KPI expresses uBLD as BLD.
-
-Transaction vs message grain: Tx KPIs (successful / failed) count one row per aligned tx result. Transfer-volume and IBC amount series sum decoded message legs; one tx with multiple transfer msgs contributes multiple legs. ibc_transfer_out_count counts MsgTransfer messages. Display IBC-in headline counts use recv_packet flow semantics (or MsgRecvPacket fallback)—they are not whole-transaction counts and must not be summed with tx counts without relabeling.
-
-Gross in-tx column and gross line chart use transfer_volume (decoded MsgSend, MsgMultiSend output legs, and outbound MsgTransfer token amounts) plus ibc_transfer_amount_in from successful tx events, per denom. Smart-contract-internal movement may still be absent from those decoded and IBC-in lines; the bank credits column uses coin_received to non-module receivers for a different, overlapping view of value credited on chain.
-
-The Value handled denom table shows gross in-tx movement (same basis as the gross line chart) next to bank credits (same basis as the bank credits line chart). The two native columns often overlap the same settlement; do not add them or the two USD (EST) columns to infer a single total. Bank credits are not a subset of gross movement and are not folded into gross totals. USD (EST) cells multiply each column's full-period native total on that basis by current CoinGecko spot—they are not historical mark-to-market—and stay blank when price or decimals are unavailable. Optional COINGECKO_API_KEY (Demo tier) helps rate limits.
-
-These totals are gross flow: legs can repeat as tokens move. They are not wallet balances, net changes, or comparable to supply or float. Each asset is a separate line (including long ibc/… hash denoms); do not sum human amounts across denoms for one "total economy." Map assets in src/config/denoms.json for symbols and decimals.
-
-The gross movement, bank credits, and IBC amount-flow charts plot each denom with non-zero volume in the range (per direction for IBC where applicable). Axes use human units per asset when mapped—cross-asset addition is not meaningful; the denom table's two USD footer totals are likewise not additive with each other.
-
-On selected transaction and participation time-series charts, dashed lines marked “(trend)” are ordinary least-squares fits versus bucket sequence (indices 0 through n−1), not calendar-weighted regression—they summarize coarse direction across the chosen span.
-
-IBC direction is chain-relative (out = ICS-20 MsgTransfer committed on agoric-3; in = MsgRecvPacket / recv_packet handling as indexed on agoric-3). Headline transfer counts: one outbound count per committed MsgTransfer; inbound as distinct recv_packet keys (channel + sequence) when events expose them, else MsgRecvPacket message count. Raw ibc_transfer_in_count (MsgRecvPacket messages) remains in the database for diagnostics. IBC-in amounts (ibc_transfer_amount_in) sum both coin_received and transfer execution events that match MsgRecvPacket msg_index when emitted; typical SDK paths emit both for the same bank credit, so the combined map is a gross chain-facing index (often near the sum of the two per-type legs), not “each minimal unit counted once across event families.” Multiple MsgRecvPackets in one tx are handled per message index under the same rules, with a documented legacy tx-wide fallback when filtering yields no amounts—see src/lib/ibcRecvEventAmounts.ts, npm run inspect:ibc-recv-tx-events, and docs/ibcTransferAmountInEventInvestigation.md. The IBC amount flows chart uses event-based amounts for recv and decoded MsgTransfer token for out — not the same construction as bank + outbound transfer_volume decode alone.
-
-IBC scope and cross-chain interpretation: These rollups are block-local to agoric-3 only. Headline ICS-20 series here do not include MsgAcknowledgement, MsgTimeout, or channel open/close handshakes as “transfer traffic.” The same economic transfer can appear as outbound activity on a counterparty chain and inbound activity here (or the reverse); summing metrics across chains or treating out-plus-in on one dashboard as “total ecosystem volume” double-counts unless each leg is labeled. Combined out+recv activity lines are chain-internal indices, not conserved net flow across the network.
-
-Period-over-period: KPI cards compare the current range to an equal-length prior window ending immediately before the selected from date (UTC hour or calendar days per granularity). That rule is not duplicated next to the date controls.
-
-Economic participation & concentration: Successful txs only. Signers: every account from each pubkey in auth_info.signer_infos (multi-signer txs add multiple signer rows). Fee payer: fee.granter else fee.payer else first signer — see participantRollupPolicy.ts. Distinct signers and distinct fee payers KPIs count unique addresses per role across the range (not merged across roles). “Active 1 day only” vs “2+ days” counts addresses by UTC calendar days present in participant_day with either role. Distinct-accounts line chart: per UTC day, COUNT DISTINCT address across signer ∪ fee payer rows (same address as signer and fee payer that day counts once). Top 10 gross USD share: sender-side transfer_volume legs only (not IBC recv). Agoric module accounts (vbank, fee_collector, gov, IBC transfer escrow, and similar — list in src/config/agoricModuleAccounts.json) are excluded from these counts and from the concentration top-10 at read time; relayers, vaults, smart-wallet accounts, and other non-module addresses still count when they sign or pay fees.
-`;
+/** Legacy plain-text export (search, contracts, external docs). */
+export const METHODOLOGY_BLURB = METHODOLOGY_SECTIONS.map((s) => `${s.title}: ${s.body}`).join(
+  "\n\n"
+);

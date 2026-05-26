@@ -1,6 +1,6 @@
 /**
  * Machine-readable metric catalog for Agoric L1 dashboard rollups.
- * Keep in sync with `scripts/indexer.ts`, `TX_RESULT_ROLLUP_POLICY`, `rollupSourceHierarchy.ts`, and `METHODOLOGY_BLURB` in semantics.ts.
+ * Keep in sync with `scripts/indexer.ts`, `TX_RESULT_ROLLUP_POLICY`, `rollupSourceHierarchy.ts`, and `METHODOLOGY_SECTIONS` in semantics.ts.
  */
 
 import { SERIES } from "@/lib/semantics";

@@ -41,7 +41,14 @@
 
 ---
 
-## 1b. Dashboard data tables (value by denom: gross in-tx vs bank credits)
+## 1b. Section intros and methodology footer
+
+- **Section intros** (`Dashboard.tsx`, **`SECTION_INTRO_CLASS`**): full width under each main H2; **`text-sm`** + **`--color-text-secondary`** (not **`--muted`** on **`text-xs`**).
+- **Methodology & caveats** (`MethodologyPanel.tsx`): card uses **`--color-surface`**; each block has a **`text-sm font-bold`** title (**`--color-text-primary`**) and **`text-sm`** body (**`--color-text-secondary`**).
+
+---
+
+## 1c. Dashboard data tables (value by denom: gross in-tx vs bank credits)
 
 The **Value by denom** block uses a **fixed-layout** HTML table with **`<colgroup>`** percentage widths (9% / 15% / 15% / 15% / 15% / 11% for Ticker / Gross in-tx / Bank credits / USD gross / USD credits / Denom), **`w-full min-w-0 table-fixed`** on the table, and **`min-w-0 max-w-full overflow-x-auto`** on the scroll wrapper so the block never forces the page wider than the viewport. **Ticker**, native amount columns, **USD** columns, and **Denom** body cells use **`min-w-0 max-w-0`**, **`whitespace-nowrap`**, and **`overflow-x-auto`** where needed so long text stays on one line and scrolls inside the cell; the **Denom** column shows a **View Denom** control with the full string in a **fixed-position** tooltip (**React** **`createPortal`** to **`document.body`**) on **hover or keyboard focus** so the popup is not clipped by the scroll wrapper. **Zebra** body rows alternate **`--color-bg-primary`** (odd) with **`--color-border`** (even).
 

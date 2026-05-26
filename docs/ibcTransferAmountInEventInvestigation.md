@@ -62,7 +62,7 @@ The same tx also shows **`ubld`** on **`coin_received`** / **`transfer`** **with
 ## Related (scope and UX)
 
 - **`src/lib/indexerIngestScope.ts`** — Indexer ingests **`block_results.txs_results`** only; finalize-block-only emissions are out of scope unless mirrored in a tx result.
-- **`src/lib/semantics.ts`** — **`METHODOLOGY_BLURB`** (footer **Methodology & caveats**) and **`INDEXER_SCOPE_CAVEAT_*`** strings used in **`Dashboard.tsx`** so **Value handled**, **Gas and fees**, and **Economic participation** panels carry a short **tx-attributed only** reminder (inflation, distribution, slashing not counted at block scope). The **Value handled** denom table juxtaposes **gross in-tx** (includes **`ibc_transfer_amount_in`**) with **`bank_credits_volume`** as **non-additive** columns; see **`METHODOLOGY_BLURB`** for the full UX narrative (including **View Denom** tooltip behavior).
+- **`src/lib/semantics.ts`** — **`METHODOLOGY_SECTIONS`** / **`METHODOLOGY_BLURB`** (footer **Methodology & caveats** via **`MethodologyPanel.tsx`**) and **`INDEXER_SCOPE_CAVEAT_*`** strings in **`Dashboard.tsx`** so **Value handled**, **Gas and fees**, and **Economic participation** carry a short **tx-attributed only** reminder. The **Value handled** table and **Value Flow Map** juxtapose **gross in-tx** (includes **`ibc_transfer_amount_in`**) with **`bank_credits_volume`** as **non-additive** views; see methodology sections **Value handled table** and **IBC direction and amounts**.
 
 ## Tests
 

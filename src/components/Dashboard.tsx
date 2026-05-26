@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChartChunkFallback } from "@/components/dashboard/ChartChunkFallback";
 import { atomicToFloat, atomicToHumanString } from "@/lib/amountFormat";
-import { listRow, valueToChartNumber } from "@/lib/displayFormat";
+import { listRow } from "@/lib/displayFormat";
 import { chartTheme } from "@/lib/chartTheme";
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
 import { sortGrossMovementRows, type GrossMovementRow } from "@/lib/grossTableUsdSort";
@@ -16,24 +16,10 @@ import {
   INDEXED_HISTORY_FROM_DAY,
   INDEXER_SCOPE_CAVEAT_INLINE,
   INDEXER_SCOPE_CAVEAT_SUBTITLE,
-  METHODOLOGY_BLURB,
+  METHODOLOGY_SECTIONS,
 } from "@/lib/semantics";
-
-const TransferVolumeLineChart = dynamic(
-  () => import("@/components/dashboard/charts/TransferVolumeLineChart"),
-  {
-    loading: () => <ChartChunkFallback title="Gross in-tx movement" />,
-    ssr: false,
-  }
-);
-
-const IbcAmountFlowsLineChart = dynamic(
-  () => import("@/components/dashboard/charts/IbcAmountFlowsLineChart"),
-  {
-    loading: () => <ChartChunkFallback title="IBC amount flows" />,
-    ssr: false,
-  }
-);
+import { MethodologyPanel } from "@/components/dashboard/MethodologyPanel";
+import ValueFlowMap from "@/components/dashboard/ValueFlowMap";
 
 const AllTxVsIbcLineChart = dynamic(
   () => import("@/components/dashboard/charts/AllTxVsIbcLineChart"),
@@ -168,6 +154,9 @@ function activeQuickPreset(
 /** docs/style-guide.md §2 — top-level section rails: accent (H2 / 20px) + left rail */
 const SECTION_HEADING_CLASS =
   "border-l-2 border-[var(--color-accent)] pl-3 text-xl font-semibold leading-tight tracking-tight text-[var(--color-accent)]";
+
+/** Section intro copy under H2 — full content width (matches chart/card panels). */
+const SECTION_INTRO_CLASS = "w-full text-xs leading-snug text-[var(--muted)]";
 
 /** In-card panel title (H3 / 18px): primary + subtle rule under the title (style guide structure) */
 const IN_CARD_TITLE_CLASS =
@@ -414,88 +403,6 @@ export function Dashboard() {
     }));
   }, [data]);
 
-  const chartTransferValue = useMemo(() => {
-    if (!data) {
-      return {
-        rows: [] as Array<{ bucket: string } & Record<string, number>>,
-        series: [] as { chartKey: string; denom: string; displaySymbol: string | null }[],
-      };
-    }
-    const tvs = data.series?.transferVolumeSeries ?? [];
-    if (tvs.length === 0) {
-      return {
-        rows: [] as Array<{ bucket: string } & Record<string, number>>,
-        series: [] as { chartKey: string; denom: string; displaySymbol: string | null }[],
-      };
-    }
-    const disp = data.display;
-    const seriesMeta = tvs.map((s, i) => ({
-      chartKey: `v${i}`,
-      denom: s.denom,
-      displaySymbol: disp?.metas[s.denom]?.displaySymbol ?? null,
-    }));
-    const maps = tvs.map((s) =>
-      new Map(
-        (s.data ?? []).map((r) => [
-          r.bucket,
-          finiteN(valueToChartNumber(r.value, s.denom, disp)),
-        ])
-      )
-    );
-    const bucketSet = new Set<string>();
-    for (const m of maps) for (const k of m.keys()) bucketSet.add(k);
-    const keys = [...bucketSet].sort();
-    const rows = keys.map((bucket) => {
-      const row = { bucket } as { bucket: string } & Record<string, number>;
-      for (let i = 0; i < seriesMeta.length; i++) {
-        row[seriesMeta[i].chartKey] = finiteN(maps[i].get(bucket) ?? 0);
-      }
-      return row;
-    });
-    return { rows, series: seriesMeta };
-  }, [data]);
-
-  const chartBankCreditsValue = useMemo(() => {
-    if (!data) {
-      return {
-        rows: [] as Array<{ bucket: string } & Record<string, number>>,
-        series: [] as { chartKey: string; denom: string; displaySymbol: string | null }[],
-      };
-    }
-    const bcs = data.series?.bankCreditsVolumeSeries ?? [];
-    if (bcs.length === 0) {
-      return {
-        rows: [] as Array<{ bucket: string } & Record<string, number>>,
-        series: [] as { chartKey: string; denom: string; displaySymbol: string | null }[],
-      };
-    }
-    const disp = data.display;
-    const seriesMeta = bcs.map((s, i) => ({
-      chartKey: `bc${i}`,
-      denom: s.denom,
-      displaySymbol: disp?.metas[s.denom]?.displaySymbol ?? null,
-    }));
-    const maps = bcs.map((s) =>
-      new Map(
-        (s.data ?? []).map((r) => [
-          r.bucket,
-          finiteN(valueToChartNumber(r.value, s.denom, disp)),
-        ])
-      )
-    );
-    const bucketSet = new Set<string>();
-    for (const m of maps) for (const k of m.keys()) bucketSet.add(k);
-    const keys = [...bucketSet].sort();
-    const rows = keys.map((bucket) => {
-      const row = { bucket } as { bucket: string } & Record<string, number>;
-      for (let i = 0; i < seriesMeta.length; i++) {
-        row[seriesMeta[i].chartKey] = finiteN(maps[i].get(bucket) ?? 0);
-      }
-      return row;
-    });
-    return { rows, series: seriesMeta };
-  }, [data]);
-
   const valueHandledBreakdownRows = useMemo((): GrossMovementRow[] => {
     if (!data) return [];
     const tv = data.transferVolumeByDenom;
@@ -555,87 +462,6 @@ export function Dashboard() {
     }
     return sortGrossMovementRows(mapped, usdSort);
   }, [data, usdSort]);
-
-  const chartIbcValueAmounts = useMemo(() => {
-    if (!data) {
-      return {
-        rows: [] as Array<{ bucket: string } & Record<string, number>>,
-        series: [] as {
-          chartKey: string;
-          denom: string;
-          displaySymbol: string | null;
-          direction: "in" | "out";
-        }[],
-      };
-    }
-    const ins = data.series?.ibcAmountInSeries ?? [];
-    const outs = data.series?.ibcAmountOutSeries ?? [];
-    if (ins.length === 0 && outs.length === 0) {
-      return {
-        rows: [] as Array<{ bucket: string } & Record<string, number>>,
-        series: [] as {
-          chartKey: string;
-          denom: string;
-          displaySymbol: string | null;
-          direction: "in" | "out";
-        }[],
-      };
-    }
-    const disp = data.display;
-    const seriesMeta: {
-      chartKey: string;
-      denom: string;
-      displaySymbol: string | null;
-      direction: "in" | "out";
-    }[] = [];
-    for (let i = 0; i < ins.length; i++) {
-      const s = ins[i];
-      seriesMeta.push({
-        chartKey: `in${i}`,
-        denom: s.denom,
-        displaySymbol: disp?.metas[s.denom]?.displaySymbol ?? null,
-        direction: "in",
-      });
-    }
-    for (let i = 0; i < outs.length; i++) {
-      const s = outs[i];
-      seriesMeta.push({
-        chartKey: `out${i}`,
-        denom: s.denom,
-        displaySymbol: disp?.metas[s.denom]?.displaySymbol ?? null,
-        direction: "out",
-      });
-    }
-    const maps = [
-      ...ins.map((s) =>
-        new Map(
-          (s.data ?? []).map((r) => [
-            r.bucket,
-            finiteN(valueToChartNumber(r.value, s.denom, disp)),
-          ])
-        )
-      ),
-      ...outs.map((s) =>
-        new Map(
-          (s.data ?? []).map((r) => [
-            r.bucket,
-            finiteN(valueToChartNumber(r.value, s.denom, disp)),
-          ])
-        )
-      ),
-    ];
-    const bucketSet = new Set<string>();
-    for (const m of maps) for (const k of m.keys()) bucketSet.add(k);
-    const keys = [...bucketSet].sort();
-    const rows = keys.map((bucket) => {
-      const row = { bucket } as { bucket: string } & Record<string, number>;
-      for (let i = 0; i < seriesMeta.length; i++) {
-        row[seriesMeta[i].chartKey] = finiteN(maps[i].get(bucket) ?? 0);
-      }
-      return row;
-    });
-    return { rows, series: seriesMeta };
-  }, [data]);
 
   const chartDistinctAccountsRows = useMemo(() => {
     const sparse = data?.participation?.distinctUnionPerDay;
@@ -863,7 +689,7 @@ export function Dashboard() {
         <>
           <section id={dashboardSectionIds.valueHandled} className="scroll-mt-6 min-w-0 space-y-6">
             <h2 className={SECTION_HEADING_CLASS}>Value handled</h2>
-            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+            <p className={SECTION_INTRO_CLASS}>
               Native-denom amounts moved inside indexed transactions on agoric-3.{" "}
               <IndexerScopeCaveatInline />
             </p>
@@ -874,7 +700,7 @@ export function Dashboard() {
                 </h3>
                 <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
                   One row per on-chain denom. <strong className="font-medium text-[var(--color-text-secondary)]">Gross in-tx</strong> is{" "}
-                  <code className="text-[var(--accent)]">transfer_volume</code> + indexed IBC receive (same as the gross line chart).{" "}
+                  <code className="text-[var(--accent)]">transfer_volume</code> + indexed IBC receive (same basis as Value Flow Map gross).{" "}
                   <strong className="font-medium text-[var(--color-text-secondary)]">Bank credits</strong> is{" "}
                   <code className="text-[var(--accent)]">coin_received</code> to non-module receivers (
                   <code className="text-[var(--accent)]">bank_credits_volume</code>). The two native columns often overlap the same settlement —{" "}
@@ -1081,29 +907,12 @@ export function Dashboard() {
                   )}
               </div>
             </div>
-
-            <section className="space-y-8 lg:space-y-10">
-              <TransferVolumeLineChart model={chartTransferValue} timeAxis={timeAxis} />
-              <TransferVolumeLineChart
-                model={chartBankCreditsValue}
-                timeAxis={timeAxis}
-                heading="Bank credits to user addresses (per asset)"
-                description={
-                  <>
-                    Per-bucket sum of native amounts from <code className="text-[var(--accent)]">coin_received</code> events whose receiver is not in the Agoric module-account blocklist (
-                    <code className="text-[var(--accent)]">src/config/agoricModuleAccounts.json</code>). Includes value moved via smart-contract / vbank paths that may not appear in decoded transfer messages. Human scaling uses{" "}
-                    <code className="text-[var(--accent)]">denoms.json</code> when mapped. IBC settlement lines stay on the gross movement and IBC charts.
-                  </>
-                }
-                emptyMessage="No bank credit events in the selected range (run the indexer and npm run backfill:bank-credits for full history)."
-              />
-              <IbcAmountFlowsLineChart model={chartIbcValueAmounts} timeAxis={timeAxis} />
-            </section>
+            <ValueFlowMap data={data} />
           </section>
 
           <section id={dashboardSectionIds.gasFees} className="scroll-mt-6 space-y-4">
             <h2 className={SECTION_HEADING_CLASS}>Gas and fees</h2>
-            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+            <p className={SECTION_INTRO_CLASS}>
               KPI % change compares your selected range to an{" "}
               <strong className="font-medium text-[var(--color-text-secondary)]">equal-length prior window</strong>{" "}
               ending immediately before <strong className="font-medium text-[var(--color-text-secondary)]">From</strong>{" "}
@@ -1138,7 +947,7 @@ export function Dashboard() {
 
           <section id={dashboardSectionIds.transactionActivity} className="scroll-mt-6 space-y-4">
             <h2 className={SECTION_HEADING_CLASS}>Transaction activity</h2>
-            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+            <p className={SECTION_INTRO_CLASS}>
               Successful txs are whole transactions (ABCI code 0). They are{" "}
               <strong className="font-medium text-[var(--color-text-secondary)]">not</strong> unique users or
               wallets — compare only to participation metrics below with that in mind. IBC KPIs count messages or inbound
@@ -1171,7 +980,7 @@ export function Dashboard() {
 
           <section id={dashboardSectionIds.volumeIbc} className="scroll-mt-6 space-y-3">
             <h2 className={SECTION_HEADING_CLASS}>Volume and IBC (time series)</h2>
-            <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+            <p className={SECTION_INTRO_CLASS}>
               Activity counts only (successful txs vs outbound msgs + inbound recv-flow headline). Native token amounts live under Value handled. Series are agoric-3-local — see methodology for cross-chain interpretation.
             </p>
             <div className="space-y-8 lg:space-y-10">
@@ -1183,7 +992,7 @@ export function Dashboard() {
           {(data.participation || data.concentration) && (
             <section id={dashboardSectionIds.participation} className="scroll-mt-6 space-y-4">
               <h2 className={SECTION_HEADING_CLASS}>Economic participation &amp; concentration</h2>
-              <p className="max-w-3xl text-xs leading-snug text-[var(--muted)]">
+              <p className={SECTION_INTRO_CLASS}>
                 On-chain accounts, not people — signers (all pubkeys in the tx) and fee payers are counted separately; distinct lines dedupe per day across roles. Bots, vaults, relayers, and contracts count like any account.{" "}
                 <strong className="font-medium text-[var(--color-text-secondary)]">
                   Do not rank or ratio these counts against successful tx totals without normalization
@@ -1272,11 +1081,7 @@ export function Dashboard() {
         >
           {methodologyOpen ? "Hide methodology" : "Methodology & caveats"}
         </button>
-        {methodologyOpen && (
-          <pre className="mt-4 whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--surface)] p-5 text-xs text-[var(--muted)]">
-            {METHODOLOGY_BLURB.trim()}
-          </pre>
-        )}
+        {methodologyOpen && <MethodologyPanel sections={METHODOLOGY_SECTIONS} />}
       </footer>
     </div>
   );

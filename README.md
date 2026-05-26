@@ -6,12 +6,12 @@ The **`page.tsx`** header includes **right-aligned jump links** (`src/lib/dashbo
 
 ## What the dashboard shows
 
-The page order follows **`Dashboard.tsx`**: **Range** (date/granularity controls at top — **`filters`** anchor only; not in header nav), **Value handled** (combined **value-by-denom** table — gross in-tx vs bank credits — then gross / bank-credits / IBC amount line charts), **Gas and fees**, **Transaction activity** KPIs, **full-width** tx vs IBC line charts, then **economic participation & concentration** (last main section, above the methodology footer). Header jump links align with the latter sections only.
+The page order follows **`Dashboard.tsx`**: **Range** (date/granularity controls at top — **`filters`** anchor only; not in header nav), **Value handled** (**value-by-denom** table, then **Value Flow Map** for one asset at a time), **Gas and fees**, **Transaction activity** KPIs, **full-width** Volume and IBC time-series charts, then **economic participation & concentration** (last main section, above the methodology footer). Header jump links align with the latter sections only.
 
 | Area | Content |
 |------|--------|
 | **Range** | **Granularity**, **Date range** presets (uppercase label), **Custom Range** (`--color-bg-control` toolbar); controls are **centered** in the card. Anchor id **`filters`**. |
-| **Value handled** | **Value by denom** HTML **table** (single card): **Gross in-tx** vs **Bank credits** side-by-side per denom — same series as the two line charts below; **do not add** the columns (overlapping settlement). **`colgroup`** + **`table-fixed`** (9% / 15% / 15% / 15% / 15% / 11%), **`min-w-0`** scroll wrapper; **Denom** column uses a **View Denom** badge with full string in a hover tooltip (fixed portal). **USD gross (EST)** header sorts (high→low / low→high / default; resets on **From / To / Granularity**). Footer shows **separate** USD totals per basis (not additive). **Zebra** rows. **Gross in-tx (per asset)** line chart with **checkboxes**; **Bank credits** line chart; **IBC amount flows**; **Date range** + **Custom Range**; **last indexed block height** (**bold**, left-aligned) when available. Intro caption includes **tx-attributed scope** (link to **Methodology**). Note under filters: **indexed-history** sentence **bold**, remainder normal; **centered**. |
+| **Value handled** | **Value by denom** HTML **table**: **Gross in-tx** vs **Bank credits** per denom — **do not add** the columns (overlapping settlement). **`colgroup`** + **`table-fixed`** (9% / 15% / 15% / 15% / 15% / 11%), **`min-w-0`** scroll wrapper; **View Denom** tooltip (fixed portal). **USD gross (EST)** sorts client-side (resets on **From / To / Granularity**). Footer: separate USD totals per column (not additive). **Zebra** rows. Below the table: **Value Flow Map** — asset selector (defaults to top **gross USD** denom), range-total tiles (gross, transfer-like, IBC-in, bank credits, IBC-out), **Momentum (last vs first bucket)** on gross/credits, and two mini charts (**Gross composition**, **Credits vs outbound IBC**) with dashed **(trend)** overlays for the selected asset only. Section intro copy is **full width**; **tx-attributed scope** links to **Methodology**. **Last indexed block height** (**bold**, left-aligned) when available. Filter toolbar: **indexed-history** note **bold** first sentence, **centered**. |
 | **Gas and fees** | KPIs: **gas used** (ABCI units), **paid fees uBLD → BLD**; subtitles repeat **tx-attributed scope** (see **Methodology**). |
 | **Transaction activity** | KPIs: **successful txs**, **IBC out** (one per MsgTransfer), **IBC recv** (distinct `recv_packet` events when indexed, else MsgRecvPacket count); charts (**full width**): **successful txs vs IBC transfer volume**, then **IBC traffic** (out vs recv). Each includes a **dashed linear trend** (OLS vs bucket order; legend **`(trend)`**). |
 | **Volume and IBC (time series)** | **Successful txs vs IBC** and **IBC traffic** line charts (full width); dashed **trend** overlays per series (`src/lib/linearTrend.ts`, `chartTheme.trendLineProps`). |
@@ -19,14 +19,15 @@ The page order follows **`Dashboard.tsx`**: **Range** (date/granularity controls
 
 All KPIs that support it show **prior window** and **percent change** vs an equal-length period ending immediately before the selected range (`pctChange` in `src/lib/metricsQuery.ts`).
 
-The in-app **Methodology & caveats** panel is the full narrative (`METHODOLOGY_BLURB` in `src/lib/semantics.ts`). The bullets below are a shorter reference.
+The in-app **Methodology & caveats** footer expands structured sections from **`METHODOLOGY_SECTIONS`** in `src/lib/semantics.ts` (rendered by **`MethodologyPanel.tsx`**; plain-text **`METHODOLOGY_BLURB`** is the same content joined for search and contracts). The bullets below are a shorter reference.
 
 ## Definitions (v1)
 
 - **Successful txs**: ABCI result code `0` (KPI; “all txs” in charts includes **failed** inclusions as well).
 - **Gas**: **ABCI / consensus gas units** — not a token and not the same as paid fees. Do not conflate with BLD or IBC.
 - **Paid fees**: Parsed from **tx result events** (e.g. `tx` / `fee` attributes) — the amount actually **paid in execution**, not the signed “max fee” cap only. The primary fee KPI shows **uBLD → BLD**; the API also carries per-denom fee breakdowns for other uses.
-- **Gross in-tx movement** (not supply): **Multi-asset** sum of on-chain transfer legs in the range. Native and **IBC** denoms (including long `ibc/HASH` strings) are different lines. **uBLD fee totals are not a summary of all economic value** — movement is per denom. Amounts are shown in on-chain units (human-formatted when listed in `denoms.json`). Do not treat range totals as comparable to circulating supply; they are gross flow.
+- **Gross in-tx movement** (not supply): **Multi-asset** sum of on-chain transfer legs in the range (`transfer_volume` + indexed IBC recv per denom in the table and Value Flow Map). Native and **IBC** denoms (including long `ibc/HASH` strings) are different lines. **uBLD fee totals are not a summary of all economic value** — movement is per denom. Amounts are shown in on-chain units (human-formatted when listed in `denoms.json`). Do not treat range totals as comparable to circulating supply; they are gross flow.
+- **Value Flow Map**: One selected asset at a time; **transfer-like** = range gross minus summed IBC-in. Mini charts plot that denom only — use the denom table to compare assets. **Momentum** tiles compare first vs last bucket in the span (not the KPI prior-window rule).
 - **USD (EST) in the Value handled table**: **Not** on-chain USD. **USD gross** and **USD credits** cells each multiply that column’s **range-aggregated native total** by **current CoinGecko spot** (see `src/lib/transferVolumeUsdEstimates.ts`). Footer **TOTAL** cells sum priced rows **per column** (`transferVolumeUsdTotal`, `bankCreditsVolumeUsdTotal`); **do not add** those two totals. Unmapped or rate-limited denoms show **—**. Optional **`COINGECKO_API_KEY`** (Demo) in `.env` helps free-tier rate limits (`x-cg-demo-api-key` header). **Sorting** on **USD gross (EST)** only is **client-side** (parsed from formatted currency strings); **USD credits** is not a sort key — see `src/lib/grossTableUsdSort.ts` and `src/lib/grossTableUsdSort.test.ts`.
 - **Transfer / transfer volume (indexed)**: Native minimal units from decoded **`MsgSend`**, **`MsgMultiSend`**, and **`MsgTransfer`**, plus IBC recv indexing where the indexer records amounts — **smart-contract-internal flows** may be missing from this view.
 - **IBC** direction is **Agoric-relative** (e.g. out = `MsgTransfer` from this chain; in = recv packet handling as indexed).
@@ -39,7 +40,7 @@ The in-app **Methodology & caveats** panel is the full narrative (`METHODOLOGY_B
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.
 - **CoinGecko IDs for USD estimates**: **`src/config/coingeckoDisplaySymbolToId.json`** maps each `displaySymbol` → CoinGecko `ids` string for `/simple/price`. Optional per-denom overrides: **`src/config/coingeckoDenomOverrides.json`** (`match` → id). A reviewed export with status notes lives at **`public/denom-translations.csv`** (also served at `/denom-translations.csv` when the app is running).
-- A long `ibc/FE98…` style value is a **canon IBC token id** (hash of path + base denom) — the **Value handled** table keeps the raw id in a **View Denom** tooltip; charts and other views may still show the raw id until you add a matching `entries` row. To find hashes registered on chain but missing from the file, diff **`GET /cosmos/bank/v1beta1/denoms_metadata`** (`base` field) against `entries[].match` (see the **note** in `denoms.json`). Identify new IBC assets with **`GET /ibc/apps/transfer/v1/denom_traces/{hash}`** plus [cosmos/chain-registry](https://github.com/cosmos/chain-registry) metadata (see **`docs/DEVELOPMENT.md`**). **Multiple** `ibc/...` values can still represent the **same** logical asset via **different IBC paths**; each path needs its own `match` row with **correct `decimals` for that path’s base denom** (query **`/ibc/apps/transfer/v1/denom_traces/{hash}`** for `base_denom`—e.g. Axelar **`uaxl`** vs **`aarch`** use different minimal-unit scales; Provenance **`nhash`** uses **9**, not 6). Examples: **`AXL`** vs **`AXL (router)`**; **`HASH`** (Provenance via IBC).
+- A long `ibc/FE98…` style value is a **canon IBC token id** (hash of path + base denom) — the **Value handled** table and **Value Flow Map** keep the raw id in **View Denom** / the asset selector until you add a matching `entries` row. To find hashes registered on chain but missing from the file, diff **`GET /cosmos/bank/v1beta1/denoms_metadata`** (`base` field) against `entries[].match` (see the **note** in `denoms.json`). Identify new IBC assets with **`GET /ibc/apps/transfer/v1/denom_traces/{hash}`** plus [cosmos/chain-registry](https://github.com/cosmos/chain-registry) metadata (see **`docs/DEVELOPMENT.md`**). **Multiple** `ibc/...` values can still represent the **same** logical asset via **different IBC paths**; each path needs its own `match` row with **correct `decimals` for that path’s base denom** (query **`/ibc/apps/transfer/v1/denom_traces/{hash}`** for `base_denom`—e.g. Axelar **`uaxl`** vs **`aarch`** use different minimal-unit scales; Provenance **`nhash`** uses **9**, not 6). Examples: **`AXL`** vs **`AXL (router)`**; **`HASH`** (Provenance via IBC).
 
 ## Prerequisites
 
@@ -126,10 +127,10 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
   - **`transferVolumeUsdTotal`** — formatted sum of priced **gross** USD rows (same basis as the table **USD gross** footer), or `null` if none.
   - **`bankCreditsVolumeUsdByDenom`** / **`bankCreditsVolumeUsdTotal`** — same spot logic for **bank credits** column totals (table **USD credits** footer); not additive with gross USD totals.
   - **`usdPricingMeta`** — `{ source: "coingecko", spotFetchedAt, partialOrStale }`.
-  - **`participation`** / **`concentration`** — from **`enrichParticipationAndConcentration`** in `src/lib/enrichParticipationConcentration.ts` for the Economic participation & concentration section (requires indexer-filled **`participant_day`** / **`address_volume_day`**). Methodology copy lives only in **`METHODOLOGY_BLURB`** (`src/lib/semantics.ts`), not as a separate API field.
+  - **`participation`** / **`concentration`** — from **`enrichParticipationAndConcentration`** in `src/lib/enrichParticipationConcentration.ts` for the Economic participation & concentration section (requires indexer-filled **`participant_day`** / **`address_volume_day`**). Methodology copy lives only in **`METHODOLOGY_SECTIONS`** / **`METHODOLOGY_BLURB`** (`src/lib/semantics.ts`), not as a separate API field.
   - **`indexedHistoryFromDay`** — `"2026-01-01"` (constant **`INDEXED_HISTORY_FROM_DAY`**); **`from`** query dates before this are clamped for all metrics.
 
-  Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (same basis as the **Gross in-tx** column of the value-handled denom table). **`series.ibcAmountInSeries`** / **`ibcAmountOutSeries`** remain separate IBC recv/out views—each item is `{ denom, data: [{ bucket, value }] }`.
+  Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (same basis as the **Gross in-tx** column and Value Flow Map gross series). **`series.bankCreditsVolumeSeries`**, **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** feed the Value Flow Map and API rollups — each item is `{ denom, data: [{ bucket, value }] }`.
 
 ## Project layout
 
@@ -147,7 +148,11 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `src/lib/ibcRecvEventAmounts.ts` | **`sumRecvCoinAmountsFromTxEvents`** — parses `coin_received` / `transfer` amounts (shared with indexer + scan script) |
 | `src/config/denoms.json` | `match` (full on-chain denom) → symbol, decimals |
 | `src/db/schema.ts` | `daily_metrics`, `hourly_metrics`, `indexer_state`, `participant_day`, `address_volume_day`, … (Drizzle) |
-| `src/lib/semantics.ts` | `CHAIN_ID`, `SERIES`, `FEE_DENOM_UBLB`, **`INDEXED_HISTORY_FROM_DAY`**, **`INDEXER_SCOPE_CAVEAT_*`**, `METHODOLOGY_BLURB` |
+| `src/lib/semantics.ts` | `CHAIN_ID`, `SERIES`, `FEE_DENOM_UBLB`, **`INDEXED_HISTORY_FROM_DAY`**, **`INDEXER_SCOPE_CAVEAT_*`**, **`METHODOLOGY_SECTIONS`**, `METHODOLOGY_BLURB` |
+| `src/lib/valueFlowMapSeries.ts` | Per-bucket rows for Value Flow Map mini charts (`buildValueFlowMiniRows`) |
+| `src/components/dashboard/ValueFlowMap.tsx` | Value handled: denom selector, relationship tiles, mini-chart host |
+| `src/components/dashboard/ValueFlowMapMiniCharts.tsx` | Gross composition + Credits vs outbound IBC Recharts panels |
+| `src/components/dashboard/MethodologyPanel.tsx` | Footer **Methodology & caveats** structured sections |
 | `src/lib/metricsApiValidation.ts` | `GET /api/metrics` query validation (range caps, ISO dates); **`clampMetricsRangeToIndexedHistory`** |
 | `src/lib/metricsQuery.ts` | `buildMetricsPayload`, KPIs, series for charts, comparison window |
 | `src/lib/metricsEnrichment.ts` | `resolveDenom`-based **metas** for `display` |
@@ -167,14 +172,16 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `src/lib/participationQueries.ts` | Postgres reads for participation range + address volume totals |
 | `src/lib/enrichParticipationConcentration.ts` | **`enrichParticipationAndConcentration`** — participation + concentration for `/api/metrics` |
 | `public/denom-translations.csv` | Optional export of denom ↔ symbol ↔ CoinGecko mapping |
-| `src/components/Dashboard.tsx` | Date/granularity controls, combined value-by-denom table (**View Denom** portal tooltip), charts, section anchors |
+| `src/components/Dashboard.tsx` | Date/granularity controls, value-by-denom table, Value Flow Map, Volume/IBC/participation charts, section anchors |
+| `src/components/dashboard/charts/TransferVolumeLineChart.tsx` | Legacy multi-asset line chart (not mounted on the dashboard; kept for reuse) |
+| `src/components/dashboard/charts/IbcAmountFlowsLineChart.tsx` | Legacy IBC in/out amount chart (not mounted; Value Flow Map replaces it) |
 | `src/components/dashboard/charts/DistinctAccountsLineChart.tsx` | Daily distinct account addresses (**UTC**), filled series |
 | `src/lib/filledDistinctAccountsSeries.ts` | Dense calendar-day rows from sparse API **distinctUnionPerDay** |
 | `src/components/MetricsErrorBoundary.tsx` | Catches render errors in the client dashboard |
 
 ## Tests
 
-**Vitest** runs tests on pure modules (**37** test files, **169** tests at last `npm run verify`; no Postgres or Next server by default):
+**Vitest** runs tests on pure modules (**38** test files, **175** tests at last `npm run verify`; no Postgres or Next server by default):
 
 | File | Covers |
 |------|--------|
@@ -200,7 +207,8 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `src/lib/dashboardNav.test.ts` | Header **`dashboardNavLinks`** (omits **`filters`** toolbar); every href targets **`dashboardSectionIds`** |
 | `src/lib/filledDistinctAccountsSeries.test.ts` | Dense daily series for distinct-account **time-series** chart |
 | `src/lib/ibcRecvEventAmounts.test.ts` | **`sumRecvCoinAmountsFromTxEvents`**, **`diagnoseRecvCoinAmountsByEventType`** (`coin_received` / `transfer` parsing + diagnostics) |
-| `src/lib/semantics.contract.test.ts` | **`TX_RESULT_ROLLUP_POLICY`** vs metric dictionary; **`INDEXER_SCOPE_CAVEAT_*`** shape; **`METHODOLOGY_BLURB`** documents combined Value handled UI |
+| `src/lib/valueFlowMapSeries.test.ts` | **`buildValueFlowMiniRows`** bucket alignment and transfer-like derivation |
+| `src/lib/semantics.contract.test.ts` | **`TX_RESULT_ROLLUP_POLICY`** vs metric dictionary; **`INDEXER_SCOPE_CAVEAT_*`** shape; **`METHODOLOGY_SECTIONS`** / **`METHODOLOGY_BLURB`** document Value handled + Value Flow Map UI |
 
 ```bash
 npm test
