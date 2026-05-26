@@ -8,8 +8,9 @@ import { chartTheme } from "@/lib/chartTheme";
 import { buildValueFlowMiniRows } from "@/lib/valueFlowMapSeries";
 import ValueFlowMapMiniCharts from "@/components/dashboard/ValueFlowMapMiniCharts";
 import { useEffect, useMemo, useState } from "react";
+import { XAxis } from "recharts";
 
-type XAxisSpread = ComponentProps<import("recharts").XAxis>;
+type XAxisSpread = ComponentProps<typeof XAxis>;
 
 type BucketPoint = { bucket: string; value: string };
 
