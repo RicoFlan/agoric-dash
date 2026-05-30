@@ -9,7 +9,7 @@
  */
 import { and, eq, gte, lte, notInArray, sql } from "drizzle-orm";
 import { db, pool } from "@/db/client";
-import { addressVolumeDay, participantDay } from "@/db/schema";
+import { addressFeeDay, addressVolumeDay, participantDay } from "@/db/schema";
 import { AGORIC_MODULE_ACCOUNT_ADDRESSES } from "@/lib/agoricModuleAccounts";
 import { PARTICIPANT_ROLES } from "@/lib/participantRollupPolicy";
 
@@ -117,4 +117,105 @@ export async function queryAddressVolumeTotals(
   }
 
   return volumeByAddressDenom;
+}
+
+/**
+ * Per-day, per-address transfer volume by denom for concentration trend (module accounts excluded).
+ * Shape: day → address → denom → summed volume. Address tables are daily, so this is daily-grain
+ * regardless of the dashboard's selected granularity.
+ */
+export async function queryAddressVolumeTotalsByDay(
+  fromDay: string,
+  toDay: string
+): Promise<Map<string, Map<string, Map<string, bigint>>>> {
+  const rows = await db
+    .select({
+      day: sql<string>`${addressVolumeDay.day}::text`,
+      address: addressVolumeDay.address,
+      denom: addressVolumeDay.denom,
+      v: sql<string>`sum(${addressVolumeDay.volume})::text`,
+    })
+    .from(addressVolumeDay)
+    .where(
+      and(
+        gte(addressVolumeDay.day, fromDay),
+        lte(addressVolumeDay.day, toDay),
+        notInArray(addressVolumeDay.address, MODULE_ACCOUNT_ADDRS)
+      )
+    )
+    .groupBy(addressVolumeDay.day, addressVolumeDay.address, addressVolumeDay.denom);
+
+  return groupByDayAddressDenom(rows.map((r) => ({ ...r, amount: r.v })));
+}
+
+/**
+ * Per-day, per-fee-payer paid fees by denom for fee-concentration trend (module accounts excluded).
+ * Shape: day → address → denom → summed fee.
+ */
+export async function queryAddressFeeTotalsByDay(
+  fromDay: string,
+  toDay: string
+): Promise<Map<string, Map<string, Map<string, bigint>>>> {
+  const rows = await db
+    .select({
+      day: sql<string>`${addressFeeDay.day}::text`,
+      address: addressFeeDay.address,
+      denom: addressFeeDay.denom,
+      f: sql<string>`sum(${addressFeeDay.fee})::text`,
+    })
+    .from(addressFeeDay)
+    .where(
+      and(
+        gte(addressFeeDay.day, fromDay),
+        lte(addressFeeDay.day, toDay),
+        notInArray(addressFeeDay.address, MODULE_ACCOUNT_ADDRS)
+      )
+    )
+    .groupBy(addressFeeDay.day, addressFeeDay.address, addressFeeDay.denom);
+
+  return groupByDayAddressDenom(rows.map((r) => ({ ...r, amount: r.f })));
+}
+
+function groupByDayAddressDenom(
+  rows: ReadonlyArray<{ day: string; address: string; denom: string; amount: string }>
+): Map<string, Map<string, Map<string, bigint>>> {
+  const byDay = new Map<string, Map<string, Map<string, bigint>>>();
+  for (const r of rows) {
+    const day = String(r.day).slice(0, 10);
+    if (!byDay.has(day)) byDay.set(day, new Map());
+    const byAddr = byDay.get(day)!;
+    if (!byAddr.has(r.address)) byAddr.set(r.address, new Map());
+    byAddr.get(r.address)!.set(r.denom, BigInt(r.amount ?? "0"));
+  }
+  return byDay;
+}
+
+/** Per-fee-payer aggregate paid fees by denom for fee concentration (module accounts excluded). */
+export async function queryAddressFeeTotals(
+  fromDay: string,
+  toDay: string
+): Promise<Map<string, Map<string, bigint>>> {
+  const feeRows = await db
+    .select({
+      address: addressFeeDay.address,
+      denom: addressFeeDay.denom,
+      f: sql<string>`sum(${addressFeeDay.fee})::text`,
+    })
+    .from(addressFeeDay)
+    .where(
+      and(
+        gte(addressFeeDay.day, fromDay),
+        lte(addressFeeDay.day, toDay),
+        notInArray(addressFeeDay.address, MODULE_ACCOUNT_ADDRS)
+      )
+    )
+    .groupBy(addressFeeDay.address, addressFeeDay.denom);
+
+  const feeByAddressDenom = new Map<string, Map<string, bigint>>();
+  for (const r of feeRows) {
+    if (!feeByAddressDenom.has(r.address)) feeByAddressDenom.set(r.address, new Map());
+    feeByAddressDenom.get(r.address)!.set(r.denom, BigInt(r.f ?? "0"));
+  }
+
+  return feeByAddressDenom;
 }

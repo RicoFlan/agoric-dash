@@ -1,11 +1,31 @@
 import { Registry } from "@cosmjs/proto-signing";
 import { decodeTxRaw } from "@cosmjs/proto-signing";
-import type { EncodeObject } from "@cosmjs/proto-signing";
+import type { EncodeObject, GeneratedType } from "@cosmjs/proto-signing";
 import { wasmTypes } from "@cosmjs/cosmwasm-stargate";
 import { defaultRegistryTypes } from "@cosmjs/stargate";
+import {
+  MsgWalletAction,
+  MsgWalletSpendAction,
+} from "@agoric/cosmic-proto/swingset/msgs.js";
+
+/**
+ * Agoric-specific (`agoric.swingset.*`) Msg types not present in @cosmjs defaults. Registering them
+ * lets {@link decodeMsg} decode smart-wallet actions whose bodies carry marshalled Zoe offers
+ * (`spend_action` / `action` CapData). telescope-generated types expose typeUrl + encode/decode/
+ * fromPartial, satisfying cosmjs `GeneratedType`. Keep aligned with on-chain protos after upgrades
+ * (`protocolCompatibilityNotes.ts`).
+ */
+export const agoricSwingsetTypes: ReadonlyArray<[string, GeneratedType]> = [
+  [MsgWalletSpendAction.typeUrl, MsgWalletSpendAction as unknown as GeneratedType],
+  [MsgWalletAction.typeUrl, MsgWalletAction as unknown as GeneratedType],
+];
 
 /** Msg decode registry — must stay aligned with on-chain protos after upgrades (`protocolCompatibilityNotes.ts`). */
-export const txRegistry = new Registry([...defaultRegistryTypes, ...wasmTypes]);
+export const txRegistry = new Registry([
+  ...defaultRegistryTypes,
+  ...wasmTypes,
+  ...agoricSwingsetTypes,
+]);
 
 export interface EventKV {
   readonly type: string;

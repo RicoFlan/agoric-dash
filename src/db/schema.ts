@@ -68,6 +68,22 @@ export const addressVolumeDay = pgTable(
   (t) => [primaryKey({ columns: [t.day, t.address, t.denom] })]
 );
 
+/**
+ * Distinct smart-wallet owners that submitted a wallet action (offer / invocation) per UTC day,
+ * split by action kind. Backs "distinct offer-submitting wallets" — the key anti-overcounting
+ * signal for SwingSet/Zoe activity, where a few bot wallets dominate raw counts. Owner is the
+ * bech32 of MsgWalletSpendAction/MsgWalletAction `owner` (successful txs only).
+ */
+export const offerParticipantDay = pgTable(
+  "offer_participant_day",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    address: varchar("address", { length: 128 }).notNull(),
+    kind: varchar("kind", { length: 24 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.address, t.kind] })]
+);
+
 /** Paid fees attributed to fee payer (granter or first signer) per denom per day. */
 export const addressFeeDay = pgTable(
   "address_fee_day",

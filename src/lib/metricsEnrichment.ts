@@ -23,6 +23,12 @@ function collectTransferRelatedDenoms(p: MetricsApiPayload): Set<string> {
   for (const ibc of p.series.ibcAmountOutSeries) {
     if (ibc.denom) s.add(ibc.denom);
   }
+  const offerValue = p.offers?.value;
+  if (offerValue) {
+    for (const d of Object.keys(offerValue.giveByDenom)) s.add(d);
+    for (const d of Object.keys(offerValue.wantByDenom)) s.add(d);
+    for (const d of Object.keys(offerValue.payoutByDenom)) s.add(d);
+  }
   return s;
 }
 

@@ -4,7 +4,16 @@ import { enrichParticipationAndConcentration } from "@/lib/enrichParticipationCo
 import { enrichMetricsForDisplay } from "@/lib/metricsEnrichment";
 import { buildMetricsPayload, type Granularity } from "@/lib/metricsQuery";
 import { enrichTransferAndBankCreditsUsdEstimates } from "@/lib/transferVolumeUsdEstimates";
-import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
+import { enrichOfferValueUsd } from "@/lib/offerValueUsd";
+import { parseUsdEstimateSortKey } from "@/lib/grossTableUsdSort";
+import { computeNormalizedRatios, formatNormalizedRatios } from "@/lib/normalizedRatios";
+import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
+
+/** Parse a numeric-string kpi value to bigint, tolerating "" / non-numeric (→ 0). */
+function bigintOrZero(s: string | undefined | null): bigint {
+  if (typeof s !== "string" || !/^\d+$/.test(s)) return BigInt(0);
+  return BigInt(s);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -63,11 +72,36 @@ export async function GET(req: NextRequest) {
       denomUnionForPricing,
       display
     );
+
+    const offerValueUsd = payload.offers
+      ? await enrichOfferValueUsd(
+          payload.offers.value.giveByDenom,
+          payload.offers.value.wantByDenom,
+          payload.offers.value.payoutByDenom,
+          display
+        )
+      : null;
+
+    const grossUsdTotalNum = parseUsdEstimateSortKey(usd.transferVolumeUsdTotal ?? null);
+    const normalizedRatios = formatNormalizedRatios(
+      computeNormalizedRatios({
+        gasUsed: bigintOrZero(payload.kpis.gasUsed.current),
+        successfulTxs: bigintOrZero(payload.kpis.txSuccess.current),
+        failedTxs: bigintOrZero(payload.kpis.txFailed.current),
+        feeUbld: bigintOrZero(payload.kpis.feePaidUbld.current),
+        feeDenomDecimals: display.metas[FEE_DENOM_UBLB]?.decimals ?? 6,
+        activeAddresses: Number(participationConcentration.participation.distinctSigners) || 0,
+        grossUsdTotal: Number.isFinite(grossUsdTotalNum) ? grossUsdTotalNum : null,
+      })
+    );
+
     return NextResponse.json({
       ...payload,
       display,
       ...usd,
       ...participationConcentration,
+      offerValueUsd,
+      normalizedRatios,
       indexedHistoryFromDay: INDEXED_HISTORY_FROM_DAY,
     });
   } catch (e) {

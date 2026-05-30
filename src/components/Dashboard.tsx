@@ -11,6 +11,11 @@ import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
 import { sortGrossMovementRows, type GrossMovementRow } from "@/lib/grossTableUsdSort";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
+import { buildSuccessRateRows } from "@/lib/successRateSeries";
+import { buildGasUtilizationRows } from "@/lib/gasUtilizationSeries";
+import { buildStakingGovActivityRows } from "@/lib/stakingGovActivitySeries";
+import { buildOffersActivityRows } from "@/lib/offersActivitySeries";
+import type { ConcentrationTimePoint } from "@/lib/concentrationTimeseries";
 import {
   FEE_DENOM_UBLB,
   INDEXED_HISTORY_FROM_DAY,
@@ -20,6 +25,7 @@ import {
 } from "@/lib/semantics";
 import { MethodologyPanel } from "@/components/dashboard/MethodologyPanel";
 import ValueFlowMap from "@/components/dashboard/ValueFlowMap";
+import { formatRatePct } from "@/lib/txSuccessRate";
 
 const AllTxVsIbcLineChart = dynamic(
   () => import("@/components/dashboard/charts/AllTxVsIbcLineChart"),
@@ -33,6 +39,46 @@ const IbcTrafficLineChart = dynamic(
   () => import("@/components/dashboard/charts/IbcTrafficLineChart"),
   {
     loading: () => <ChartChunkFallback title="IBC traffic" />,
+    ssr: false,
+  }
+);
+
+const TxSuccessRateLineChart = dynamic(
+  () => import("@/components/dashboard/charts/TxSuccessRateLineChart"),
+  {
+    loading: () => <ChartChunkFallback title="Transaction success rate" />,
+    ssr: false,
+  }
+);
+
+const GasUtilizationLineChart = dynamic(
+  () => import("@/components/dashboard/charts/GasUtilizationLineChart"),
+  {
+    loading: () => <ChartChunkFallback title="Block-space utilization" />,
+    ssr: false,
+  }
+);
+
+const StakingGovActivityLineChart = dynamic(
+  () => import("@/components/dashboard/charts/StakingGovActivityLineChart"),
+  {
+    loading: () => <ChartChunkFallback title="Staking & governance activity" />,
+    ssr: false,
+  }
+);
+
+const ConcentrationLineChart = dynamic(
+  () => import("@/components/dashboard/charts/ConcentrationLineChart"),
+  {
+    loading: () => <ChartChunkFallback title="Concentration over time" />,
+    ssr: false,
+  }
+);
+
+const OffersActivityLineChart = dynamic(
+  () => import("@/components/dashboard/charts/OffersActivityLineChart"),
+  {
+    loading: () => <ChartChunkFallback title="Smart-wallet offer activity" />,
     ssr: false,
   }
 );
@@ -52,6 +98,9 @@ function finiteN(n: number): number {
 
 type Granularity = "hour" | "day" | "week";
 
+type KpiDelta = { current: string; previous: string; pctChange: number | null };
+type OfferLabeledCount = { key: string; label: string; count: string };
+
 interface MetricsPayload {
   granularity?: Granularity;
   display?: EnrichedDisplay;
@@ -59,7 +108,16 @@ interface MetricsPayload {
   comparisonWindow: { from: string; to: string };
   kpis: {
     txSuccess: { current: string; previous: string; pctChange: number | null };
+    txFailed: { current: string; previous: string; pctChange: number | null };
+    /** Success rate % (0–100), or null when no aligned txs in the window. */
+    successRatePct: { current: number | null; previous: number | null };
     gasUsed: { current: string; previous: string; pctChange: number | null };
+    gasWanted: { current: string; previous: string; pctChange: number | null };
+    /** Gas efficiency % = gas_used / gas_wanted, or null when no gas requested. */
+    gasEfficiencyPct: { current: number | null; previous: number | null };
+    blockGasLimit: { current: string; previous: string; pctChange: number | null };
+    /** Block-space utilization % = gas_used / block_gas_limit, or null when no limit recorded. */
+    blockGasUtilizationPct: { current: number | null; previous: number | null };
     /** MsgTransfer message totals (`ibc_transfer_out_count`). */
     ibcOutboundMsgCount: {
       current: string;
@@ -78,12 +136,28 @@ interface MetricsPayload {
       pctChange: number | null;
     };
     feePaidUbld: { current: string; previous: string; pctChange: number | null };
+    stakingDelegations: { current: string; previous: string; pctChange: number | null };
+    stakingUndelegations: { current: string; previous: string; pctChange: number | null };
+    stakingRedelegations: { current: string; previous: string; pctChange: number | null };
+    govVotes: { current: string; previous: string; pctChange: number | null };
+    govProposals: { current: string; previous: string; pctChange: number | null };
   };
   series: {
     txTotal: { bucket: string; value: string }[];
+    txFailed: { bucket: string; value: string }[];
     ibcCombinedCounts: { bucket: string; value: string }[];
     ibcOutboundMsgs: { bucket: string; value: string }[];
     ibcInboundRecvFlows: { bucket: string; value: string }[];
+    gasUsed: { bucket: string; value: string }[];
+    gasWanted: { bucket: string; value: string }[];
+    blockGasLimit: { bucket: string; value: string }[];
+    stakingGov: {
+      delegations: { bucket: string; value: string }[];
+      undelegations: { bucket: string; value: string }[];
+      redelegations: { bucket: string; value: string }[];
+      govVotes: { bucket: string; value: string }[];
+      govProposals: { bucket: string; value: string }[];
+    };
     transferVolumeSeries: { denom: string; data: { bucket: string; value: string }[] }[];
     bankCreditsVolumeSeries: { denom: string; data: { bucket: string; value: string }[] }[];
     ibcAmountInSeries: { denom: string; data: { bucket: string; value: string }[] }[];
@@ -112,7 +186,64 @@ interface MetricsPayload {
   };
   concentration?: {
     top10AddressShareGrossUsd: string | null;
+    top10AddressShareFeesUsd: string | null;
+    grossUsdHhi: string | null;
+    feesUsdHhi: string | null;
   };
+  /** Distinct sending addresses per denom (range); wash-resistance context for the Value Flow Map. */
+  distinctSendersByDenom?: Record<string, number>;
+  /** Daily concentration trend (HHI + top-10 share) for gross-movement USD and paid-fee USD. */
+  concentrationOverTime?: ConcentrationTimePoint[];
+  /** Denominator-aware ratios (descriptive); "—" when a denominator is zero or USD is unpriced. */
+  normalizedRatios?: {
+    gasPerTx: string;
+    feeBldPerSuccessfulTx: string;
+    successfulTxsPerActiveAddress: string;
+    grossUsdPerActiveAddress: string;
+  };
+  /** SwingSet/Zoe smart-wallet offer activity (intent surfacing) with distinct-wallet participation. */
+  offers?: {
+    kpis: {
+      totalActions: KpiDelta;
+      zoeOffers: KpiDelta;
+      walletInvocations: KpiDelta;
+      automatedActions: KpiDelta;
+      interactiveActions: KpiDelta;
+    };
+    outcomes: {
+      settled: KpiDelta;
+      wantsSatisfied: KpiDelta;
+      wantsUnsatisfied: KpiDelta;
+      errored: KpiDelta;
+      satisfactionRatePct: number | null;
+      overTime: { outcome: string; data: { bucket: string; value: string }[] }[];
+    };
+    byCategory: { category: string; automation: string; count: string }[];
+    bySource: OfferLabeledCount[];
+    byInstance: OfferLabeledCount[];
+    byMaker: OfferLabeledCount[];
+    byTarget: OfferLabeledCount[];
+    categoriesOverTime: { category: string; data: { bucket: string; value: string }[] }[];
+    totalOverTime: { bucket: string; value: string }[];
+    value: {
+      giveByDenom: Record<string, string>;
+      wantByDenom: Record<string, string>;
+      payoutByDenom: Record<string, string>;
+    };
+    participants: {
+      distinctWallets: number;
+      distinctZoeOfferWallets: number;
+      distinctInvocationWallets: number;
+      perDay: { day: string; count: number }[];
+    };
+  };
+  /** USD valuation of offer give/want/payout native totals (current spot; gross flow). */
+  offerValueUsd?: {
+    give: { byDenom: Record<string, string | null>; total: string | null };
+    want: { byDenom: Record<string, string | null>; total: string | null };
+    payouts: { byDenom: Record<string, string | null>; total: string | null };
+    usdPricingMeta: { source: "coingecko"; spotFetchedAt: string | null; partialOrStale: boolean };
+  } | null;
   /** First day included in indexed DB rollups (UTC); requests earlier than this are clamped. */
   indexedHistoryFromDay?: string;
   /** True when hour granularity was requested but `hourly_metrics` had no rows, so daily rollups were used for charts/KPIs. */
@@ -403,6 +534,84 @@ export function Dashboard() {
     }));
   }, [data]);
 
+  const chartSuccessRate = useMemo(() => {
+    if (!data?.series) return [];
+    return buildSuccessRateRows(data.series.txTotal ?? [], data.series.txFailed ?? []);
+  }, [data]);
+
+  const chartGasUtilization = useMemo(() => {
+    if (!data?.series) return [];
+    return buildGasUtilizationRows(
+      data.series.gasUsed ?? [],
+      data.series.gasWanted ?? [],
+      data.series.blockGasLimit ?? []
+    );
+  }, [data]);
+
+  const chartStakingGov = useMemo(() => {
+    if (!data?.series?.stakingGov) return [];
+    const sg = data.series.stakingGov;
+    return buildStakingGovActivityRows({
+      delegations: sg.delegations ?? [],
+      undelegations: sg.undelegations ?? [],
+      redelegations: sg.redelegations ?? [],
+      govVotes: sg.govVotes ?? [],
+      govProposals: sg.govProposals ?? [],
+    });
+  }, [data]);
+
+  const chartOffersActivity = useMemo(
+    () => buildOffersActivityRows(data?.offers?.categoriesOverTime ?? []),
+    [data?.offers?.categoriesOverTime]
+  );
+  const hasOfferActivity = useMemo(
+    () => chartOffersActivity.some((r) => r.automated + r.interactive + r.unknown > 0),
+    [chartOffersActivity]
+  );
+
+  const offerValueRows = useMemo(() => {
+    const v = data?.offers?.value;
+    if (!v) return [];
+    const usd = data?.offerValueUsd;
+    const disp = data?.display;
+    const denoms = [
+      ...new Set([
+        ...Object.keys(v.giveByDenom),
+        ...Object.keys(v.wantByDenom),
+        ...Object.keys(v.payoutByDenom),
+      ]),
+    ];
+    return denoms
+      .map((denom) => {
+        const dec = disp?.metas[denom]?.decimals;
+        const sym = disp?.metas[denom]?.displaySymbol || denom;
+        const fmt = (atomic: string | undefined): string => {
+          if (!atomic || !/^\d+$/.test(atomic) || atomic === "0") return "—";
+          return typeof dec === "number" ? atomicToHumanString(atomic, dec) : atomic;
+        };
+        return {
+          denom,
+          symbol: sym,
+          giveNative: fmt(v.giveByDenom[denom]),
+          giveUsd: usd?.give.byDenom[denom] ?? null,
+          wantNative: fmt(v.wantByDenom[denom]),
+          wantUsd: usd?.want.byDenom[denom] ?? null,
+          payoutNative: fmt(v.payoutByDenom[denom]),
+          payoutUsd: usd?.payouts.byDenom[denom] ?? null,
+        };
+      })
+      .sort((a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
+  }, [data?.offers?.value, data?.offerValueUsd, data?.display]);
+
+  const chartConcentration = useMemo(() => data?.concentrationOverTime ?? [], [data]);
+  const hasConcentrationTrend = useMemo(
+    () =>
+      chartConcentration.some(
+        (p) => p.grossUsdHhi !== null || p.feesUsdHhi !== null
+      ),
+    [chartConcentration]
+  );
+
   const valueHandledBreakdownRows = useMemo((): GrossMovementRow[] => {
     if (!data) return [];
     const tv = data.transferVolumeByDenom;
@@ -491,6 +700,29 @@ export function Dashboard() {
       },
     };
   }, [chartDistinctAccountsRows]);
+
+  const concentrationTimeAxis = useMemo(() => {
+    const n = chartConcentration.length;
+    const dense = n > 31;
+    return {
+      dataKey: "day" as const,
+      tick: { fill: chartTheme.axisTick, fontSize: dense ? 9 : 11 },
+      ...(dense
+        ? {
+            height: 58,
+            angle: -32,
+            textAnchor: "end" as const,
+            interval: "preserveStartEnd" as const,
+            minTickGap: 4,
+          }
+        : {}),
+      tickFormatter: (v: string) => {
+        const d = new Date(`${v.slice(0, 10)}T12:00:00.000Z`);
+        if (Number.isNaN(d.getTime())) return v;
+        return `${(d.getUTCMonth() + 1).toString().padStart(2, "0")}/${d.getUTCDate().toString().padStart(2, "0")}`;
+      },
+    };
+  }, [chartConcentration]);
 
   const timeAxis = useMemo(() => {
     const g = granularity;
@@ -942,7 +1174,27 @@ export function Dashboard() {
                 }
                 pct={data.kpis.feePaidUbld.pctChange}
               />
+              <KpiCard
+                title="Gas wanted"
+                subtitle={`ABCI gas units requested (successful + failed). ${INDEXER_SCOPE_CAVEAT_SUBTITLE}`}
+                current={data.kpis.gasWanted.current}
+                previous={data.kpis.gasWanted.previous}
+                pct={data.kpis.gasWanted.pctChange}
+              />
+              <KpiCardLite
+                title="Gas efficiency"
+                subtitle={`Gas used ÷ gas wanted (estimation tightness) · prior window: ${formatRatePct(data.kpis.gasEfficiencyPct.previous)}`}
+                value={formatRatePct(data.kpis.gasEfficiencyPct.current)}
+              />
+              <KpiCardLite
+                title="Block-space utilization (gas)"
+                subtitle={`Gas used ÷ consensus block gas limit (max_gas) · prior window: ${formatRatePct(data.kpis.blockGasUtilizationPct.previous)}`}
+                value={formatRatePct(data.kpis.blockGasUtilizationPct.current)}
+              />
             </div>
+            {chartGasUtilization.length > 0 && (
+              <GasUtilizationLineChart data={chartGasUtilization} timeAxis={timeAxis} />
+            )}
           </section>
 
           <section id={dashboardSectionIds.transactionActivity} className="scroll-mt-6 space-y-4">
@@ -962,6 +1214,18 @@ export function Dashboard() {
                 pct={data.kpis.txSuccess.pctChange}
               />
               <KpiCard
+                title="Failed txs"
+                subtitle="Included but reverted (ABCI ≠ 0); consume gas, pay no fee_paid"
+                current={data.kpis.txFailed.current}
+                previous={data.kpis.txFailed.previous}
+                pct={data.kpis.txFailed.pctChange}
+              />
+              <KpiCardLite
+                title="Success rate"
+                subtitle={`Share of aligned txs with ABCI code 0 · prior window: ${formatRatePct(data.kpis.successRatePct.previous)}`}
+                value={formatRatePct(data.kpis.successRatePct.current)}
+              />
+              <KpiCard
                 title="IBC outbound messages"
                 subtitle="MsgTransfer count (several per tx possible)"
                 current={data.kpis.ibcOutboundMsgCount.current}
@@ -976,6 +1240,42 @@ export function Dashboard() {
                 pct={data.kpis.ibcInboundRecvFlowCount.pctChange}
               />
             </div>
+            {data.normalizedRatios && (
+              <>
+                <h3 className={IN_CARD_TITLE_CLASS}>Normalized ratios (descriptive)</h3>
+                <p className={SECTION_INTRO_CLASS}>
+                  Denominator-aware views of the totals above — less sensitive to raw-count inflation. Active
+                  address = distinct signer addresses in range; gas is divided by all included txs (success +
+                  failed), fees and value by successful-tx and participation bases. USD uses current spot like
+                  Value handled.
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <KpiCardLite
+                    title="Gas per tx"
+                    subtitle="ABCI gas units per included tx (success + failed)"
+                    value={data.normalizedRatios.gasPerTx}
+                  />
+                  <KpiCardLite
+                    title="Fees per successful tx"
+                    subtitle="Paid fees (uBLD → BLD) ÷ successful txs"
+                    value={data.normalizedRatios.feeBldPerSuccessfulTx}
+                  />
+                  <KpiCardLite
+                    title="Txs per active address"
+                    subtitle="Successful txs ÷ distinct signer addresses (range)"
+                    value={data.normalizedRatios.successfulTxsPerActiveAddress}
+                  />
+                  <KpiCardLite
+                    title="Gross USD per active address"
+                    subtitle="Gross-movement USD ÷ distinct signer addresses (range)"
+                    value={data.normalizedRatios.grossUsdPerActiveAddress}
+                  />
+                </div>
+              </>
+            )}
+            {chartSuccessRate.length > 0 && (
+              <TxSuccessRateLineChart data={chartSuccessRate} timeAxis={timeAxis} />
+            )}
           </section>
 
           <section id={dashboardSectionIds.volumeIbc} className="scroll-mt-6 space-y-3">
@@ -988,6 +1288,248 @@ export function Dashboard() {
               <IbcTrafficLineChart data={chartIbcTraffic} timeAxis={timeAxis} />
             </div>
           </section>
+
+          <section id={dashboardSectionIds.stakingGov} className="scroll-mt-6 space-y-4">
+            <h2 className={SECTION_HEADING_CLASS}>Staking &amp; governance</h2>
+            <p className={SECTION_INTRO_CLASS}>
+              Message counts in successful txs (one message = one action), not token amounts or unique
+              accounts. Top-level messages only — actions wrapped in authz <code>MsgExec</code> are not
+              counted. KPI % change compares the selected range to an equal-length prior window.{" "}
+              <IndexerScopeCaveatInline />
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <KpiCard
+                title="Delegations"
+                subtitle="MsgDelegate count"
+                current={data.kpis.stakingDelegations.current}
+                previous={data.kpis.stakingDelegations.previous}
+                pct={data.kpis.stakingDelegations.pctChange}
+              />
+              <KpiCard
+                title="Undelegations"
+                subtitle="MsgUndelegate count"
+                current={data.kpis.stakingUndelegations.current}
+                previous={data.kpis.stakingUndelegations.previous}
+                pct={data.kpis.stakingUndelegations.pctChange}
+              />
+              <KpiCard
+                title="Redelegations"
+                subtitle="MsgBeginRedelegate count"
+                current={data.kpis.stakingRedelegations.current}
+                previous={data.kpis.stakingRedelegations.previous}
+                pct={data.kpis.stakingRedelegations.pctChange}
+              />
+              <KpiCard
+                title="Governance votes"
+                subtitle="MsgVote / MsgVoteWeighted (gov v1 + v1beta1)"
+                current={data.kpis.govVotes.current}
+                previous={data.kpis.govVotes.previous}
+                pct={data.kpis.govVotes.pctChange}
+              />
+              <KpiCard
+                title="Proposals submitted"
+                subtitle="MsgSubmitProposal (gov v1 + v1beta1)"
+                current={data.kpis.govProposals.current}
+                previous={data.kpis.govProposals.previous}
+                pct={data.kpis.govProposals.pctChange}
+              />
+            </div>
+            {chartStakingGov.length > 0 && (
+              <StakingGovActivityLineChart data={chartStakingGov} timeAxis={timeAxis} />
+            )}
+          </section>
+
+          {data.offers && (
+            <section id={dashboardSectionIds.offers} className="scroll-mt-6 space-y-4">
+              <h2 className={SECTION_HEADING_CLASS}>SwingSet &amp; Zoe offers</h2>
+              <p className={SECTION_INTRO_CLASS}>
+                Agoric activity is mostly smart-wallet intent, not bare Cosmos messages. These count decoded{" "}
+                <code>MsgWalletSpendAction</code>/<code>MsgWalletAction</code> actions — Zoe offers (
+                <code>executeOffer</code>) and wallet invocations (<code>invokeEntry</code>).{" "}
+                <strong className="font-medium text-[var(--color-text-secondary)]">
+                  Action counts are not wallet counts
+                </strong>{" "}
+                — a few automation wallets dominate, so read them next to distinct submitting wallets.{" "}
+                <IndexerScopeCaveatInline />
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <KpiCard
+                  title="Wallet actions"
+                  subtitle="Decoded MsgWallet(Spend)Action total (offers + invocations)"
+                  current={data.offers.kpis.totalActions.current}
+                  previous={data.offers.kpis.totalActions.previous}
+                  pct={data.offers.kpis.totalActions.pctChange}
+                />
+                <KpiCardLite
+                  title="Distinct submitting wallets (range)"
+                  subtitle="Unique smart-wallet owners (offer_participant_day) · daily-grain · anti-overcounting signal"
+                  value={String(data.offers.participants.distinctWallets)}
+                />
+                <KpiCard
+                  title="Zoe offers"
+                  subtitle="executeOffer / tryExitOffer actions"
+                  current={data.offers.kpis.zoeOffers.current}
+                  previous={data.offers.kpis.zoeOffers.previous}
+                  pct={data.offers.kpis.zoeOffers.pctChange}
+                />
+                <KpiCard
+                  title="Wallet invocations"
+                  subtitle="invokeEntry actions (orchestration handlers)"
+                  current={data.offers.kpis.walletInvocations.current}
+                  previous={data.offers.kpis.walletInvocations.previous}
+                  pct={data.offers.kpis.walletInvocations.pctChange}
+                />
+                <KpiCard
+                  title="Automated actions"
+                  subtitle="orchestration + oracle + fast-USDC categories"
+                  current={data.offers.kpis.automatedActions.current}
+                  previous={data.offers.kpis.automatedActions.previous}
+                  pct={data.offers.kpis.automatedActions.pctChange}
+                />
+                <KpiCard
+                  title="Interactive actions"
+                  subtitle="vaults + PSM + auction + governance offers"
+                  current={data.offers.kpis.interactiveActions.current}
+                  previous={data.offers.kpis.interactiveActions.previous}
+                  pct={data.offers.kpis.interactiveActions.pctChange}
+                />
+              </div>
+              {hasOfferActivity && (
+                <OffersActivityLineChart data={chartOffersActivity} timeAxis={timeAxis} />
+              )}
+              <h3 className={IN_CARD_TITLE_CLASS}>Settled Zoe offer outcomes</h3>
+              <p className={SECTION_INTRO_CLASS}>
+                Outcomes settle asynchronously after the offer tx, so these are self-indexed from vstorage{" "}
+                <code>published.wallet.&lt;addr&gt;</code> <code>offerStatus</code> updates (block events), counted
+                once per offer at its terminal payout. They cover Zoe offers (<code>executeOffer</code>), not{" "}
+                <code>invokeEntry</code> invocations.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <KpiCard
+                  title="Settled offers"
+                  subtitle="Zoe offers reaching terminal payout in range"
+                  current={data.offers.outcomes.settled.current}
+                  previous={data.offers.outcomes.settled.previous}
+                  pct={data.offers.outcomes.settled.pctChange}
+                />
+                <KpiCardLite
+                  title="Satisfaction rate"
+                  subtitle="Share of settled offers with wants satisfied (numWantsSatisfied ≥ 1)"
+                  value={formatRatePct(data.offers.outcomes.satisfactionRatePct)}
+                />
+                <KpiCard
+                  title="Wants satisfied"
+                  subtitle="Settled with numWantsSatisfied ≥ 1"
+                  current={data.offers.outcomes.wantsSatisfied.current}
+                  previous={data.offers.outcomes.wantsSatisfied.previous}
+                  pct={data.offers.outcomes.wantsSatisfied.pctChange}
+                />
+                <KpiCard
+                  title="Refunded / unsatisfied"
+                  subtitle="Settled with numWantsSatisfied === 0 (give refunded)"
+                  current={data.offers.outcomes.wantsUnsatisfied.current}
+                  previous={data.offers.outcomes.wantsUnsatisfied.previous}
+                  pct={data.offers.outcomes.wantsUnsatisfied.pctChange}
+                />
+                <KpiCard
+                  title="Errored"
+                  subtitle="Settled status carrying an error"
+                  current={data.offers.outcomes.errored.current}
+                  previous={data.offers.outcomes.errored.previous}
+                  pct={data.offers.outcomes.errored.pctChange}
+                />
+              </div>
+              {offerValueRows.length > 0 && (
+                <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+                  <h3 className={IN_CARD_TITLE_CLASS}>Offer value by asset (give / want / payouts)</h3>
+                  <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+                    Native totals summed across offers, by vbank asset.{" "}
+                    <strong className="font-medium text-[var(--color-text-secondary)]">Give</strong> /{" "}
+                    <strong className="font-medium text-[var(--color-text-secondary)]">Want</strong> are offer
+                    intent (escrowed / requested);{" "}
+                    <strong className="font-medium text-[var(--color-text-secondary)]">Payouts</strong> is what
+                    settled offers returned. These overlap (give is refunded into payouts) —{" "}
+                    <strong className="font-medium text-[var(--color-text-secondary)]">do not add the columns.</strong>{" "}
+                    USD (EST) multiplies each native total by current CoinGecko spot (gross flow, not net or TVL);
+                    only vbank-recognized assets are valued.
+                    {data.offerValueUsd?.usdPricingMeta.spotFetchedAt && (
+                      <span>
+                        {" "}
+                        Spot snapshot:{" "}
+                        <time dateTime={data.offerValueUsd.usdPricingMeta.spotFetchedAt}>
+                          {new Date(data.offerValueUsd.usdPricingMeta.spotFetchedAt).toLocaleString()}
+                        </time>
+                        .
+                      </span>
+                    )}
+                  </p>
+                  <div className="min-w-0 max-w-full overflow-x-auto">
+                    <table className="w-full min-w-0 border-collapse text-xs sm:text-sm">
+                      <thead>
+                        <tr className="bg-[var(--color-bg-secondary)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-accent)] border-b-2 border-[var(--color-accent)]/55 sm:text-xs">
+                          <th scope="col" className="px-2 py-2 text-left font-semibold normal-case">Asset</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold normal-case">Give</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold normal-case">Give USD</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold normal-case">Want</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold normal-case">Want USD</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold normal-case">Payouts</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold normal-case">Payouts USD</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {offerValueRows.map((r) => (
+                          <tr
+                            key={r.denom}
+                            className="border-b border-[var(--border)]/50 odd:bg-[var(--color-bg-primary)] even:bg-[var(--color-border)]"
+                          >
+                            <td className="px-2 py-2 align-middle font-medium text-[var(--text)]">{r.symbol}</td>
+                            <td className="px-2 py-2 text-right font-mono tabular-nums text-[var(--text)]">{r.giveNative}</td>
+                            <td className="px-2 py-2 text-right font-mono tabular-nums text-[var(--text)]">{r.giveUsd ?? "—"}</td>
+                            <td className="px-2 py-2 text-right font-mono tabular-nums text-[var(--text)]">{r.wantNative}</td>
+                            <td className="px-2 py-2 text-right font-mono tabular-nums text-[var(--text)]">{r.wantUsd ?? "—"}</td>
+                            <td className="px-2 py-2 text-right font-mono tabular-nums text-[var(--text)]">{r.payoutNative}</td>
+                            <td className="px-2 py-2 text-right font-mono tabular-nums text-[var(--text)]">{r.payoutUsd ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-[var(--border)] text-xs font-semibold text-[var(--color-text-primary)] sm:text-sm">
+                          <td className="px-2 py-3 text-[var(--color-accent)]">TOTAL USD</td>
+                          <td className="px-2 py-3 text-center text-[var(--muted)]" title="Not summed across assets">—</td>
+                          <td className="px-2 py-3 text-right font-mono tabular-nums">{data.offerValueUsd?.give.total ?? "—"}</td>
+                          <td className="px-2 py-3 text-center text-[var(--muted)]" title="Not summed across assets">—</td>
+                          <td className="px-2 py-3 text-right font-mono tabular-nums">{data.offerValueUsd?.want.total ?? "—"}</td>
+                          <td className="px-2 py-3 text-center text-[var(--muted)]" title="Not summed across assets">—</td>
+                          <td className="px-2 py-3 text-right font-mono tabular-nums">{data.offerValueUsd?.payouts.total ?? "—"}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <OfferCategoryTable rows={data.offers.byCategory} />
+                <OfferLabeledTable
+                  title="By target contract (instance)"
+                  hint="Zoe offers by target Instance; Board ids resolved to agoricNames labels."
+                  colLabel="Contract"
+                  rows={data.offers.byInstance}
+                />
+                <OfferLabeledTable
+                  title="By invocation target"
+                  hint="invokeEntry handler name (e.g. planner, evmWalletHandler)."
+                  colLabel="Target"
+                  rows={data.offers.byTarget}
+                />
+                <OfferLabeledTable
+                  title="By invitation maker"
+                  hint="Invitation maker used (publicInvitationMaker / invitationMakerName / first callPipe entry)."
+                  colLabel="Maker"
+                  rows={data.offers.byMaker}
+                />
+              </div>
+            </section>
+          )}
 
           {(data.participation || data.concentration) && (
             <section id={dashboardSectionIds.participation} className="scroll-mt-6 space-y-4">
@@ -1032,13 +1574,36 @@ export function Dashboard() {
                   </>
                 )}
                 {data.concentration && (
-                  <KpiCardLite
-                    title="Top 10 addresses — gross USD share"
-                    subtitle="Sender-attributed transfer legs · USD uses current spot like Value handled"
-                    value={data.concentration.top10AddressShareGrossUsd ?? "—"}
-                  />
+                  <>
+                    <KpiCardLite
+                      title="Top 10 addresses — gross USD share"
+                      subtitle="Sender-attributed transfer legs · USD uses current spot like Value handled"
+                      value={data.concentration.top10AddressShareGrossUsd ?? "—"}
+                    />
+                    <KpiCardLite
+                      title="Top 10 fee payers — fee USD share"
+                      subtitle="Paid fees by resolved fee payer · costliest signal, hardest to wash"
+                      value={data.concentration.top10AddressShareFeesUsd ?? "—"}
+                    />
+                    <KpiCardLite
+                      title="Gross USD HHI (0–1)"
+                      subtitle="Herfindahl index of per-address gross USD; higher = more concentrated"
+                      value={data.concentration.grossUsdHhi ?? "—"}
+                    />
+                    <KpiCardLite
+                      title="Fee USD HHI (0–1)"
+                      subtitle="Herfindahl index of per-fee-payer fee USD; higher = more concentrated"
+                      value={data.concentration.feesUsdHhi ?? "—"}
+                    />
+                  </>
                 )}
               </div>
+              {hasConcentrationTrend && (
+                <ConcentrationLineChart
+                  data={chartConcentration}
+                  timeAxis={concentrationTimeAxis}
+                />
+              )}
               {data.participation &&
                 data.participation.distinctUnionPerDay &&
                 data.participation.distinctUnionPerDay.length > 0 && (
@@ -1139,6 +1704,107 @@ function KpiCard({
           {fmtPct(pct)}
         </span>
       </p>
+    </div>
+  );
+}
+
+const AUTOMATION_LABEL: Record<string, string> = {
+  automated: "Automated",
+  interactive: "Interactive",
+  unknown: "Uncategorized",
+};
+
+const OFFER_TABLE_WRAP =
+  "rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5";
+
+function OfferEmpty() {
+  return (
+    <p className="text-xs text-[var(--muted)]">
+      No wallet actions in range. Offer rollups populate as the indexer processes blocks (full backfill on
+      next reindex).
+    </p>
+  );
+}
+
+function OfferCategoryTable({
+  rows,
+}: {
+  rows: { category: string; automation: string; count: string }[];
+}) {
+  return (
+    <div className={OFFER_TABLE_WRAP}>
+      <h3 className={IN_CARD_TITLE_CLASS}>By functional category</h3>
+      <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+        Exactly one objective category per action (additive, non-overlapping). Class is the read-time
+        automated-vs-interactive grouping.
+      </p>
+      {rows.length === 0 ? (
+        <OfferEmpty />
+      ) : (
+        <div className="max-h-64 overflow-y-auto">
+          <table className="w-full border-collapse text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] text-left text-[var(--color-accent)]">
+                <th className="py-2 pr-4 font-semibold">Category</th>
+                <th className="py-2 pr-4 font-semibold">Class</th>
+                <th className="py-2 text-right font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.category} className="border-b border-[var(--border)]/40">
+                  <td className="py-1.5 pr-4 font-mono text-[var(--text)]">{r.category}</td>
+                  <td className="py-1.5 pr-4 text-[var(--muted)]">
+                    {AUTOMATION_LABEL[r.automation] ?? r.automation}
+                  </td>
+                  <td className="py-1.5 text-right font-mono tabular-nums text-[var(--text)]">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OfferLabeledTable({
+  title,
+  hint,
+  colLabel,
+  rows,
+}: {
+  title: string;
+  hint: string;
+  colLabel: string;
+  rows: OfferLabeledCount[];
+}) {
+  return (
+    <div className={OFFER_TABLE_WRAP}>
+      <h3 className={IN_CARD_TITLE_CLASS}>{title}</h3>
+      <p className="mb-3 text-xs leading-snug text-[var(--muted)]">{hint}</p>
+      {rows.length === 0 ? (
+        <OfferEmpty />
+      ) : (
+        <div className="max-h-64 overflow-y-auto">
+          <table className="w-full border-collapse text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] text-left text-[var(--color-accent)]">
+                <th className="py-2 pr-4 font-semibold">{colLabel}</th>
+                <th className="py-2 text-right font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="border-b border-[var(--border)]/40">
+                  <td className="py-1.5 pr-4 font-mono text-[var(--text)] break-all">{r.label}</td>
+                  <td className="py-1.5 text-right font-mono tabular-nums text-[var(--text)]">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

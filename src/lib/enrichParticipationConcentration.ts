@@ -1,9 +1,24 @@
 import { atomicToFloat } from "@/lib/amountFormat";
 import { getUsdSpotPrices } from "@/lib/coingecko/simplePrice";
 import { resolveCoinGeckoId } from "@/lib/coingecko/resolveCoinGeckoId";
-import { topNShare } from "@/lib/concentrationMath";
+import {
+  buildConcentrationSummary,
+  formatHhi,
+  formatSharePct,
+} from "@/lib/concentrationSummary";
+import {
+  buildConcentrationOverTime,
+  type ConcentrationTimePoint,
+} from "@/lib/concentrationTimeseries";
+import { distinctSendersByDenom } from "@/lib/distinctSenders";
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
-import { queryAddressVolumeTotals, queryParticipationRange } from "@/lib/participationQueries";
+import {
+  queryAddressFeeTotals,
+  queryAddressFeeTotalsByDay,
+  queryAddressVolumeTotals,
+  queryAddressVolumeTotalsByDay,
+  queryParticipationRange,
+} from "@/lib/participationQueries";
 
 const TOP_N = 10;
 
@@ -64,8 +79,32 @@ export type ParticipationConcentrationPackage = {
   concentration: {
     /** Share of gross-movement USD (EST) from top 10 addresses (sender-side indexed legs). */
     top10AddressShareGrossUsd: string | null;
+    /** Share of paid-fee USD (EST) from the top 10 fee payers. */
+    top10AddressShareFeesUsd: string | null;
+    /** Herfindahl–Hirschman index (0–1) of gross-movement USD across addresses. */
+    grossUsdHhi: string | null;
+    /** Herfindahl–Hirschman index (0–1) of paid-fee USD across fee payers. */
+    feesUsdHhi: string | null;
   };
+  /** Distinct sending addresses per denom (range) — wash/overcounting guardrail for gross volume. */
+  distinctSendersByDenom: Record<string, number>;
+  /** Daily concentration trend (HHI + top-10 share) for gross-movement USD and paid-fee USD. */
+  concentrationOverTime: ConcentrationTimePoint[];
 };
+
+/** Price each day's per-address denom totals into a day → USD-totals[] map for the concentration trend. */
+function addressTotalsUsdByDay(
+  byDayAddrDenom: Map<string, Map<string, Map<string, bigint>>>,
+  display: EnrichedDisplay,
+  usdByCoinId: Record<string, number>,
+  denomToCoinId: Map<string, string>
+): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  for (const [day, byAddrDenom] of byDayAddrDenom) {
+    out.set(day, addressTotalsUsd(byAddrDenom, display, usdByCoinId, denomToCoinId));
+  }
+  return out;
+}
 
 export async function enrichParticipationAndConcentration(
   fromDay: string,
@@ -73,13 +112,25 @@ export async function enrichParticipationAndConcentration(
   transferVolumeByDenom: Record<string, string>,
   display: EnrichedDisplay
 ): Promise<ParticipationConcentrationPackage> {
-  const [participation, volumeByAddressDenom] = await Promise.all([
+  const [
+    participation,
+    volumeByAddressDenom,
+    feeByAddressDenom,
+    volumeByDayAddressDenom,
+    feeByDayAddressDenom,
+  ] = await Promise.all([
     queryParticipationRange(fromDay, toDay),
     queryAddressVolumeTotals(fromDay, toDay),
+    queryAddressFeeTotals(fromDay, toDay),
+    queryAddressVolumeTotalsByDay(fromDay, toDay),
+    queryAddressFeeTotalsByDay(fromDay, toDay),
   ]);
 
   const denomSet = new Set<string>(Object.keys(transferVolumeByDenom));
   for (const [, byDenom] of volumeByAddressDenom) {
+    for (const d of byDenom.keys()) denomSet.add(d);
+  }
+  for (const [, byDenom] of feeByAddressDenom) {
     for (const d of byDenom.keys()) denomSet.add(d);
   }
   const denoms = [...denomSet];
@@ -99,11 +150,22 @@ export async function enrichParticipationAndConcentration(
     usdByCoinId,
     denomToCoinId
   );
+  const feeTotals = addressTotalsUsd(
+    feeByAddressDenom,
+    display,
+    usdByCoinId,
+    denomToCoinId
+  );
 
-  const topVol = topNShare(volTotals, TOP_N);
+  const summary = buildConcentrationSummary(volTotals, feeTotals, TOP_N);
 
-  const fmtPct = (x: number | null) =>
-    x === null ? null : `${(x * 100).toFixed(1)}%`;
+  const concentrationOverTime = buildConcentrationOverTime(
+    fromDay,
+    toDay,
+    addressTotalsUsdByDay(volumeByDayAddressDenom, display, usdByCoinId, denomToCoinId),
+    addressTotalsUsdByDay(feeByDayAddressDenom, display, usdByCoinId, denomToCoinId),
+    TOP_N
+  );
 
   return {
     participation: {
@@ -117,7 +179,12 @@ export async function enrichParticipationAndConcentration(
       })),
     },
     concentration: {
-      top10AddressShareGrossUsd: fmtPct(topVol),
+      top10AddressShareGrossUsd: summary.topNShareGrossUsd === null ? null : formatSharePct(summary.topNShareGrossUsd),
+      top10AddressShareFeesUsd: summary.topNShareFeesUsd === null ? null : formatSharePct(summary.topNShareFeesUsd),
+      grossUsdHhi: summary.grossUsdHhi === null ? null : formatHhi(summary.grossUsdHhi),
+      feesUsdHhi: summary.feesUsdHhi === null ? null : formatHhi(summary.feesUsdHhi),
     },
+    distinctSendersByDenom: distinctSendersByDenom(volumeByAddressDenom),
+    concentrationOverTime,
   };
 }

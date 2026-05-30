@@ -7,6 +7,10 @@ import {
   sumIbcRecvDisplay,
 } from "@/lib/ibcRollupDisplay";
 import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
+import { successRatePct } from "@/lib/txSuccessRate";
+import { blockGasUtilizationPct, gasEfficiencyPct } from "@/lib/gasEfficiency";
+import { buildOffersSection } from "@/lib/offersMetrics";
+import { queryOfferParticipantsRange } from "@/lib/offersQuery";
 
 export type Granularity = "hour" | "day" | "week";
 
@@ -265,8 +269,17 @@ export async function buildMetricsPayload(
   const txSuccessCur = sumSeries(curBuckets, SERIES.TX_SUCCESS);
   const txSuccessPrev = sumSeries(prevBuckets, SERIES.TX_SUCCESS);
 
+  const txFailedCur = sumSeries(curBuckets, SERIES.TX_FAILED);
+  const txFailedPrev = sumSeries(prevBuckets, SERIES.TX_FAILED);
+
   const gasCur = sumSeries(curBuckets, SERIES.GAS_USED);
   const gasPrev = sumSeries(prevBuckets, SERIES.GAS_USED);
+
+  const gasWantedCur = sumSeries(curBuckets, SERIES.GAS_WANTED);
+  const gasWantedPrev = sumSeries(prevBuckets, SERIES.GAS_WANTED);
+
+  const blockGasLimitCur = sumSeries(curBuckets, SERIES.BLOCK_GAS_LIMIT);
+  const blockGasLimitPrev = sumSeries(prevBuckets, SERIES.BLOCK_GAS_LIMIT);
 
   const ibcOutCur = sumSeries(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
   const ibcOutPrev = sumSeries(prevBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
@@ -282,15 +295,42 @@ export async function buildMetricsPayload(
     return t;
   }
 
+  /** Count KPI (current/previous/pctChange) for a single-dimension series like staking/gov counts. */
+  function countKpi(series: string) {
+    const cur = sumSeries(curBuckets, series);
+    const prev = sumSeries(prevBuckets, series);
+    return { current: cur.toString(), previous: prev.toString(), pctChange: pctChange(cur, prev) };
+  }
+
   const feeCur = sumAllFees(curBuckets);
   const feePrev = sumAllFees(prevBuckets);
   const feeUbldCur = sumSeries(curBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
   const feeUbldPrev = sumSeries(prevBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
 
   const txTotal = seriesOverTime(curBuckets, SERIES.TX_SUCCESS);
+  const txFailedOverTime = seriesOverTime(curBuckets, SERIES.TX_FAILED);
   const ibcMsgCombined = seriesIbcMsgCombinedOverTime(curBuckets);
   const ibcOutSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
   const ibcInSeries = seriesIbcRecvDisplayOverTime(curBuckets);
+
+  /** Raw per-bucket gas series — combined client-side into efficiency / block-space utilization % trends. */
+  const gasUsedOverTime = seriesOverTime(curBuckets, SERIES.GAS_USED);
+  const gasWantedOverTime = seriesOverTime(curBuckets, SERIES.GAS_WANTED);
+  const blockGasLimitOverTime = seriesOverTime(curBuckets, SERIES.BLOCK_GAS_LIMIT);
+
+  /** Per-bucket staking & governance message counts for the activity trend chart. */
+  const stakingGovOverTime = {
+    delegations: seriesOverTime(curBuckets, SERIES.STAKING_DELEGATIONS),
+    undelegations: seriesOverTime(curBuckets, SERIES.STAKING_UNDELEGATIONS),
+    redelegations: seriesOverTime(curBuckets, SERIES.STAKING_REDELEGATIONS),
+    govVotes: seriesOverTime(curBuckets, SERIES.GOV_VOTES),
+    govProposals: seriesOverTime(curBuckets, SERIES.GOV_PROPOSALS),
+  };
+
+  /** SwingSet/Zoe offers: KPIs, category/source/instance/maker/target breakdowns, and trend. */
+  const offersSection = buildOffersSection(curBuckets, prevBuckets);
+  /** Distinct offer-submitting wallets (daily-grain table) over the calendar range. */
+  const offerParticipants = await queryOfferParticipantsRange(fromDay, toDay);
 
   const feeByDenomCurrent = feeDenomBreakdown(curBuckets);
 
@@ -354,10 +394,43 @@ export async function buildMetricsPayload(
         previous: txSuccessPrev.toString(),
         pctChange: pctChange(txSuccessCur, txSuccessPrev),
       },
+      /** Failed inclusions (ABCI code ≠ 0); consume gas but contribute no fee_paid. */
+      txFailed: {
+        current: txFailedCur.toString(),
+        previous: txFailedPrev.toString(),
+        pctChange: pctChange(txFailedCur, txFailedPrev),
+      },
+      /** Success rate % = tx_success / (tx_success + tx_failed); null when no aligned txs. */
+      successRatePct: {
+        current: successRatePct(txSuccessCur, txFailedCur),
+        previous: successRatePct(txSuccessPrev, txFailedPrev),
+      },
       gasUsed: {
         current: gasCur.toString(),
         previous: gasPrev.toString(),
         pctChange: pctChange(gasCur, gasPrev),
+      },
+      /** ABCI gas_wanted (requested) total; pairs with gasUsed for efficiency. */
+      gasWanted: {
+        current: gasWantedCur.toString(),
+        previous: gasWantedPrev.toString(),
+        pctChange: pctChange(gasWantedCur, gasWantedPrev),
+      },
+      /** Gas efficiency % = gas_used / gas_wanted; null when no gas was requested. */
+      gasEfficiencyPct: {
+        current: gasEfficiencyPct(gasCur, gasWantedCur),
+        previous: gasEfficiencyPct(gasPrev, gasWantedPrev),
+      },
+      /** Per-block consensus max_gas total; denominator for block-space utilization. */
+      blockGasLimit: {
+        current: blockGasLimitCur.toString(),
+        previous: blockGasLimitPrev.toString(),
+        pctChange: pctChange(blockGasLimitCur, blockGasLimitPrev),
+      },
+      /** Block-space utilization % = gas_used / block_gas_limit; null when no limit recorded. */
+      blockGasUtilizationPct: {
+        current: blockGasUtilizationPct(gasCur, blockGasLimitCur),
+        previous: blockGasUtilizationPct(gasPrev, blockGasLimitPrev),
       },
       /** Sum of MsgTransfer messages (`ibc_transfer_out_count`), not token amounts. */
       ibcOutboundMsgCount: {
@@ -382,13 +455,27 @@ export async function buildMetricsPayload(
         previous: feeUbldPrev.toString(),
         pctChange: pctChange(feeUbldCur, feeUbldPrev),
       },
+      /** Staking & governance message counts (successful txs). */
+      stakingDelegations: countKpi(SERIES.STAKING_DELEGATIONS),
+      stakingUndelegations: countKpi(SERIES.STAKING_UNDELEGATIONS),
+      stakingRedelegations: countKpi(SERIES.STAKING_REDELEGATIONS),
+      govVotes: countKpi(SERIES.GOV_VOTES),
+      govProposals: countKpi(SERIES.GOV_PROPOSALS),
     },
     series: {
       txTotal,
+      /** Failed inclusions per bucket (ABCI code ≠ 0); pair with txTotal for the success-rate trend. */
+      txFailed: txFailedOverTime,
       /** Outbound MsgTransfer msgs + inbound recv-flow headline counts per bucket (not amounts). */
       ibcCombinedCounts: ibcMsgCombined,
       ibcOutboundMsgs: ibcOutSeries,
       ibcInboundRecvFlows: ibcInSeries,
+      /** Raw per-bucket gas (ABCI gas_used / gas_wanted) + consensus block gas limit for util/efficiency trends. */
+      gasUsed: gasUsedOverTime,
+      gasWanted: gasWantedOverTime,
+      blockGasLimit: blockGasLimitOverTime,
+      /** Per-bucket staking & governance message counts (successful txs). */
+      stakingGov: stakingGovOverTime,
       transferVolumeSeries,
       /** Native minimal units from `coin_received` to non-module receivers (`bank_credits_volume`). */
       bankCreditsVolumeSeries,
@@ -401,6 +488,8 @@ export async function buildMetricsPayload(
     bankCreditsVolumeByDenom: bankCreditsByDenom,
     feePaidByDenom: Object.fromEntries(feeByDenomCurrent),
     feePaidByDenomPrevious,
+    /** SwingSet/Zoe smart-wallet offer activity (intent), with distinct-wallet participation. */
+    offers: { ...offersSection, participants: offerParticipants },
     indexer: await getIndexerStatus(),
     ...(usedDailyFallbackForHourView ? { usedDailyFallbackForHourView: true as const } : {}),
   };

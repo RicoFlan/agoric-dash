@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   countUniqueRecvFlowsFromTxEvents,
   diagnoseRecvCoinAmountsByEventType,
+  sumRecvCoinAmountsDedupedFromTxEvents,
   sumRecvCoinAmountsFromTxEvents,
 } from "./ibcRecvEventAmounts";
 
@@ -89,6 +90,75 @@ describe("sumRecvCoinAmountsFromTxEvents", () => {
       },
     ]);
     expect(m.get("ubld")).toBe(BigInt(100));
+  });
+});
+
+describe("sumRecvCoinAmountsDedupedFromTxEvents", () => {
+  it("counts mirrored coin_received + transfer legs once (max, not sum)", () => {
+    const m = sumRecvCoinAmountsDedupedFromTxEvents([
+      {
+        type: "coin_received",
+        attributes: [
+          { key: "msg_index", value: "0" },
+          { key: "amount", value: "4700000000uist" },
+        ],
+      },
+      {
+        type: "transfer",
+        attributes: [
+          { key: "msg_index", value: "0" },
+          { key: "amount", value: "4700000000uist" },
+        ],
+      },
+    ]);
+    expect(m.get("uist")).toBe(BigInt(4700000000));
+  });
+
+  it("falls back to the single present family when only one event type carries a denom", () => {
+    const m = sumRecvCoinAmountsDedupedFromTxEvents([
+      { type: "coin_received", attributes: [{ key: "amount", value: "1000ubld" }] },
+    ]);
+    expect(m.get("ubld")).toBe(BigInt(1000));
+  });
+
+  it("takes the larger leg per denom when legs differ", () => {
+    const m = sumRecvCoinAmountsDedupedFromTxEvents([
+      { type: "coin_received", attributes: [{ key: "amount", value: "70ubld" }] },
+      { type: "transfer", attributes: [{ key: "amount", value: "100ubld" }] },
+    ]);
+    expect(m.get("ubld")).toBe(BigInt(100));
+  });
+
+  it("respects msg_index scoping like the gross basis", () => {
+    const recvIdx = new Set([0]);
+    const m = sumRecvCoinAmountsDedupedFromTxEvents(
+      [
+        {
+          type: "coin_received",
+          attributes: [
+            { key: "msg_index", value: "0" },
+            { key: "amount", value: "100ubld" },
+          ],
+        },
+        {
+          type: "transfer",
+          attributes: [
+            { key: "msg_index", value: "0" },
+            { key: "amount", value: "100ubld" },
+          ],
+        },
+        {
+          type: "coin_received",
+          attributes: [
+            { key: "msg_index", value: "1" },
+            { key: "amount", value: "999uist" },
+          ],
+        },
+      ],
+      { recvPacketMsgIndices: recvIdx }
+    );
+    expect(m.get("ubld")).toBe(BigInt(100));
+    expect(m.has("uist")).toBe(false);
   });
 });
 

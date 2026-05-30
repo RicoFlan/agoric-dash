@@ -19,6 +19,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "indexer": "tsx scripts/indexer.ts",
+    "reindex:reset": "tsx scripts/reindexReset.ts",
     "scan:ibc-recv-day": "tsx scripts/scanIbcRecvDay.ts",
     "inspect:ibc-recv-tx-events": "tsx scripts/inspectIbcRecvTxEventAmounts.ts",
     "validate:uist-apr2026": "bash scripts/validateUistIbcApril2026.sh",
@@ -30,11 +31,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@agoric/cosmic-proto": "^0.5.0",
+    "@agoric/rpc": "^0.10.0",
     "@cosmjs/cosmwasm-stargate": "^0.33.1",
     "@cosmjs/encoding": "^0.33.1",
     "@cosmjs/proto-signing": "^0.33.1",
     "@cosmjs/stargate": "^0.33.1",
     "@cosmjs/tendermint-rpc": "^0.33.1",
+    "@endo/marshal": "^1.10.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.3",
     "next": "^15.1.0",

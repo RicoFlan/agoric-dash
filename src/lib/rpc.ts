@@ -96,9 +96,35 @@ export interface RpcTxResult {
   }>;
 }
 
+/** Consensus params echoed in block_results (CometBFT). `max_gas` is the per-block gas limit. */
+export interface RpcConsensusParamUpdates {
+  readonly block?: {
+    readonly max_bytes?: string;
+    /** Per-block gas limit; "-1" means unlimited on some chains (agoric-3 sets a positive value). */
+    readonly max_gas?: string;
+  };
+}
+
+/** A CometBFT ABCI event (finalize/begin/end block or tx). Attribute key/value are plain strings. */
+export interface RpcAbciEvent {
+  readonly type: string;
+  readonly attributes?: ReadonlyArray<{ readonly key: string; readonly value: string }>;
+}
+
 export interface RpcBlockResultsResponse {
   readonly height: string;
   readonly txs_results?: readonly RpcTxResult[];
-  /** ABCI++ may attach finalize-block events; indexer ignores these unless explicitly wired. */
-  readonly finalize_block_events?: unknown;
+  /**
+   * ABCI++ finalize-block events. The indexer reads vstorage `state_change` events here to
+   * self-index smart-wallet offer outcomes (published.wallet.<addr> offerStatus). Older CometBFT
+   * may instead populate `end_block_events`.
+   */
+  readonly finalize_block_events?: readonly RpcAbciEvent[];
+  /** Pre-ABCI++ end-block events (fallback source for vstorage state_change). */
+  readonly end_block_events?: readonly RpcAbciEvent[];
+  /**
+   * Consensus params at this height (agoric-3 CometBFT echoes them every block). Used to read the
+   * per-block `max_gas` limit for block-space utilization — no extra RPC call needed.
+   */
+  readonly consensus_param_updates?: RpcConsensusParamUpdates | null;
 }

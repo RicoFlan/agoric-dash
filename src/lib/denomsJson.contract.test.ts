@@ -33,4 +33,25 @@ describe("denoms.json contract", () => {
       expect(a.localeCompare(b)).toBeLessThanOrEqual(0);
     }
   });
+
+  it("chain-disambiguates multi-source ibc symbols (no bare USDC/USDT/ATOM/etc.)", () => {
+    // Symbols that arrive over several bridges/chains must carry a " (Origin)" tag so duplicate
+    // rows are distinguishable (scripts/refreshDenomChains.ts). Native (non-ibc) rows are exempt.
+    const MULTI_SOURCE = new Set(["USDC", "USDT", "ATOM", "DAI", "WETH"]);
+    for (const e of denoms.entries) {
+      if (!e.match.startsWith("ibc/")) continue;
+      const base = e.displaySymbol.replace(/\s*\([^)]*\)\s*$/, "").trim();
+      if (MULTI_SOURCE.has(base)) {
+        expect(e.displaySymbol, `${e.match} should be chain-tagged`).toMatch(/\(.+\)\s*$/);
+      }
+    }
+  });
+
+  it("keeps chain tags compatible with CoinGecko symbol lookup (tag-stripping)", () => {
+    // The known multi-source labels must reduce to a base symbol the resolver recognizes.
+    const usdc = denoms.entries.find(
+      (e) => e.match === "ibc/FE98AAD68F02F03565E9FA39A5E627946699B2B07115889ED812D8BA639576A9"
+    );
+    expect(usdc?.displaySymbol).toBe("USDC (Noble)");
+  });
 });

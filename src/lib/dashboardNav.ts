@@ -8,6 +8,8 @@ export const dashboardSectionIds = {
   gasFees: "gas-and-fees",
   transactionActivity: "transaction-activity",
   volumeIbc: "volume-ibc",
+  stakingGov: "staking-governance",
+  offers: "offers",
   participation: "participation",
   methodology: "methodology",
 } as const;
@@ -20,6 +22,8 @@ export const dashboardNavLinks: ReadonlyArray<{
   { id: dashboardSectionIds.gasFees, label: "Gas & fees" },
   { id: dashboardSectionIds.transactionActivity, label: "Transactions" },
   { id: dashboardSectionIds.volumeIbc, label: "Volume & IBC" },
+  { id: dashboardSectionIds.stakingGov, label: "Staking & gov" },
+  { id: dashboardSectionIds.offers, label: "Offers" },
   { id: dashboardSectionIds.participation, label: "Participation" },
   { id: dashboardSectionIds.methodology, label: "Methodology" },
 ];

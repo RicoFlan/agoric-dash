@@ -38,6 +38,15 @@ export const SERIES_ROLLUP_SOURCE: Record<(typeof SERIES)[keyof typeof SERIES], 
   [SERIES.GAS_USED]: {
     primary: "ABCI tx_result.gas_used for each aligned pair (success and failure)",
   },
+  [SERIES.GAS_WANTED]: {
+    primary: "ABCI tx_result.gas_wanted for each aligned pair (success and failure)",
+    secondary: "Requested/reserved gas; paired with gas_used for efficiency (used/wanted)",
+  },
+  [SERIES.BLOCK_GAS_LIMIT]: {
+    primary: "block_results.consensus_param_updates.block.max_gas (consensus per-block gas limit), summed once per indexed block",
+    secondary:
+      "agoric-3 CometBFT echoes consensus params every block, so no extra RPC call; denominator for block-space utilization (gas) = sum(gas_used)/sum(block_gas_limit); excludes non-positive limits (-1 unlimited)",
+  },
   [SERIES.FEE_PAID]: {
     primary: "tx_result.events: type `tx`, attribute `fee` (parsed coins)",
     secondary: "Successful txs only; not inferred from TxRaw.auth_info fee field alone",
@@ -69,8 +78,80 @@ export const SERIES_ROLLUP_SOURCE: Record<(typeof SERIES)[keyof typeof SERIES], 
     secondary: "Successful txs only",
   },
   [SERIES.IBC_TRANSFER_AMOUNT_IN]: {
-    primary: "tx_result.events: coin_received + transfer attribute amounts (sumRecvCoinAmountsFromTxEvents)",
+    primary:
+      "tx_result.events: per-denom max(coin_received sum, transfer sum) — deduped single-count basis (sumRecvCoinAmountsDedupedFromTxEvents)",
     secondary:
-      "When events expose msg_index, amounts are summed only for MsgRecvPacket message indices; legacy RPC without msg_index falls back to tx-wide sum; typical paths emit both event types for the same credit (gross index — docs/ibcTransferAmountInEventInvestigation.md)",
+      "When events expose msg_index, amounts are scoped to MsgRecvPacket message indices; legacy RPC without msg_index falls back to tx-wide sum. ibc-go emits both event types for the same credit, so max collapses the mirrored legs to one count instead of summing (docs/ibcTransferAmountInEventInvestigation.md)",
+  },
+  [SERIES.STAKING_DELEGATIONS]: {
+    primary: "Decoded MsgDelegate messages in successful txs (count per message)",
+    secondary: "Top-level messages only; authz MsgExec-wrapped delegations are not unwrapped (stakingGovMsgTypes.ts)",
+  },
+  [SERIES.STAKING_UNDELEGATIONS]: {
+    primary: "Decoded MsgUndelegate messages in successful txs (count per message)",
+    secondary: "Top-level messages only; see stakingGovMsgTypes.ts",
+  },
+  [SERIES.STAKING_REDELEGATIONS]: {
+    primary: "Decoded MsgBeginRedelegate messages in successful txs (count per message)",
+    secondary: "Top-level messages only; see stakingGovMsgTypes.ts",
+  },
+  [SERIES.GOV_VOTES]: {
+    primary: "Decoded MsgVote / MsgVoteWeighted messages in successful txs (count per message)",
+    secondary: "gov v1 and v1beta1; top-level messages only; see stakingGovMsgTypes.ts",
+  },
+  [SERIES.GOV_PROPOSALS]: {
+    primary: "Decoded MsgSubmitProposal messages in successful txs (count per message)",
+    secondary: "gov v1 and v1beta1; top-level messages only; see stakingGovMsgTypes.ts",
+  },
+  [SERIES.WALLET_ACTIONS]: {
+    primary:
+      "Decoded MsgWalletSpendAction / MsgWalletAction CapData bodies in successful txs (count per message), dimension = action kind",
+    secondary:
+      "Unmarshalled with @endo/marshal (walletOfferMarshal.ts) → summarized (walletOfferSummary.ts); intent only, Zoe outcomes settle later in vstorage (out of tx_results scope); top-level messages only",
+  },
+  [SERIES.OFFER_SOURCE]: {
+    primary: "Decoded zoe_offer invitationSpec.source in successful txs (count per offer), dimension = source",
+    secondary: "source ∈ contract | agoricContract | continuing | purse | unknown; continuing = acting on an existing seat",
+  },
+  [SERIES.OFFER_INSTANCE]: {
+    primary: "Decoded zoe_offer invitationSpec.instance Board id in successful txs (count per offer), dimension = Board id",
+    secondary: "Resolved to a contract name at read time via agoricNames; offers without an instance (e.g. continuing) not counted here",
+  },
+  [SERIES.OFFER_MAKER]: {
+    primary: "Decoded zoe_offer invitation maker in successful txs (count per offer), dimension = maker name",
+    secondary: "publicInvitationMaker | invitationMakerName | callPipe[0][0] (walletOfferSummary.ts)",
+  },
+  [SERIES.INVOKE_TARGET]: {
+    primary: "Decoded wallet_invocation (invokeEntry) message.targetName in successful txs (count per invocation), dimension = targetName",
+    secondary: "Direct smart-wallet entry invocations (orchestration/EVM), not Zoe offers; e.g. evmWalletHandler, planner",
+  },
+  [SERIES.OFFER_CATEGORY]: {
+    primary:
+      "Indexer-computed functional category per wallet action (count per action), dimension = category; classifyOfferCategory(kind, source, resolved Instance name, maker, targetName)",
+    secondary:
+      "Resolved Instance name from committed agoricNames.json (scripts/refreshAgoricNames.ts); one category per action (additive, non-overlapping) so it covers instance-less continuing offers that offer_instance omits; category→automated/interactive grouping applied at read time (offerCategory.ts)",
+  },
+  [SERIES.OFFER_OUTCOME]: {
+    primary:
+      "vstorage published.wallet.<addr> offerStatus state_change in block_results.finalize_block_events (count once per settled offer at terminal payouts update), dimension = wants_satisfied | wants_unsatisfied | errored",
+    secondary:
+      "Self-indexed offer outcomes (no external indexer); EndBlock vstorage events, outside tx_results scope; CapData decoded with @endo/marshal (parseCapData) then summarized purely (walletOutcomeSummary.ts); intermediate non-terminal publications skipped to avoid over-counting",
+  },
+  [SERIES.OFFER_GIVE_VOLUME]: {
+    primary:
+      "Decoded zoe_offer proposal.give legs in successful txs (sum atomic value), dimension = leg brand's vbank denom (agoricNames.json vbankAssets)",
+    secondary:
+      "Offer intent / escrowed amount, not settled; non-vbank brands omitted; read-time USD via the same denom pricing as Value handled (current spot × range total, gross flow)",
+  },
+  [SERIES.OFFER_WANT_VOLUME]: {
+    primary:
+      "Decoded zoe_offer proposal.want legs in successful txs (sum atomic value), dimension = leg brand's vbank denom",
+    secondary: "Requested amount (intent), not guaranteed; same vbank-only + USD caveats as offer_give_volume",
+  },
+  [SERIES.OFFER_PAYOUT_VOLUME]: {
+    primary:
+      "vstorage offerStatus payouts at terminal settle in block_results.finalize_block_events (sum atomic value per offer, once), dimension = leg brand's vbank denom",
+    secondary:
+      "Same self-indexed source as offer_outcome; what offers actually returned (refund + winnings); vbank-only + gross-flow USD caveats as above",
   },
 };

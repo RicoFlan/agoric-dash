@@ -6,9 +6,13 @@ describe("resolveCoinGeckoId", () => {
     expect(resolveCoinGeckoId("ubld")).toBe("agoric");
   });
 
-  it("maps USDC ibc hash via display symbol", () => {
+  it("maps USDC ibc hash via display symbol (strips the chain tag before lookup)", () => {
+    // displaySymbol is now "USDC (Axelar)"; the resolver peels the trailing " (…)" group.
     expect(
       resolveCoinGeckoId("ibc/010704EDB319E4141299BBCB1CD8790362910509330824B88049DE3CE5D0A7AD")
+    ).toBe("usd-coin");
+    expect(
+      resolveCoinGeckoId("ibc/FE98AAD68F02F03565E9FA39A5E627946699B2B07115889ED812D8BA639576A9")
     ).toBe("usd-coin");
   });
 

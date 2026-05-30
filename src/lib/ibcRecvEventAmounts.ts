@@ -153,6 +153,31 @@ export function sumRecvCoinAmountsFromTxEvents(
 }
 
 /**
+ * Single-count ("deduped") IBC-in amount basis. For each denom, returns the **max** of the
+ * `coin_received`-only sum and the `transfer`-only sum, rather than their combined (additive) sum.
+ *
+ * Rationale: for one ICS-20 settlement, ibc-go emits **both** a `coin_received` and a `transfer`
+ * event carrying the same amount/msg_index (see `docs/ibcTransferAmountInEventInvestigation.md`), so
+ * the additive `sumRecvCoinAmountsFromTxEvents` basis counts each base unit twice. Taking the
+ * per-denom max collapses the mirrored legs to a single count and degrades gracefully when only one
+ * event family carries a denom. Uses the same msg_index scoping / legacy fallback as the gross basis.
+ */
+export function sumRecvCoinAmountsDedupedFromTxEvents(
+  events: ReadonlyArray<TxEventLike>,
+  options?: SumRecvCoinOptions
+): Map<string, bigint> {
+  const d = diagnoseRecvCoinAmountsByEventType(events, options);
+  const out = new Map<string, bigint>();
+  const denoms = new Set<string>([...d.fromCoinReceived.keys(), ...d.fromTransfer.keys()]);
+  for (const denom of denoms) {
+    const cr = d.fromCoinReceived.get(denom) ?? BigInt(0);
+    const xf = d.fromTransfer.get(denom) ?? BigInt(0);
+    out.set(denom, cr > xf ? cr : xf);
+  }
+  return out;
+}
+
+/**
  * Count distinct IBC recv operations from Tendermint events (ibc-go `recv_packet`), using
  * packet_dst_channel + packet_sequence when present. Duplicate attribute sets in one event collapse
  * to one key. Returns 0 when no matching events — caller may fall back to MsgRecvPacket count.

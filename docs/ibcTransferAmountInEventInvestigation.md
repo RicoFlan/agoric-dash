@@ -54,10 +54,18 @@ Here **`4700000000 + 4700000000 = 9400000000`**: the **combined** rollup matches
 
 The same tx also shows **`ubld`** on **`coin_received`** / **`transfer`** **without** **`msg_index`** on those rows; those rows are **not** attributed to **`MsgRecvPacket`** index `1` when **`usedMsgIndexFilter`** is true, so they do not appear in the **`uist`** recv split above.
 
+## Resolution: deduped single-count basis
+
+Because the two event families mirror the **same** settlement (the live example above sums to exactly **2×**), summing them overcounts IBC-in value. The indexer now writes a **deduped single-count basis** for **`ibc_transfer_amount_in`**:
+
+> per denom, **`max(coin_received sum, transfer sum)`** over MsgRecvPacket-scoped events — see **`sumRecvCoinAmountsDedupedFromTxEvents`** in **`src/lib/ibcRecvEventAmounts.ts`**.
+
+Taking the max collapses the mirrored legs to a single count (for the example above, `max(4700000000, 4700000000) = 4700000000`) and degrades gracefully when only one event family carries a denom. The earlier additive **`combined`** model (`sumRecvCoinAmountsFromTxEvents`) is retained only as a diagnostic for the inspection script. This change requires a reindex/backfill to take effect on stored rows.
+
 ## How to read dashboard metrics
 
-- **`ibc_transfer_amount_in`** — Intentionally follows this **combined** event model for headline IBC-in value on agoric-3. Treat it as a **gross, chain-reported** index when comparing to bank-only or message-decode series.
-- **`bank_credits_volume`** — Uses **`coin_received`** only (and module-account filtering). It is **not** the same basis as **`ibc_transfer_amount_in`** and should not be assumed to reconcile to half of IBC-in or to deduplicate **`transfer`** vs **`coin_received`**.
+- **`ibc_transfer_amount_in`** — Deduped single-count IBC-in value on agoric-3 (`max` of the two per-type legs). It is **no longer** a ~2× gross index.
+- **`bank_credits_volume`** — Uses **`coin_received`** only (and module-account filtering). It is still a **different basis** from **`ibc_transfer_amount_in`** (different event scoping/filters) and should not be assumed to reconcile exactly.
 
 ## Related (scope and UX)
 
@@ -66,4 +74,4 @@ The same tx also shows **`ubld`** on **`coin_received`** / **`transfer`** **with
 
 ## Tests
 
-**`src/lib/ibcRecvEventAmounts.test.ts`** includes a synthetic case where both event types attach to the same **`msg_index`**, documenting that **`combined`** equals the **sum** of the two legs under the current model.
+**`src/lib/ibcRecvEventAmounts.test.ts`** includes synthetic cases for both bases: the legacy **`combined`** sum (`sumRecvCoinAmountsFromTxEvents` / `diagnoseRecvCoinAmountsByEventType`) and the current deduped **`max`** basis (`sumRecvCoinAmountsDedupedFromTxEvents`), where two equal legs collapse to one count.

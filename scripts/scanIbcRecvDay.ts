@@ -1,8 +1,8 @@
 /**
  * Scan Agoric blocks for a UTC calendar day and list MsgRecvPacket txs whose
- * coin_received / transfer events include given IBC denoms (same parsing as
- * `sumRecvCoinAmountsFromTxEvents` / the indexer, including msg_index scoping when present). Use to
- * investigate IBC "in" spikes in daily_metrics.
+ * coin_received / transfer events include given IBC denoms (same deduped `max` basis as
+ * `sumRecvCoinAmountsDedupedFromTxEvents` / the indexer, including msg_index scoping when present).
+ * Use to investigate IBC "in" spikes in daily_metrics.
  *
  * Usage:
  *   RPC_URL=https://main-a.rpc.agoric.net npx tsx scripts/scanIbcRecvDay.ts --day=2026-04-01
@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
 import { fromBase64 } from "@cosmjs/encoding";
 import type { EncodeObject } from "@cosmjs/proto-signing";
 import { decodeTxRawTx } from "../src/lib/cosmos";
-import { sumRecvCoinAmountsFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
+import { sumRecvCoinAmountsDedupedFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
 import { msgIndicesMatchingTypeUrl } from "../src/lib/txEventMsgIndex";
 import {
   rpcCallWithFallback,
@@ -311,7 +311,7 @@ async function main() {
           msgs as ReadonlyArray<{ typeUrl: string }>,
           MSG_RECV_PACKET
         );
-        const allRecv = sumRecvCoinAmountsFromTxEvents(eventsPerTx[i] ?? [], {
+        const allRecv = sumRecvCoinAmountsDedupedFromTxEvents(eventsPerTx[i] ?? [], {
           recvPacketMsgIndices: recvIdx,
         });
         const amounts = new Map<string, bigint>();

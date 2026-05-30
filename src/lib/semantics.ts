@@ -69,11 +69,20 @@ export const MSG_IBC_TRANSFER = "/ibc.applications.transfer.v1.MsgTransfer";
 
 export const MSG_RECV_PACKET = "/ibc.core.channel.v1.MsgRecvPacket";
 
+/** Agoric smart-wallet messages carrying marshalled Zoe offer / invocation intent (CapData body). */
+export const MSG_WALLET_SPEND_ACTION = "/agoric.swingset.MsgWalletSpendAction";
+export const MSG_WALLET_ACTION = "/agoric.swingset.MsgWalletAction";
+export const WALLET_ACTION_MSG_TYPES = new Set([MSG_WALLET_SPEND_ACTION, MSG_WALLET_ACTION]);
+
 export const SERIES = {
   TX_SUCCESS: "tx_success",
   TX_FAILED: "tx_failed",
   /** ABCI gas_used summed for every indexed tx (success and failure). */
   GAS_USED: "gas_used",
+  /** ABCI gas_wanted (requested) summed for every indexed tx; pairs with gas_used for efficiency. */
+  GAS_WANTED: "gas_wanted",
+  /** Per-block consensus max_gas summed over blocks in the bucket; denominator for block-space utilization. */
+  BLOCK_GAS_LIMIT: "block_gas_limit",
   /** Paid fees from tx_result events; successful txs only (see TX_RESULT_ROLLUP_POLICY). */
   FEE_PAID: "fee_paid",
   /** Transfer-like movements from decoded messages, per denom */
@@ -92,6 +101,58 @@ export const SERIES = {
   IBC_TRANSFER_FLOW_IN: "ibc_transfer_flow_in",
   IBC_TRANSFER_AMOUNT_OUT: "ibc_transfer_amount_out",
   IBC_TRANSFER_AMOUNT_IN: "ibc_transfer_amount_in",
+  /** Staking & governance activity (message counts in successful txs; see stakingGovMsgTypes.ts). */
+  STAKING_DELEGATIONS: "staking_delegations",
+  STAKING_UNDELEGATIONS: "staking_undelegations",
+  STAKING_REDELEGATIONS: "staking_redelegations",
+  GOV_VOTES: "gov_votes",
+  GOV_PROPOSALS: "gov_proposals",
+  /**
+   * SwingSet/Zoe smart-wallet activity (offer intent), from decoded MsgWalletSpendAction /
+   * MsgWalletAction bodies in successful txs (see walletOfferSummary.ts). These count delivered
+   * actions/offers — the on-chain *intent* — not their Zoe outcomes (accept/refund/payout), which
+   * settle later in vstorage and are out of tx_results scope. Dimensions carry objective structural
+   * facts; the user-vs-automated judgement is derived at read time from the resolved instance/maker.
+   */
+  /** Wallet actions by kind; dimension = "zoe_offer" | "wallet_invocation" | "unknown". */
+  WALLET_ACTIONS: "wallet_actions",
+  /** Zoe offers by invitation source; dimension = "contract"|"agoricContract"|"continuing"|"purse"|"unknown". */
+  OFFER_SOURCE: "offer_source",
+  /** Zoe offers by target contract Instance; dimension = Board id (resolved to a contract name at read time). */
+  OFFER_INSTANCE: "offer_instance",
+  /** Zoe offers by invitation maker; dimension = publicInvitationMaker / invitationMakerName / callPipe[0]. */
+  OFFER_MAKER: "offer_maker",
+  /** Wallet invocations (invokeEntry) by target handler; dimension = message.targetName (e.g. evmWalletHandler, planner). */
+  INVOKE_TARGET: "invoke_target",
+  /**
+   * Functional category of each wallet action (exactly one per action), computed in the indexer from
+   * the resolved target Instance name (agoricNames) + invitation maker + kind. dimension =
+   * oracle | governance | vaults | psm | auction | fast_usdc | orchestration | other (offerCategory.ts).
+   * Unlike the marginal offer_* breakdowns, this assigns one category per action (covers continuing /
+   * instance-less offers via maker), so category counts are additive and non-overlapping.
+   */
+  OFFER_CATEGORY: "offer_category",
+  /**
+   * Settled Zoe offer outcomes, self-indexed from vstorage `published.wallet.<addr>` offerStatus
+   * updates that surface in block_results.finalize_block_events (no external indexer). Counted once
+   * per offer at its terminal payouts update (walletOutcomeSummary.ts). dimension = wants_satisfied |
+   * wants_unsatisfied | errored (mutually exclusive, additive → total settled offers).
+   */
+  OFFER_OUTCOME: "offer_outcome",
+  /**
+   * Summed Zoe offer `give` proposal amounts (intent, successful txs), dimension = vbank denom of the
+   * leg's brand (brand Board id resolved via agoricNames.json vbankAssets). Atomic integer sums for
+   * read-time USD via the existing denom pricing path. Non-vbank brands (no fungible denom) omitted.
+   */
+  OFFER_GIVE_VOLUME: "offer_give_volume",
+  /** Summed Zoe offer `want` proposal amounts (intent), dimension = vbank denom. See OFFER_GIVE_VOLUME. */
+  OFFER_WANT_VOLUME: "offer_want_volume",
+  /**
+   * Summed Zoe offer `payouts` amounts at terminal settle (outcome), dimension = vbank denom. Sourced
+   * from the same vstorage offerStatus events as offer_outcome (block-grain); what offers actually
+   * returned, vs the give/want intent above.
+   */
+  OFFER_PAYOUT_VOLUME: "offer_payout_volume",
 } as const;
 
 export type MethodologySection = { title: string; body: string };
@@ -106,17 +167,22 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Layout",
     body:
-      'When /api/metrics returns indexer_state, last indexed block height may appear above the date-range toolbar. Sections (top to bottom): Value handled (denom table, then Value Flow Map), Gas and fees KPIs, Transaction activity KPIs, Volume and IBC time-series (successful txs vs IBC message/flow counts; IBC traffic out vs recv — each with dashed trend overlays), Economic participation & concentration when the API includes participation and/or concentration (distinct-account chart, KPI cards, optional daily table, top-10 gross USD share). Hour granularity with no hourly_metrics rows triggers a banner: the API falls back to daily rollups for that request. This footer expands Methodology & caveats.',
+      'When /api/metrics returns indexer_state, last indexed block height may appear above the date-range toolbar. Sections (top to bottom): Value handled (denom table, then Value Flow Map), Gas and fees KPIs, Transaction activity KPIs, Volume and IBC time-series (successful txs vs IBC message/flow counts; IBC traffic out vs recv — each with dashed trend overlays), Staking & governance message counts, Economic participation & concentration when the API includes participation and/or concentration (distinct-account chart, KPI cards, optional daily table, top-10 gross USD share). Hour granularity with no hourly_metrics rows triggers a banner: the API falls back to daily rollups for that request. This footer expands Methodology & caveats.',
   },
   {
     title: "Value handled table",
     body:
-      'The table "Value by denom: gross in-tx vs bank credits (range total)" lists one row per denom. Gross in-tx = transfer_volume + indexed IBC receive (ibc_transfer_amount_in). Bank credits = coin_received to non-module receivers (bank_credits_volume). The two native columns often overlap the same settlement — do not add them or the two USD (EST) columns. USD cells multiply each column\'s full-period native total by current CoinGecko spot (not historical mark-to-market). Optional COINGECKO_API_KEY helps rate limits. "View Denom" opens the full on-chain string in a fixed tooltip (portal to document.body). USD gross (EST) sorts client-side. Footer totals are per-column only, not additive with each other. Map symbols and decimals in src/config/denoms.json.',
+      'The table "Value by denom: gross in-tx vs bank credits (range total)" lists one row per denom. Gross in-tx = transfer_volume + indexed IBC receive (ibc_transfer_amount_in). Bank credits = coin_received to non-module receivers (bank_credits_volume). The two native columns often overlap the same settlement — do not add them or the two USD (EST) columns. USD cells multiply each column\'s full-period native total by current CoinGecko spot (not historical mark-to-market). Optional COINGECKO_API_KEY helps rate limits. "View Denom" opens the full on-chain string in a fixed tooltip (portal to document.body). USD gross (EST) sorts client-side. Footer totals are per-column only, not additive with each other. Map symbols and decimals in src/config/denoms.json (labels are chain-disambiguated — see "Denom labels & chains").',
   },
   {
     title: "Value Flow Map",
     body:
-      'Below the table: one asset at a time. Default selection = highest gross USD (EST) in range (fallback: highest gross native total). Range tiles: gross in-tx, transfer-like (range gross minus summed IBC-in), IBC-in recv, bank credits, IBC-out. "Momentum (last vs first bucket)" compares first and last time buckets in the span — not the KPI prior-window rule. Mini charts for the selected asset only: "Gross composition" (gross, transfer-like, IBC-in) and "Credits vs outbound IBC" (bank credits, IBC-out), each with dashed OLS trend overlays. Per bucket, transfer-like = gross minus IBC-in (floored at zero). Human units when mapped; use the table for cross-asset ranking.',
+      'Below the table: one asset at a time. Default selection = highest gross USD (EST) in range (fallback: highest gross native total). Range tiles: gross in-tx, transfer-like (range gross minus summed IBC-in), IBC-in recv, bank credits, IBC-out, and distinct senders. Distinct senders = unique sending addresses for that denom (transfer legs only, module accounts excluded) — a wash/overcounting guardrail: high gross from few senders is concentrated or possible wash; it does not cover IBC-in recv or bank credits. "Momentum (last vs first bucket)" compares first and last time buckets in the span — not the KPI prior-window rule. Mini charts for the selected asset only: "Gross composition" (gross, transfer-like, IBC-in) and "Credits vs outbound IBC" (bank credits, IBC-out), each with dashed OLS trend overlays. Per bucket, transfer-like = gross minus IBC-in (floored at zero). Human units when mapped; use the table for cross-asset ranking.',
+  },
+  {
+    title: "Denom labels & chains",
+    body:
+      "Many distinct ibc/… denoms are the same logical asset arriving over different bridges/chains, so labels are disambiguated as \"SYMBOL (Origin)\" — e.g. USDC (Noble) vs USDC (Axelar) vs USDC (Gravity Bridge), USDT (Wormhole), ATOM (Cosmos Hub) — to keep Value handled and Value Flow Map rows distinguishable. Origin is the chain the asset is native to / bridged from, derived from each denom's IBC base_denom: native micro-denoms map directly (uatom → Cosmos Hub; ubld/uist → Agoric; Stride st-tokens → Stride), bridge shapes are recognized (gravity0x… → Gravity Bridge, peggy0x… → Injective, bare 0x… → Wormhole, *-wei / uaxl → Axelar), and Circle/Noble vs Axelar uusdc/uusdt is split by Agoric's (stable) first IBC hop. base_denom is used rather than walking the full trace because historical channel numbers drift on round-trip paths. Two denoms that are the same asset from the same origin via different historical paths intentionally share a label (usually only one carries volume). Labels are cosmetic: USD pricing strips the trailing \" (…)\" tag before CoinGecko lookup, so tags never change valuations. Regenerate with scripts/refreshDenomChains.ts (writes denoms.json + public/denom-translations.csv).",
   },
   {
     title: "Addresses",
@@ -130,7 +196,7 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Fees and gas",
     body:
-      "Paid fees come from tx result events (e.g. tx/fee attributes), not the signed max-fee cap alone. Gas is ABCI gas units, not a token. The primary fee KPI shows uBLD as BLD.",
+      "Paid fees come from tx result events (e.g. tx/fee attributes), not the signed max-fee cap alone. Gas is ABCI gas units, not a token. The primary fee KPI shows uBLD as BLD. Gas wanted is the requested/reserved gas (gas_wanted) summed over the same included txs as gas used. Two gas ratios: gas efficiency = gas_used / gas_wanted (how tightly users estimate requested gas), and block-space utilization (gas) = gas_used / block_gas_limit, where block_gas_limit sums the consensus per-block max_gas (read from block_results.consensus_param_updates, no extra RPC). Utilization is the fraction of available block gas actually consumed — a price-independent demand/contention signal; blocks with non-positive max_gas (e.g. -1 unlimited) are excluded from the denominator.",
   },
   {
     title: "Block pairing",
@@ -153,6 +219,11 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
       "Tx KPIs count one row per aligned tx result. Transfer-volume and IBC amount rollups sum message legs; multiple transfer msgs in one tx add multiple legs. ibc_transfer_out_count counts MsgTransfer messages. IBC-in headline counts use recv_packet flow semantics (or MsgRecvPacket fallback) — not whole-tx counts; do not sum them with tx counts without relabeling.",
   },
   {
+    title: "Staking and governance",
+    body:
+      "Counts of staking and governance messages in successful txs (decoded message typeUrls): delegations (MsgDelegate), undelegations (MsgUndelegate), redelegations (MsgBeginRedelegate), governance votes (MsgVote / MsgVoteWeighted), and proposals submitted (MsgSubmitProposal). Both gov v1 and v1beta1 are counted. These are message-grain counts (one message = one action), not token amounts or unique accounts; multiple actions in one tx each count. Top-level messages only — actions wrapped in authz MsgExec are not unwrapped. These are ordinary tx messages, so they are within tx_results scope (unlike block-level inflation/distribution/slashing).",
+  },
+  {
     title: "Gross flow (not supply)",
     body:
       "Totals are gross flow: legs can repeat as tokens move. They are not wallet balances, net changes, or comparable to supply. Do not sum human amounts across denoms for one economy-wide total.",
@@ -165,7 +236,7 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "IBC direction and amounts",
     body:
-      "Out = ICS-20 MsgTransfer on agoric-3; in = MsgRecvPacket / recv_packet as indexed. ibc_transfer_amount_in sums coin_received and transfer events matching MsgRecvPacket msg_index when emitted; typical SDK paths emit both for one settlement, so the combined series is a gross index (often ~2× per-type legs) — see docs/ibcTransferAmountInEventInvestigation.md and npm run inspect:ibc-recv-tx-events. Value Flow Map IBC-in/gross use those recv amounts; IBC-out uses ibc_transfer_amount_out (decoded MsgTransfer), not bank credits.",
+      "Out = ICS-20 MsgTransfer on agoric-3; in = MsgRecvPacket / recv_packet as indexed. ibc_transfer_amount_in is a deduped single-count basis: per denom it takes max(coin_received sum, transfer sum) over events matching MsgRecvPacket msg_index when emitted. Typical SDK paths emit both event families for one settlement, so taking the max counts each base unit once instead of ~2× — see docs/ibcTransferAmountInEventInvestigation.md and npm run inspect:ibc-recv-tx-events. Value Flow Map IBC-in/gross use those recv amounts; IBC-out uses ibc_transfer_amount_out (decoded MsgTransfer), not bank credits.",
   },
   {
     title: "IBC scope and cross-chain",
@@ -178,9 +249,14 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
       "KPI cards compare the current range to an equal-length prior window ending immediately before From (UTC, per granularity). Value Flow Map momentum tiles use first vs last bucket only, not that prior window.",
   },
   {
+    title: "SwingSet & Zoe offers",
+    body:
+      "Agoric activity is mostly SwingSet smart-wallet intent, not bare Cosmos messages. The indexer decodes MsgWalletSpendAction / MsgWalletAction CapData (@endo/marshal) and records: wallet_actions by kind (zoe_offer = executeOffer/tryExitOffer; wallet_invocation = invokeEntry), offer_source, the target contract Instance (offer_instance, Board id resolved to an agoricNames label at read time via src/config/agoricNames.json), the invitation maker (offer_maker), the invocation target (invoke_target), and exactly one functional offer_category per action (oracle, governance, vaults, psm, auction, fast_usdc, orchestration, other — offerCategory.ts; continuing/instance-less offers fall back to the maker so categories are additive and non-overlapping). The Offers activity chart groups categories into automated (orchestration/oracle/fast-USDC) vs interactive (vaults/PSM/auction/governance) — a read-time relabel, refinable without reindexing. Distinct submitting wallets come from offer_participant_day (day × owner × kind) and are the primary anti-overcounting signal: a handful of automation wallets (e.g. planner, fast-USDC settlement) submit the bulk of raw actions, so action counts are not wallet counts. Distinct-wallet counts are daily-grain by table design regardless of the selected granularity. Offer outcomes are self-indexed (no external indexer) from the same wallets' vstorage offerStatus updates, which settle asynchronously and surface as state_change events in block_results.finalize_block_events (EndBlock vstorage — outside the usual tx_results ingest scope). Each settled Zoe offer is counted once at its terminal payout update as exactly one of wants_satisfied (numWantsSatisfied ≥ 1), wants_unsatisfied (= 0, give refunded), or errored (status carries an error); intermediate result-only / numWantsSatisfied-only publications are skipped to avoid over-counting (walletOutcomeSummary.ts). Outcomes cover executeOffer Zoe offers, not invokeEntry invocations. Offer economic value is summed by vbank asset: offer_give_volume / offer_want_volume (proposal give/want intent, from successful txs) and offer_payout_volume (what settled offers returned, from the same vstorage offerStatus events). Each proposal/payout leg's brand Board id is mapped to its vbank denom + decimals (published.agoricNames.vbankAsset, committed in agoricNames.json); non-vbank brands are omitted. USD multiplies each asset's native range total by current CoinGecko spot (same notional/gross-flow basis as Value handled — not net, not TVL, not mark-to-market). give/want/payouts overlap (give is refunded into payouts), so their columns and USD totals are not additive.",
+  },
+  {
     title: "Economic participation & concentration",
     body:
-      "Successful txs only. Signers: every pubkey in signer_infos. Fee payer: fee.granter else fee.payer else first signer (participantRollupPolicy.ts). Distinct signers and fee payers are counted per role, not merged. Active 1 vs 2+ days uses UTC calendar days in participant_day. Distinct-accounts chart: one count per address per day (signer ∪ fee payer). Top 10 gross USD share: sender-side transfer_volume only (not IBC recv). Module accounts in agoricModuleAccounts.json are excluded from participation and top-10 at read time.",
+      "Successful txs only. Signers: every pubkey in signer_infos. Fee payer: fee.granter else fee.payer else first signer (participantRollupPolicy.ts). Distinct signers and fee payers are counted per role, not merged. Active 1 vs 2+ days uses UTC calendar days in participant_day. Distinct-accounts chart: one count per address per day (signer ∪ fee payer). Concentration is reported on two USD bases at current spot: gross-movement USD (top-10 share + Herfindahl HHI 0–1) over sender-side transfer_volume only (not IBC recv), and paid-fee USD (top-10 share + HHI) over resolved fee payers from address_fee_day — fees are the costliest signal and hardest to wash. HHI = Σ(addressShare²); higher means more concentrated. A concentration-over-time chart plots both HHI bases (left, 0–1) and top-10 shares (right, %) per UTC day — daily-grain regardless of the selected granularity, since address_volume_day / address_fee_day are daily; days without priced activity are gaps. Module accounts in agoricModuleAccounts.json are excluded from participation and concentration at read time.",
   },
   {
     title: "Rollup parity and upgrades",

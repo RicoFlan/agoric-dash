@@ -5,7 +5,7 @@
  *
  * Source hierarchy (events vs decoded body): see `src/lib/rollupSourceHierarchy.ts`. In short: ABCI
  * fields for outcomes/gas; **fee_paid** from tx events; bank / outbound ICS-20 **amounts** from
- * decoded `Msg*` bodies; **IBC recv amounts** from `coin_received` + `transfer` events per successful recv tx (`sumRecvCoinAmountsFromTxEvents`; see `docs/ibcTransferAmountInEventInvestigation.md`);
+ * decoded `Msg*` bodies; **IBC recv amounts** deduped per denom across `coin_received` / `transfer` events per successful recv tx (`sumRecvCoinAmountsDedupedFromTxEvents` — single-count basis, not the 2× combined sum; see `docs/ibcTransferAmountInEventInvestigation.md`);
  * **`ibc_transfer_flow_in`** from recv_packet events when present, else MsgRecvPacket count.
  *
  * Scope: only **`block_results.txs_results`** are processed — not standalone finalize-block / BeginBlock /
@@ -17,7 +17,7 @@ import "dotenv/config";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { EncodeObject } from "@cosmjs/proto-signing";
-import { fromBase64 } from "@cosmjs/encoding";
+import { fromBase64, toBech32 } from "@cosmjs/encoding";
 import pg from "pg";
 import * as schema from "../src/db/schema";
 import { decodeMsg, decodeTxRawTx, extractPaidFeesFromEvents } from "../src/lib/cosmos";
@@ -33,7 +33,14 @@ import {
 } from "../src/lib/blockTxResultsPairing";
 import { rpcCallWithFallback, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
 import { addIbcTransferFlowInForTx } from "../src/lib/ibcTransferFlowInRollup";
-import { sumRecvCoinAmountsFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
+import { maxGasFromBlockResults } from "../src/lib/blockGasLimit";
+import { stakingGovSeriesForTypeUrl } from "../src/lib/stakingGovMsgTypes";
+import { parseCapData, parseWalletActionString } from "../src/lib/walletOfferMarshal";
+import { summarizeWalletAction } from "../src/lib/walletOfferSummary";
+import { walletActionRollupDeltas } from "../src/lib/walletOfferRollup";
+import { extractWalletStreamCells, summarizeOfferStatus } from "../src/lib/walletOutcomeSummary";
+import { brandDenom, instanceName } from "../src/lib/agoricInstanceNames";
+import { sumRecvCoinAmountsDedupedFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
 import { addBankCreditsForTx } from "../src/lib/bankCreditsRollup";
 import { isAgoricModuleAccount } from "../src/lib/agoricModuleAccounts";
 import { msgIndicesMatchingTypeUrl } from "../src/lib/txEventMsgIndex";
@@ -47,6 +54,7 @@ import {
   SERIES,
   TRANSFER_MSG_TYPES,
   TX_SUCCESS_CODE,
+  WALLET_ACTION_MSG_TYPES,
 } from "../src/lib/semantics";
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -80,7 +88,8 @@ if (!DATABASE_URL) {
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
 
-const { dailyMetrics, hourlyMetrics, participantDay, addressVolumeDay, addressFeeDay } = schema;
+const { dailyMetrics, hourlyMetrics, participantDay, addressVolumeDay, addressFeeDay, offerParticipantDay } =
+  schema;
 
 /**
  * In-memory set of message typeUrls observed in successfully decoded txs since this
@@ -166,6 +175,7 @@ async function persistIndexedChunk(
   participantTriples: Set<string>,
   volumeDeltas: Map<string, bigint>,
   feeDeltas: Map<string, bigint>,
+  offerParticipantTriples: Set<string>,
   lastIndexedHeight: bigint
 ) {
   await db.transaction(async (tx) => {
@@ -197,6 +207,10 @@ async function persistIndexedChunk(
     for (const key of participantTriples) {
       const [day, address, role] = key.split(ROLLUP_KEY_DELIM);
       await tx.insert(participantDay).values({ day, address, role }).onConflictDoNothing();
+    }
+    for (const key of offerParticipantTriples) {
+      const [day, address, kind] = key.split(ROLLUP_KEY_DELIM);
+      await tx.insert(offerParticipantDay).values({ day, address, kind }).onConflictDoNothing();
     }
     for (const [key, delta] of volumeDeltas) {
       if (delta === BigInt(0)) continue;
@@ -288,6 +302,92 @@ async function fetchBlockPair(height: bigint): Promise<{
   throw lastErr;
 }
 
+/**
+ * SwingSet/Zoe smart-wallet offer intent (successful txs): decode the marshalled CapData action body
+ * and roll up objective dimensions (kind / source / instance / maker / target). Records the
+ * submitting smart-wallet owner for distinct-wallet counts. Never throws — undecodable bodies are
+ * still counted as wallet_actions[unknown] so real activity is not dropped.
+ */
+function accumulateWalletAction(
+  daily: Map<string, bigint>,
+  hourly: Map<string, bigint>,
+  day: string,
+  hour: Date,
+  enc: EncodeObject,
+  offerParticipantTriples: Set<string>,
+  hStr: string,
+  i: number
+) {
+  let owner = "";
+  let actionStr = "";
+  try {
+    const body = decodeMsg(enc) as { owner?: Uint8Array; spendAction?: string; action?: string };
+    if (body.owner && body.owner.length > 0) owner = toBech32("agoric", body.owner);
+    actionStr = body.spendAction ?? body.action ?? "";
+  } catch (e) {
+    console.warn(`wallet-action decode failed height ${hStr} idx ${i}:`, e);
+    return;
+  }
+
+  const summary = summarizeWalletAction(parseWalletActionString(actionStr));
+  const resolvedInstanceName = instanceName(summary.instanceBoardId);
+  for (const d of walletActionRollupDeltas(summary, resolvedInstanceName)) {
+    addRollupDelta(daily, hourly, day, hour, d.series, d.dimension, BigInt(1));
+  }
+  if (summary.kind === "zoe_offer") {
+    addLegVolumes(daily, hourly, day, hour, SERIES.OFFER_GIVE_VOLUME, summary.give);
+    addLegVolumes(daily, hourly, day, hour, SERIES.OFFER_WANT_VOLUME, summary.want);
+  }
+  if (owner) {
+    offerParticipantTriples.add([day, owner, summary.kind].join(ROLLUP_KEY_DELIM));
+  }
+}
+
+/**
+ * Sum proposal/payout amount legs into a denom-keyed volume series for USD valuation. Only legs whose
+ * brand resolves to a vbank denom (agoricNames.json vbankAssets) and carry a non-negative integer
+ * value are included; everything else is skipped so the read path can reuse denom-based pricing.
+ */
+function addLegVolumes(
+  daily: Map<string, bigint>,
+  hourly: Map<string, bigint>,
+  day: string,
+  hour: Date,
+  series: string,
+  legs: ReadonlyArray<{ brandBoardId: string | null; value: string | null }>
+) {
+  for (const leg of legs) {
+    const denom = brandDenom(leg.brandBoardId);
+    if (!denom || !leg.value || !/^\d+$/.test(leg.value)) continue;
+    addRollupDelta(daily, hourly, day, hour, series, denom, BigInt(leg.value));
+  }
+}
+
+/**
+ * Settled Zoe offer outcomes (block-grain): scan this block's finalize_block_events for vstorage
+ * `published.wallet.<addr>` offerStatus updates and roll up exactly one terminal outcome per offer.
+ * EndBlock vstorage events — outside tx_results scope, so this runs once per block independent of
+ * tx success. Never throws; undecodable updates are skipped.
+ */
+function accumulateBlockOutcomes(
+  results: RpcBlockResultsResponse,
+  daily: Map<string, bigint>,
+  hourly: Map<string, bigint>,
+  day: string,
+  hour: Date
+) {
+  const events = results.finalize_block_events ?? results.end_block_events;
+  for (const cell of extractWalletStreamCells(events)) {
+    for (const capDataString of cell.capDataStrings) {
+      const fact = summarizeOfferStatus(parseCapData(capDataString));
+      if (fact) {
+        addRollupDelta(daily, hourly, day, hour, SERIES.OFFER_OUTCOME, fact.outcome, BigInt(1));
+        addLegVolumes(daily, hourly, day, hour, SERIES.OFFER_PAYOUT_VOLUME, fact.payouts);
+      }
+    }
+  }
+}
+
 function accumulateBlock(
   block: RpcBlockResponse,
   results: RpcBlockResultsResponse,
@@ -295,7 +395,8 @@ function accumulateBlock(
   hourly: Map<string, bigint>,
   participantTriples: Set<string>,
   volumeDeltas: Map<string, bigint>,
-  feeDeltas: Map<string, bigint>
+  feeDeltas: Map<string, bigint>,
+  offerParticipantTriples: Set<string>
 ) {
   const hStr = block.block.header.height;
   const iso = block.block.header.time;
@@ -312,6 +413,15 @@ function accumulateBlock(
     console.warn(`height ${hStr}: ${mismatchDetail}`);
   }
 
+  // Block-space utilization denominator: per-block consensus max_gas (once per block, any tx outcome).
+  const maxGas = maxGasFromBlockResults(results);
+  if (maxGas !== null) {
+    addRollupDelta(daily, hourly, day, hour, SERIES.BLOCK_GAS_LIMIT, "", maxGas);
+  }
+
+  // Settled Zoe offer outcomes (block-grain, EndBlock vstorage offerStatus events).
+  accumulateBlockOutcomes(results, daily, hourly, day, hour);
+
   const n = pairedTxCount(blockTxCount, resultsCount);
 
   for (let i = 0; i < n; i++) {
@@ -325,6 +435,8 @@ function accumulateBlock(
     // Gas: every inclusion (success + failure). Fees and decoded-body metrics only below after `continue`.
     const gas = BigInt(tr.gas_used ?? "0");
     addRollupDelta(daily, hourly, day, hour, SERIES.GAS_USED, "", gas);
+    const gasWanted = BigInt(tr.gas_wanted ?? "0");
+    addRollupDelta(daily, hourly, day, hour, SERIES.GAS_WANTED, "", gasWanted);
 
     if (!ok) continue;
 
@@ -376,6 +488,17 @@ function accumulateBlock(
     for (const msg of msgs) {
       const enc = msg as EncodeObject;
       const typeUrl = enc.typeUrl;
+
+      // Staking & governance activity: count by message typeUrl (no body decode needed).
+      const sgSeries = stakingGovSeriesForTypeUrl(typeUrl);
+      if (sgSeries) {
+        addRollupDelta(daily, hourly, day, hour, sgSeries, "", BigInt(1));
+      }
+
+      // SwingSet/Zoe smart-wallet offer intent: decode CapData body, count objective dimensions.
+      if (WALLET_ACTION_MSG_TYPES.has(typeUrl)) {
+        accumulateWalletAction(daily, hourly, day, hour, enc, offerParticipantTriples, hStr, i);
+      }
 
       if (!TRANSFER_MSG_TYPES.has(typeUrl)) {
         continue;
@@ -448,7 +571,7 @@ function accumulateBlock(
         BigInt(recvPacketCount)
       );
       addIbcTransferFlowInForTx(daily, hourly, day, hour, eventsPerTx[i] ?? [], recvPacketCount);
-      for (const [denom, amt] of sumRecvCoinAmountsFromTxEvents(eventsPerTx[i] ?? [], {
+      for (const [denom, amt] of sumRecvCoinAmountsDedupedFromTxEvents(eventsPerTx[i] ?? [], {
         recvPacketMsgIndices: recvPacketMsgIndices,
       })) {
         addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_AMOUNT_IN, denom, amt);
@@ -578,6 +701,7 @@ async function loop(startFloorHeight: bigint) {
     const participantTriples = new Set<string>();
     const volumeDeltas = new Map<string, bigint>();
     const feeDeltas = new Map<string, bigint>();
+    const offerParticipantTriples = new Set<string>();
     for (const p of pairs) {
       accumulateBlock(
         p.block,
@@ -586,11 +710,20 @@ async function loop(startFloorHeight: bigint) {
         hourly,
         participantTriples,
         volumeDeltas,
-        feeDeltas
+        feeDeltas,
+        offerParticipantTriples
       );
     }
     const lastH = heights[heights.length - 1]!;
-    await persistIndexedChunk(daily, hourly, participantTriples, volumeDeltas, feeDeltas, lastH);
+    await persistIndexedChunk(
+      daily,
+      hourly,
+      participantTriples,
+      volumeDeltas,
+      feeDeltas,
+      offerParticipantTriples,
+      lastH
+    );
     cursor = lastH;
     next = lastH + BigInt(1);
     processed += chunkN;

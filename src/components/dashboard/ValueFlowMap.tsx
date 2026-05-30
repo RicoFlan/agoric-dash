@@ -27,6 +27,8 @@ export type ValueFlowMapPayload = {
   bankCreditsVolumeByDenom: Record<string, string>;
   transferVolumeUsdByDenom: Record<string, string | null>;
   bankCreditsVolumeUsdByDenom: Record<string, string | null>;
+  /** Distinct sending addresses per denom (range); wash-resistance context for gross volume. */
+  distinctSendersByDenom?: Record<string, number>;
   series: {
     transferVolumeSeries: SeriesByDenom[];
     bankCreditsVolumeSeries: SeriesByDenom[];
@@ -151,9 +153,13 @@ export default function ValueFlowMap({ data }: { data: ValueFlowMapPayload }) {
     const ibcInBig = /^\d+$/.test(ibcInTotal) ? BigInt(ibcInTotal) : 0n;
     const transferLikeBig = grossBig >= ibcInBig ? grossBig - ibcInBig : 0n;
 
+    const senderCount = data.distinctSendersByDenom?.[selectedDenom];
+
     return {
       label: displaySymbol ?? selectedDenom,
       decimals,
+      distinctSenders:
+        typeof senderCount === "number" ? senderCount.toLocaleString("en-US") : "—",
       grossHumanRounded:
         formatNativeVolumeRounded(grossAtomic, decimals) ?? formatNativeHuman(grossAtomic, decimals),
       creditsHumanRounded:
@@ -211,6 +217,7 @@ export default function ValueFlowMap({ data }: { data: ValueFlowMapPayload }) {
 
   const {
     label,
+    distinctSenders,
     grossHumanRounded,
     creditsHumanRounded,
     transferLikeHumanRounded,
@@ -305,6 +312,17 @@ export default function ValueFlowMap({ data }: { data: ValueFlowMapPayload }) {
           <p className="mt-1 text-xs text-[var(--muted)]">Summed from IBC-out amount series</p>
           <p className="mt-2 text-xs text-[var(--muted)]">
             Asset: <span className="font-mono text-[var(--text)]">{label}</span>
+          </p>
+        </div>
+
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+            Distinct senders (range)
+          </p>
+          <p className="mt-2 font-mono text-xl text-[var(--text)]">{distinctSenders}</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Unique sending addresses (transfer legs). High gross from few senders = concentrated / possible
+            wash; not IBC-in or bank credits.
           </p>
         </div>
       </div>
