@@ -39,6 +39,7 @@ import { parseCapData, parseWalletActionString } from "../src/lib/walletOfferMar
 import { summarizeWalletAction } from "../src/lib/walletOfferSummary";
 import { walletActionRollupDeltas } from "../src/lib/walletOfferRollup";
 import { extractWalletStreamCells, summarizeOfferStatus } from "../src/lib/walletOutcomeSummary";
+import { refreshDailyPrices } from "../src/lib/coingecko/priceRefresh";
 import { brandDenom, instanceName } from "../src/lib/agoricInstanceNames";
 import { sumRecvCoinAmountsDedupedFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
 import { addBankCreditsForTx } from "../src/lib/bankCreditsRollup";
@@ -58,6 +59,10 @@ import {
 } from "../src/lib/semantics";
 
 const DATABASE_URL = process.env.DATABASE_URL;
+/** Daily CoinGecko price refresh (denom_price_day): interval, history depth per run, kill switch. */
+const PRICE_REFRESH_MS = Math.max(60_000, Number(process.env.PRICE_REFRESH_MS ?? String(6 * 60 * 60 * 1000)) || 6 * 60 * 60 * 1000);
+const PRICE_REFRESH_DAYS = Math.max(1, Math.min(365, Number(process.env.PRICE_REFRESH_DAYS ?? "3") || 3));
+const PRICE_REFRESH_DISABLED = ["1", "true", "yes"].includes((process.env.PRICE_REFRESH_DISABLED ?? "").trim().toLowerCase());
 /**
  * Primary CometBFT RPC. Defaults to the canonical Agoric mainnet RPC when unset.
  * `RPC_URL_FALLBACK` is opt-in; when set, each call tries primary first and
@@ -738,7 +743,31 @@ async function loop(startFloorHeight: bigint) {
   return { processed, inCatchup };
 }
 
+/**
+ * Keep `denom_price_day` current alongside block indexing: fetch the last PRICE_REFRESH_DAYS days for
+ * every configured coin id every PRICE_REFRESH_MS. Runs concurrently with the block loop (never
+ * blocks it); a failing run logs and waits for the next tick. Creates the table if absent, so a fresh
+ * deploy needs no manual migration — the 365-day history still comes from `npm run backfill:prices`.
+ */
+async function priceRefreshLoop(): Promise<void> {
+  for (;;) {
+    try {
+      const s = await refreshDailyPrices(db, { days: PRICE_REFRESH_DAYS });
+      console.log(
+        `[prices] refreshed ${s.idsOk}/${s.idsAttempted} ids, ${s.rowsUpserted} rows` +
+          (s.idsFailed.length ? `; failed: ${s.idsFailed.join(", ")}` : "")
+      );
+    } catch (e) {
+      console.warn("[prices] refresh failed; will retry next interval", e);
+    }
+    await sleep(PRICE_REFRESH_MS);
+  }
+}
+
 async function main() {
+  if (PRICE_REFRESH_DISABLED) console.log("[prices] refresh disabled (PRICE_REFRESH_DISABLED)");
+  else void priceRefreshLoop();
+
   const tip = await latestHeight();
   const startFloorHeight = await findStartHeightByTime(START_DATE_MS, tip);
 

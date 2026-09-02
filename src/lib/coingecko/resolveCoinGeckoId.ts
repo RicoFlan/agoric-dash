@@ -35,3 +35,11 @@ export function resolveCoinGeckoId(onChainDenom: string): string | null {
 
   return lookupDisplaySymbol(meta.displaySymbol);
 }
+
+/** Every CoinGecko id reachable from config (symbol map ∪ per-denom overrides), deduped and sorted. */
+export function allConfiguredCoinGeckoIds(): string[] {
+  const ids = new Set<string>();
+  for (const id of Object.values(SYMBOL_TO_ID)) if (typeof id === "string" && id.length > 0) ids.add(id);
+  for (const id of Object.values(OVERRIDES)) if (typeof id === "string" && id.length > 0) ids.add(id);
+  return [...ids].sort();
+}

@@ -1,15 +1,16 @@
-import { atomicToFloat } from "@/lib/amountFormat";
-import { getUsdSpotPrices } from "@/lib/coingecko/simplePrice";
-import { resolveCoinGeckoId } from "@/lib/coingecko/resolveCoinGeckoId";
+import {
+  type DailyPriceTable,
+  type DayDenomAmounts,
+  allDenoms,
+  denomToCoinIdMap,
+  priceDayDenomAmounts,
+  type UsdPricingMeta,
+} from "@/lib/denomPrices";
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
 
-export type UsdPricingMeta = {
-  source: "coingecko";
-  spotFetchedAt: string | null;
-  partialOrStale: boolean;
-};
+export type { UsdPricingMeta } from "@/lib/denomPrices";
 
-/** Format dashboard USD notionals (spot × range total); not accounting-grade. */
+/** Format dashboard USD notionals (day-priced gross flow); not accounting-grade. */
 export function formatUsdEstimate(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
   const opts: Intl.NumberFormatOptions =
@@ -23,119 +24,51 @@ export function formatUsdEstimate(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", ...opts }).format(n);
 }
 
-function usdCellsForDenomTotals(
-  volumeByDenom: Record<string, string>,
+/** Price a day→denom map and format cells; null cells for denoms with no priced day. */
+export function formattedUsdCells(
+  byDayDenom: DayDenomAmounts,
   display: EnrichedDisplay,
-  usdByCoinId: Record<string, number>,
-  denomToCoinId: Map<string, string>
-): { byDenom: Record<string, string | null>; total: string | null } {
-  const denoms = Object.keys(volumeByDenom);
+  table: DailyPriceTable,
+  denomToCoinId?: Map<string, string>
+): { byDenom: Record<string, string | null>; total: string | null; meta: UsdPricingMeta } {
+  const pricer = table.pricer();
+  const r = priceDayDenomAmounts(byDayDenom, display, pricer, denomToCoinId);
   const byDenom: Record<string, string | null> = {};
-  let sumUsd = 0;
-  let pricedRows = 0;
-
-  for (const d of denoms) {
-    const coinId = denomToCoinId.get(d);
-    if (!coinId) {
-      byDenom[d] = null;
-      continue;
-    }
-    const px = usdByCoinId[coinId];
-    if (typeof px !== "number" || !Number.isFinite(px)) {
-      byDenom[d] = null;
-      continue;
-    }
-    const dec = display.metas[d]?.decimals;
-    if (typeof dec !== "number" || !Number.isFinite(dec) || dec < 0) {
-      byDenom[d] = null;
-      continue;
-    }
-    const atomic = volumeByDenom[d];
-    const human = atomicToFloat(atomic, dec);
-    const lineUsd = human * px;
-    if (Number.isFinite(lineUsd) && lineUsd >= 0) {
-      sumUsd += lineUsd;
-      pricedRows += 1;
-    }
-    byDenom[d] = formatUsdEstimate(lineUsd);
-  }
-
-  return { byDenom, total: pricedRows > 0 ? formatUsdEstimate(sumUsd) : null };
+  for (const [denom, v] of Object.entries(r.usdByDenom)) byDenom[denom] = v === null ? null : formatUsdEstimate(v);
+  return { byDenom, total: r.total === null ? null : formatUsdEstimate(r.total), meta: pricer.meta() };
 }
 
 /**
- * One CoinGecko fetch for the union of denoms in both maps — used by `/api/metrics` so bank-credits
- * rows do not double-hit the price API. Populates **USD gross** and **USD credits** cells (and separate
- * footer totals) for the combined Value handled denom table in `Dashboard.tsx`.
+ * USD cells for the Value handled table: each denom's native amount on each UTC day is priced at
+ * that day's `denom_price_day` row (spot only for days with no row). Populates **USD gross** and
+ * **USD credits** cells and separate footer totals; the two columns remain non-additive. One
+ * `usdPricingMeta` covers both columns (same table, same basis).
  */
-export async function enrichTransferAndBankCreditsUsdEstimates(
-  transferVolumeByDenom: Record<string, string>,
-  bankCreditsVolumeByDenom: Record<string, string>,
-  display: EnrichedDisplay
-): Promise<{
+export function enrichTransferAndBankCreditsUsdEstimates(
+  transferVolumeByDayDenom: DayDenomAmounts,
+  bankCreditsByDayDenom: DayDenomAmounts,
+  display: EnrichedDisplay,
+  table: DailyPriceTable
+): {
   transferVolumeUsdByDenom: Record<string, string | null>;
   transferVolumeUsdTotal: string | null;
   bankCreditsVolumeUsdByDenom: Record<string, string | null>;
   bankCreditsVolumeUsdTotal: string | null;
   usdPricingMeta: UsdPricingMeta;
-}> {
-  const denomSet = new Set<string>([
-    ...Object.keys(transferVolumeByDenom),
-    ...Object.keys(bankCreditsVolumeByDenom),
-  ]);
-  const denomToCoinId = new Map<string, string>();
-  const ids: string[] = [];
-
-  for (const d of denomSet) {
-    const id = resolveCoinGeckoId(d);
-    if (id) {
-      denomToCoinId.set(d, id);
-      ids.push(id);
-    }
-  }
-
-  let usdByCoinId: Record<string, number> = {};
-  let fetchedAtIso: string | null = null;
-  let partialOrStale = false;
-
-  try {
-    const r = await getUsdSpotPrices(ids);
-    usdByCoinId = r.usdByCoinId;
-    fetchedAtIso = r.fetchedAtIso;
-    partialOrStale = r.partialOrStale;
-  } catch {
-    partialOrStale = true;
-  }
-
-  const transfer = usdCellsForDenomTotals(transferVolumeByDenom, display, usdByCoinId, denomToCoinId);
-  const bankCredits = usdCellsForDenomTotals(bankCreditsVolumeByDenom, display, usdByCoinId, denomToCoinId);
-
+} {
+  const denomToCoinId = denomToCoinIdMap(
+    new Set([...allDenoms(transferVolumeByDayDenom), ...allDenoms(bankCreditsByDayDenom)])
+  );
+  const pricer = table.pricer();
+  const transfer = priceDayDenomAmounts(transferVolumeByDayDenom, display, pricer, denomToCoinId);
+  const bankCredits = priceDayDenomAmounts(bankCreditsByDayDenom, display, pricer, denomToCoinId);
+  const fmt = (m: Record<string, number | null>) =>
+    Object.fromEntries(Object.entries(m).map(([d, v]) => [d, v === null ? null : formatUsdEstimate(v)]));
   return {
-    transferVolumeUsdByDenom: transfer.byDenom,
-    transferVolumeUsdTotal: transfer.total,
-    bankCreditsVolumeUsdByDenom: bankCredits.byDenom,
-    bankCreditsVolumeUsdTotal: bankCredits.total,
-    usdPricingMeta: {
-      source: "coingecko",
-      spotFetchedAt: fetchedAtIso,
-      partialOrStale,
-    },
-  };
-}
-
-export async function enrichTransferVolumeUsdEstimates(
-  transferVolumeByDenom: Record<string, string>,
-  display: EnrichedDisplay
-): Promise<{
-  transferVolumeUsdByDenom: Record<string, string | null>;
-  /** Sum of per-denom USD estimates (priced rows only); same basis as the column. */
-  transferVolumeUsdTotal: string | null;
-  usdPricingMeta: UsdPricingMeta;
-}> {
-  const r = await enrichTransferAndBankCreditsUsdEstimates(transferVolumeByDenom, {}, display);
-  return {
-    transferVolumeUsdByDenom: r.transferVolumeUsdByDenom,
-    transferVolumeUsdTotal: r.transferVolumeUsdTotal,
-    usdPricingMeta: r.usdPricingMeta,
+    transferVolumeUsdByDenom: fmt(transfer.usdByDenom),
+    transferVolumeUsdTotal: transfer.total === null ? null : formatUsdEstimate(transfer.total),
+    bankCreditsVolumeUsdByDenom: fmt(bankCredits.usdByDenom),
+    bankCreditsVolumeUsdTotal: bankCredits.total === null ? null : formatUsdEstimate(bankCredits.total),
+    usdPricingMeta: pricer.meta(),
   };
 }

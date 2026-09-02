@@ -95,3 +95,21 @@ export const addressFeeDay = pgTable(
   },
   (t) => [primaryKey({ columns: [t.day, t.address, t.denom] })]
 );
+
+/**
+ * CoinGecko daily USD price per coin id: the first `/coins/{id}/market_chart` data point on each UTC
+ * day (≈ 00:00 UTC). Backfilled by `scripts/backfillDenomPrices.ts` and refreshed by the indexer
+ * (`refreshDailyPrices`); the read path prices each day's native amount at that day's row and falls
+ * back to spot only for days with no row (`src/lib/denomPrices.ts`). Created idempotently with
+ * `CREATE TABLE IF NOT EXISTS` (`ensureDenomPriceDayTable`) — additive, never part of reindex:reset.
+ */
+export const denomPriceDay = pgTable(
+  "denom_price_day",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    coingeckoId: varchar("coingecko_id", { length: 128 }).notNull(),
+    usd: numeric("usd", { precision: 30, scale: 12 }).notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.coingeckoId] })]
+);

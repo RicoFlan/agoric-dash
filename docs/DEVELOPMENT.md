@@ -58,6 +58,12 @@ ESLint extends `next/core-web-vitals` and `next/typescript`. Run `npm run lint` 
 
 `src/db/client.ts` uses `pg` with explicit timeouts. Adjust only with care: too low breaks slow queries; too high traps the UI on bad networks.
 
+## Daily prices and schema additions
+
+`denom_price_day` is created with `CREATE TABLE IF NOT EXISTS` (`ensureDenomPriceDayTable` in `src/lib/coingecko/priceStore.ts`) by both the backfill script and the indexer's refresh loop, so a deploy needs no migration step and `drizzle-kit push` stays optional. The table is also declared in `src/db/schema.ts`; keep the two in sync. Rationale: `drizzle/meta` is gitignored and the production tables were created with `db:push`, so there is no migration baseline — additive tables are safest as idempotent SQL that runs on process start. Never add price tables to `scripts/reindexReset.ts`.
+
+Pricing math is DB-free (`src/lib/denomPrices.ts`) and unit-tested with in-memory tables; only `src/lib/loadDailyPriceTable.ts` touches Postgres.
+
 ## `denoms.json` maintenance
 
 Human labels and decimals for chart/table display come from **`src/config/denoms.json`**. When users see raw `ibc/…` strings in the UI:
