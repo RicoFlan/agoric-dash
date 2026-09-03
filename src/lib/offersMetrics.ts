@@ -16,6 +16,7 @@ import {
   type AutomationClass,
   type OfferCategory,
 } from "@/lib/offerCategory";
+import { outcomesByCategory, type OutcomeByCategory } from "@/lib/offerOutcomeCategory";
 
 export type OfferBuckets = Map<string, Map<string, Map<string, bigint>>>;
 
@@ -62,6 +63,8 @@ export interface OffersSection {
     satisfactionRatePct: number | null;
     /** Per-bucket settled-offer counts by outcome (dense over cur buckets), for the trend. */
     overTime: { outcome: OfferOutcomeDim; data: OfferBucketPoint[] }[];
+    /** Settled offers split by functional category (offer_outcome_category), largest first; empty before the P2 backfill. */
+    byCategory: OutcomeByCategory[];
   };
   byCategory: CategoryCount[];
   bySource: LabeledCount[];
@@ -198,6 +201,7 @@ export function buildOffersSection(cur: OfferBuckets, prev: OfferBuckets): Offer
           value: (cur.get(bucket)?.get(SERIES.OFFER_OUTCOME)?.get(outcome) ?? BigInt(0)).toString(),
         })),
       })),
+      byCategory: outcomesByCategory(dimTotals(cur, SERIES.OFFER_OUTCOME_CATEGORY)),
     },
     byCategory,
     bySource: sortedLabeled(dimTotals(cur, SERIES.OFFER_SOURCE), (k) => k),

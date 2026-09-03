@@ -18,7 +18,8 @@
  * errored offer's final record carries both `error` and the refund `payouts`; we classify it
  * `errored` from that single update rather than counting an extra time.
  */
-import { BoardSlot, type OfferLeg } from "@/lib/walletOfferTypes";
+import { summarizeWalletAction } from "@/lib/walletOfferSummary";
+import { BoardSlot, type OfferLeg, type WalletActionSummary } from "@/lib/walletOfferTypes";
 
 export interface VstorageEventAttr {
   readonly key: string;
@@ -43,6 +44,12 @@ export interface OfferOutcomeFact {
   readonly outcome: OfferOutcome;
   /** Payout legs deposited at settle: keyword → brand board id + atomic value (for USD valuation). */
   readonly payouts: readonly OfferLeg[];
+  /**
+   * The offer's own spec as echoed in the terminal status (OfferStatus = OfferSpec & updates):
+   * source / instance / maker for category classification. Null when the status carried no
+   * `invitationSpec` (→ `unclassified` in offer_outcome_category).
+   */
+  readonly spec: WalletActionSummary | null;
 }
 
 /**
@@ -131,10 +138,13 @@ export function summarizeOfferStatus(decodedUpdate: unknown): OfferOutcomeFact |
 
   const offerId = typeof status.id === "string" ? status.id : null;
   const payouts = legsFrom(status.payouts);
+  const spec = asRecord(status.invitationSpec)
+    ? summarizeWalletAction({ method: "executeOffer", offer: status })
+    : null;
   const error = typeof status.error === "string" && status.error.length > 0;
-  if (error) return { offerId, outcome: "errored", payouts };
+  if (error) return { offerId, outcome: "errored", payouts, spec };
 
   const nws = status.numWantsSatisfied;
-  if (typeof nws === "number" && nws === 0) return { offerId, outcome: "wants_unsatisfied", payouts };
-  return { offerId, outcome: "wants_satisfied", payouts };
+  if (typeof nws === "number" && nws === 0) return { offerId, outcome: "wants_unsatisfied", payouts, spec };
+  return { offerId, outcome: "wants_satisfied", payouts, spec };
 }
