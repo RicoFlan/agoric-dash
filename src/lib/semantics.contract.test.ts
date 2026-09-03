@@ -62,26 +62,25 @@ describe("METHODOLOGY_SECTIONS", () => {
 });
 
 describe("METHODOLOGY_BLURB", () => {
-  it("documents the combined Value handled table, View Denom UX, and non-additive framing", () => {
-    expect(METHODOLOGY_BLURB).toContain("Value by denom: gross in-tx vs bank credits");
-    expect(METHODOLOGY_BLURB).toContain("View Denom");
-    expect(METHODOLOGY_BLURB).toContain("document.body");
+  it("documents the bank-credits value table, day-priced USD, and non-additive framing", () => {
+    expect(METHODOLOGY_BLURB).toContain("Value received by asset (bank credits, range total)");
+    expect(METHODOLOGY_BLURB).toContain("four questions");
+    expect(METHODOLOGY_BLURB).toContain("day-priced");
     expect(METHODOLOGY_BLURB).toMatch(/not additive|non-additive/i);
   });
 
-  it("documents Value Flow Map layout and charts (replaces multi-asset value line charts)", () => {
-    expect(METHODOLOGY_BLURB).toContain("Value Flow Map");
-    expect(METHODOLOGY_BLURB).toContain("Gross composition");
-    expect(METHODOLOGY_BLURB).toContain("Credits vs outbound IBC");
-    expect(METHODOLOGY_BLURB).toContain("Momentum (last vs first bucket)");
-    expect(METHODOLOGY_BLURB).not.toMatch(/gross in-tx movement line chart/i);
-    expect(METHODOLOGY_BLURB).not.toMatch(/IBC amount flows chart/i);
+  it("records the Value Flow Map removal and the single prior-window comparison rule", () => {
+    expect(METHODOLOGY_BLURB).toContain("Removed in the four-questions redesign");
+    expect(METHODOLOGY_BLURB).toContain("prior-window rule is now the only one");
+    expect(METHODOLOGY_BLURB).not.toMatch(/Gross composition/);
     expect(METHODOLOGY_BLURB).not.toMatch(/checkbox/i);
   });
 
-  it("documents indexer line, hour fallback, and participation conditional", () => {
-    expect(METHODOLOGY_BLURB).toContain("indexer_state");
+  it("documents the four question sections, their detail drawers, and the hour fallback", () => {
+    for (const q of ["Q1 Is the chain busier?", "Q2 Is usage becoming more organic?", "Q3 Is value flowing in or out?", "Q4 Is the economic base broadening or concentrating?"]) {
+      expect(METHODOLOGY_BLURB).toContain(q);
+    }
+    expect(METHODOLOGY_BLURB).toContain("Detail drawer");
     expect(METHODOLOGY_BLURB).toContain("hourly_metrics");
-    expect(METHODOLOGY_BLURB).toContain("participation and/or concentration");
   });
 });
