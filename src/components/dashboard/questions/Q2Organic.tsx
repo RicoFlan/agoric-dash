@@ -11,6 +11,7 @@ import {
   EmptyNote,
   fmtInt,
   fmtPct,
+  fmtPct1,
   fmtPts,
   Headline,
   IN_CARD_TITLE_CLASS,
@@ -35,8 +36,6 @@ const OffersActivityLineChart = dynamic(() => import("@/components/dashboard/cha
   loading: () => <ChartChunkFallback title="Smart-wallet offer activity" />,
   ssr: false,
 });
-
-const pct1 = (n: number | null | undefined) => (n === null || n === undefined || !Number.isFinite(n) ? "—" : `${n.toFixed(1)}%`);
 
 /** Q2 — Is usage becoming more organic? Headline: interactive ÷ all wallet actions. */
 export function Q2Organic({
@@ -101,8 +100,8 @@ export function Q2Organic({
       headline={
         <Headline
           label="Organic activity ratio"
-          value={pct1(ratio?.current)}
-          previous={pct1(ratio?.previous)}
+          value={fmtPct1(ratio?.current)}
+          previous={fmtPct1(ratio?.previous)}
           delta={fmtPts(ratio?.deltaPts ?? null)}
           deltaValue={ratio?.deltaPts ?? null}
           definition={DEFINITIONS.q2_organic_ratio}
@@ -223,7 +222,7 @@ export function Q2Organic({
         />
         <SupportFigure
           label="Satisfaction rate (all offers)"
-          value={pct1(offers?.outcomes.satisfactionRatePct)}
+          value={fmtPct1(offers?.outcomes.satisfactionRatePct)}
           definition={DEFINITIONS.q2_satisfaction_rate}
           note={offers ? `${fmtInt(Number(offers.outcomes.settled.current))} settled in range` : undefined}
         />
@@ -257,7 +256,7 @@ export function Q2Organic({
                     <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--text)]">{fmtInt(r.wantsSatisfied)}</td>
                     <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--muted)]">{fmtInt(r.wantsUnsatisfied)}</td>
                     <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--muted)]">{fmtInt(r.errored)}</td>
-                    <td className="py-1.5 text-right font-mono tabular-nums text-[var(--text)]">{pct1(r.satisfactionRatePct)}</td>
+                    <td className="py-1.5 text-right font-mono tabular-nums text-[var(--text)]">{fmtPct1(r.satisfactionRatePct)}</td>
                   </tr>
                 ))}
               </tbody>

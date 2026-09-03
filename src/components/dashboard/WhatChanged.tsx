@@ -3,9 +3,9 @@
 import { useMemo } from "react";
 import type { MetricsPayload } from "@/components/dashboard/types";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
-import { buildWhatChanged } from "@/lib/narrative";
+import { buildWhatChanged, type NarrativeSentence } from "@/lib/narrative";
 
-const ANCHOR: Record<string, string> = {
+const ANCHOR: Record<NarrativeSentence["id"], string> = {
   busier: dashboardSectionIds.busier,
   organic: dashboardSectionIds.organic,
   "value-flow": dashboardSectionIds.valueFlow,

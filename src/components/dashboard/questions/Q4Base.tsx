@@ -9,6 +9,7 @@ import {
   fmtInt,
   fmtNum,
   fmtPct,
+  fmtPct1,
   fmtPts,
   Headline,
   IN_CARD_TITLE_CLASS,
@@ -51,8 +52,6 @@ function dayAxis(n: number, dataKey: "day" | "bucket") {
     },
   };
 }
-
-const pct1 = (n: number | null | undefined) => (n === null || n === undefined || !Number.isFinite(n) ? "—" : `${n.toFixed(1)}%`);
 
 /** Q4 — Is the economic base broadening or concentrating? Headline: effective number of fee payers. */
 export function Q4Base({
@@ -111,7 +110,7 @@ export function Q4Base({
             q ? (
               <>
                 Gross-movement basis: {fmtNum(q.effectiveNGross, 1)} effective addresses · top-10 fee share{" "}
-                {pct1(q.support.top10FeeSharePct)}
+                {fmtPct1(q.support.top10FeeSharePct)}
                 <UsdBasisNote meta={q.usdPricingMeta} />
               </>
             ) : undefined
@@ -170,8 +169,8 @@ export function Q4Base({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SupportFigure
           label="Retained addresses"
-          value={pct1(r?.current.retainedSharePct)}
-          previous={pct1(r?.previous.retainedSharePct)}
+          value={fmtPct1(r?.current.retainedSharePct)}
+          previous={fmtPct1(r?.previous.retainedSharePct)}
           delta={fmtPts(r?.retainedShareDeltaPts ?? null)}
           deltaValue={r?.retainedShareDeltaPts ?? null}
           definition={DEFINITIONS.q4_retained_addresses}
@@ -179,8 +178,8 @@ export function Q4Base({
         />
         <SupportFigure
           label="New addresses"
-          value={pct1(r?.current.newSharePct)}
-          previous={pct1(r?.previous.newSharePct)}
+          value={fmtPct1(r?.current.newSharePct)}
+          previous={fmtPct1(r?.previous.newSharePct)}
           definition={DEFINITIONS.q4_new_addresses}
           note={r ? `${fmtInt(r.current.newAddresses)} first seen` : undefined}
         />
@@ -191,7 +190,7 @@ export function Q4Base({
         />
         <SupportFigure
           label="Top-10 fee share"
-          value={pct1(q?.support.top10FeeSharePct)}
+          value={fmtPct1(q?.support.top10FeeSharePct)}
           definition={DEFINITIONS.q4_top10_fee_share}
           upIsGood={false}
         />

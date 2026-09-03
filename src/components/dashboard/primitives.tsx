@@ -48,6 +48,12 @@ export function fmtNum(n: number | null | undefined, digits = 1): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 }
 
+/** One-decimal percentage for ratios that are already 0–100 (satisfaction, retention, organic share). */
+export function fmtPct1(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
 export function fmtUsd(n: number | null | undefined, signed = false): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
   const abs = Math.abs(n);

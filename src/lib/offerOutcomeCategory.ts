@@ -13,7 +13,9 @@ export const OUTCOME_CATEGORY_UNCLASSIFIED = "unclassified" as const;
 export type OutcomeCategory = OfferCategory | typeof OUTCOME_CATEGORY_UNCLASSIFIED;
 export const OUTCOME_CATEGORIES: readonly OutcomeCategory[] = [...OFFER_CATEGORIES, OUTCOME_CATEGORY_UNCLASSIFIED];
 
-const OUTCOMES: readonly OfferOutcome[] = ["wants_satisfied", "wants_unsatisfied", "errored"];
+/** Key-exhaustive over OfferOutcome: adding an outcome without listing it here is a compile error. */
+const OUTCOME_SET: Record<OfferOutcome, true> = { wants_satisfied: true, wants_unsatisfied: true, errored: true };
+const OUTCOMES: readonly OfferOutcome[] = Object.keys(OUTCOME_SET) as OfferOutcome[];
 const SEP = "|";
 
 export function outcomeCategoryDim(category: OutcomeCategory, outcome: OfferOutcome): string {
