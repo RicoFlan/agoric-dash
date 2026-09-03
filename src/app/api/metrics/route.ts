@@ -5,6 +5,8 @@ import { enrichMetricsForDisplay } from "@/lib/metricsEnrichment";
 import { buildMetricsPayload, type Granularity } from "@/lib/metricsQuery";
 import { enrichTransferAndBankCreditsUsdEstimates } from "@/lib/transferVolumeUsdEstimates";
 import { enrichOfferValueUsd } from "@/lib/offerValueUsd";
+import { allDenoms, denomToCoinIdMap } from "@/lib/denomPrices";
+import { loadDailyPriceTable } from "@/lib/loadDailyPriceTable";
 import { parseUsdEstimateSortKey } from "@/lib/grossTableUsdSort";
 import { computeNormalizedRatios, formatNormalizedRatios } from "@/lib/normalizedRatios";
 import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
@@ -55,30 +57,35 @@ export async function GET(req: NextRequest) {
   try {
     const payload = await buildMetricsPayload(qFrom, qTo, granularity);
     const display = enrichMetricsForDisplay(payload);
-    const usd = await enrichTransferAndBankCreditsUsdEstimates(
-      payload.transferVolumeByDenom ?? {},
-      payload.bankCreditsVolumeByDenom ?? {},
-      display
-    );
     const fromDay = qFrom.slice(0, 10);
     const toDay = qTo.slice(0, 10);
-    const denomUnionForPricing: Record<string, string> = {
-      ...payload.bankCreditsVolumeByDenom,
-      ...payload.transferVolumeByDenom,
-    };
-    const participationConcentration = await enrichParticipationAndConcentration(
-      fromDay,
-      toDay,
-      denomUnionForPricing,
-      display
+
+    /** Day-grain pricing inputs are consumed here and not sent to the client. */
+    const { pricingInputs, ...payloadForResponse } = payload;
+
+    /**
+     * One price table per request: `denom_price_day` rows for the range plus spot only for ids
+     * missing a day. Participation/concentration extends it with any extra denoms it meets.
+     */
+    const pricedDenoms = new Set<string>();
+    for (const m of Object.values(pricingInputs)) for (const d of allDenoms(m)) pricedDenoms.add(d);
+    const table = await loadDailyPriceTable(fromDay, toDay, denomToCoinIdMap(pricedDenoms).values());
+
+    const usd = enrichTransferAndBankCreditsUsdEstimates(
+      pricingInputs.transferVolumeByDayDenom,
+      pricingInputs.bankCreditsByDayDenom,
+      display,
+      table
     );
+    const participationConcentration = await enrichParticipationAndConcentration(fromDay, toDay, display, table);
 
     const offerValueUsd = payload.offers
-      ? await enrichOfferValueUsd(
-          payload.offers.value.giveByDenom,
-          payload.offers.value.wantByDenom,
-          payload.offers.value.payoutByDenom,
-          display
+      ? enrichOfferValueUsd(
+          pricingInputs.offerGiveByDayDenom,
+          pricingInputs.offerWantByDayDenom,
+          pricingInputs.offerPayoutByDayDenom,
+          display,
+          table
         )
       : null;
 
@@ -96,7 +103,7 @@ export async function GET(req: NextRequest) {
     );
 
     return NextResponse.json({
-      ...payload,
+      ...payloadForResponse,
       display,
       ...usd,
       ...participationConcentration,

@@ -11,6 +11,7 @@ import { successRatePct } from "@/lib/txSuccessRate";
 import { blockGasUtilizationPct, gasEfficiencyPct } from "@/lib/gasEfficiency";
 import { buildOffersSection } from "@/lib/offersMetrics";
 import { queryOfferParticipantsRange } from "@/lib/offersQuery";
+import type { DayDenomAmounts } from "@/lib/denomPrices";
 
 export type Granularity = "hour" | "day" | "week";
 
@@ -266,6 +267,18 @@ export async function buildMetricsPayload(
   const transferTableBuckets = aggregateFlatRows(dailyRowsToFlat(currentDailyRows, "day"));
   ensureDenseUtcDayBuckets(transferTableBuckets, fromDay, toDay);
 
+  /**
+   * Day-grain native amounts per denom for day-accurate USD pricing (`src/lib/denomPrices.ts`).
+   * Same daily basis as the table totals; the API route consumes and strips these before responding.
+   */
+  const pricingInputs = {
+    transferVolumeByDayDenom: dayDenomAmounts(transferTableBuckets, [SERIES.TRANSFER_VOLUME, SERIES.IBC_TRANSFER_AMOUNT_IN]),
+    bankCreditsByDayDenom: dayDenomAmounts(transferTableBuckets, [SERIES.BANK_CREDITS_VOLUME]),
+    offerGiveByDayDenom: dayDenomAmounts(transferTableBuckets, [SERIES.OFFER_GIVE_VOLUME]),
+    offerWantByDayDenom: dayDenomAmounts(transferTableBuckets, [SERIES.OFFER_WANT_VOLUME]),
+    offerPayoutByDayDenom: dayDenomAmounts(transferTableBuckets, [SERIES.OFFER_PAYOUT_VOLUME]),
+  };
+
   const txSuccessCur = sumSeries(curBuckets, SERIES.TX_SUCCESS);
   const txSuccessPrev = sumSeries(prevBuckets, SERIES.TX_SUCCESS);
 
@@ -491,8 +504,32 @@ export async function buildMetricsPayload(
     /** SwingSet/Zoe smart-wallet offer activity (intent), with distinct-wallet participation. */
     offers: { ...offersSection, participants: offerParticipants },
     indexer: await getIndexerStatus(),
+    pricingInputs,
     ...(usedDailyFallbackForHourView ? { usedDailyFallbackForHourView: true as const } : {}),
   };
+}
+
+/**
+ * day → denom → summed value across `series` (e.g. transfer_volume + ibc_transfer_amount_in), zero
+ * entries dropped. Input must be day-keyed (use `transferTableBuckets`, not chart buckets).
+ */
+export function dayDenomAmounts(
+  bucketMap: Map<string, Map<string, Map<string, bigint>>>,
+  series: readonly string[]
+): DayDenomAmounts {
+  const out: DayDenomAmounts = new Map();
+  for (const [day, sm] of bucketMap) {
+    const m = new Map<string, bigint>();
+    for (const s of series) {
+      const dm = sm.get(s);
+      if (!dm) continue;
+      for (const [denom, v] of dm) {
+        if (v > BigInt(0)) m.set(denom, (m.get(denom) ?? BigInt(0)) + v);
+      }
+    }
+    if (m.size > 0) out.set(day, m);
+  }
+  return out;
 }
 
 function aggregateDenomSeries(

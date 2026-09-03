@@ -25,6 +25,7 @@
     "validate:uist-apr2026": "bash scripts/validateUistIbcApril2026.sh",
     "backfill:ibc-flow-in": "tsx scripts/backfillIbcTransferFlowIn.ts",
     "backfill:bank-credits": "tsx scripts/backfillBankCreditsVolume.ts",
+    "backfill:prices": "tsx scripts/backfillDenomPrices.ts",
     "enumerate:module-accounts": "tsx scripts/enumerateModuleAccounts.ts",
     "parity:rollup": "tsx scripts/verifyRollupParity.ts",
     "test": "vitest run",

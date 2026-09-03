@@ -8,6 +8,7 @@ import { atomicToFloat, atomicToHumanString } from "@/lib/amountFormat";
 import { listRow } from "@/lib/displayFormat";
 import { chartTheme } from "@/lib/chartTheme";
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
+import type { UsdPricingMeta } from "@/lib/denomPrices";
 import { sortGrossMovementRows, type GrossMovementRow } from "@/lib/grossTableUsdSort";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
@@ -169,11 +170,7 @@ interface MetricsPayload {
   bankCreditsVolumeUsdByDenom: Record<string, string | null>;
   transferVolumeUsdTotal: string | null;
   bankCreditsVolumeUsdTotal: string | null;
-  usdPricingMeta: {
-    source: "coingecko";
-    spotFetchedAt: string | null;
-    partialOrStale: boolean;
-  };
+  usdPricingMeta: UsdPricingMeta;
   feePaidByDenom: Record<string, string>;
   feePaidByDenomPrevious: Record<string, string>;
   indexer: { lastIndexedHeight: string | null; updatedAt: string | null };
@@ -189,6 +186,7 @@ interface MetricsPayload {
     top10AddressShareFeesUsd: string | null;
     grossUsdHhi: string | null;
     feesUsdHhi: string | null;
+    usdPricingMeta?: UsdPricingMeta;
   };
   /** Distinct sending addresses per denom (range); wash-resistance context for the Value Flow Map. */
   distinctSendersByDenom?: Record<string, number>;
@@ -237,12 +235,12 @@ interface MetricsPayload {
       perDay: { day: string; count: number }[];
     };
   };
-  /** USD valuation of offer give/want/payout native totals (current spot; gross flow). */
+  /** USD valuation of offer give/want/payout native amounts (day-priced; gross flow). */
   offerValueUsd?: {
     give: { byDenom: Record<string, string | null>; total: string | null };
     want: { byDenom: Record<string, string | null>; total: string | null };
     payouts: { byDenom: Record<string, string | null>; total: string | null };
-    usdPricingMeta: { source: "coingecko"; spotFetchedAt: string | null; partialOrStale: boolean };
+    usdPricingMeta: UsdPricingMeta;
   } | null;
   /** First day included in indexed DB rollups (UTC); requests earlier than this are clamped. */
   indexedHistoryFromDay?: string;
@@ -937,22 +935,9 @@ export function Dashboard() {
                   <code className="text-[var(--accent)]">coin_received</code> to non-module receivers (
                   <code className="text-[var(--accent)]">bank_credits_volume</code>). The two native columns often overlap the same settlement —{" "}
                   <strong className="font-medium text-[var(--color-text-secondary)]">do not add them</strong> or the two USD columns to infer a single
-                  &quot;total value moved.&quot; USD estimates multiply each column&apos;s{" "}
-                  <strong className="font-medium text-[var(--color-text-secondary)]">full-period native total</strong> by{" "}
-                  <strong className="font-medium text-[var(--color-text-secondary)]">current CoinGecko spot USD</strong> — not a historical mark-to-market.
-                  {data.usdPricingMeta.partialOrStale && (
-                    <span> Some USD cells may be empty when the price feed is rate-limited.</span>
-                  )}
-                  {data.usdPricingMeta.spotFetchedAt && (
-                    <span>
-                      {" "}
-                      Spot snapshot:{" "}
-                      <time dateTime={data.usdPricingMeta.spotFetchedAt}>
-                        {new Date(data.usdPricingMeta.spotFetchedAt).toLocaleString()}
-                      </time>
-                      .
-                    </span>
-                  )}
+                  &quot;total value moved.&quot; USD prices each day&apos;s native amount at{" "}
+                  <strong className="font-medium text-[var(--color-text-secondary)]">that day&apos;s CoinGecko daily price</strong>, summed over the range — gross flow, not TVL.
+                  <UsdBasisNote meta={data.usdPricingMeta} />
                 </p>
                 <div className="min-w-0 max-w-full overflow-x-auto">
                   <table className="w-full min-w-0 table-fixed border-collapse text-xs sm:text-sm">
@@ -1025,7 +1010,7 @@ export function Dashboard() {
                         <th
                           scope="col"
                           className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
-                          title="Same spot snapshot as gross; not additive with USD gross"
+                          title="Same daily-price basis as gross; not additive with USD gross"
                         >
                           USD credits (EST)
                         </th>
@@ -1108,13 +1093,13 @@ export function Dashboard() {
                         </td>
                         <td
                           className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
-                          title="Sum of per-asset gross USD (current spot); not additive with USD credits — do not treat like TVL"
+                          title="Sum of per-asset gross USD (day-priced); not additive with USD credits — do not treat like TVL"
                         >
                           {data.transferVolumeUsdTotal ?? "—"}
                         </td>
                         <td
                           className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
-                          title="Sum of per-asset bank-credits USD (current spot); not additive with USD gross — overlapping bases"
+                          title="Sum of per-asset bank-credits USD (day-priced); not additive with USD gross — overlapping bases"
                         >
                           {data.bankCreditsVolumeUsdTotal ?? "—"}
                         </td>
@@ -1246,7 +1231,7 @@ export function Dashboard() {
                 <p className={SECTION_INTRO_CLASS}>
                   Denominator-aware views of the totals above — less sensitive to raw-count inflation. Active
                   address = distinct signer addresses in range; gas is divided by all included txs (success +
-                  failed), fees and value by successful-tx and participation bases. USD uses current spot like
+                  failed), fees and value by successful-tx and participation bases. USD uses daily prices like
                   Value handled.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1450,18 +1435,9 @@ export function Dashboard() {
                     <strong className="font-medium text-[var(--color-text-secondary)]">Payouts</strong> is what
                     settled offers returned. These overlap (give is refunded into payouts) —{" "}
                     <strong className="font-medium text-[var(--color-text-secondary)]">do not add the columns.</strong>{" "}
-                    USD (EST) multiplies each native total by current CoinGecko spot (gross flow, not net or TVL);
+                    USD (EST) prices each day&apos;s native amount at that day&apos;s CoinGecko price (gross flow, not net or TVL);
                     only vbank-recognized assets are valued.
-                    {data.offerValueUsd?.usdPricingMeta.spotFetchedAt && (
-                      <span>
-                        {" "}
-                        Spot snapshot:{" "}
-                        <time dateTime={data.offerValueUsd.usdPricingMeta.spotFetchedAt}>
-                          {new Date(data.offerValueUsd.usdPricingMeta.spotFetchedAt).toLocaleString()}
-                        </time>
-                        .
-                      </span>
-                    )}
+                    {data.offerValueUsd && <UsdBasisNote meta={data.offerValueUsd.usdPricingMeta} />}
                   </p>
                   <div className="min-w-0 max-w-full overflow-x-auto">
                     <table className="w-full min-w-0 border-collapse text-xs sm:text-sm">
@@ -1539,7 +1515,7 @@ export function Dashboard() {
                 <strong className="font-medium text-[var(--color-text-secondary)]">
                   Do not rank or ratio these counts against successful tx totals without normalization
                 </strong>{" "}
-                — one address can authorize many txs per day. Top-10 gross share: USD spot on sender-side transfer legs only (same spot caveat as Value handled) — see methodology.{" "}
+                — one address can authorize many txs per day. Top-10 gross share: day-priced USD on sender-side transfer legs only (same pricing basis as Value handled) — see methodology.{" "}
                 <IndexerScopeCaveatInline />
               </p>
               {data.participation && chartDistinctAccountsRows.length > 0 && (
@@ -1577,7 +1553,7 @@ export function Dashboard() {
                   <>
                     <KpiCardLite
                       title="Top 10 addresses — gross USD share"
-                      subtitle="Sender-attributed transfer legs · USD uses current spot like Value handled"
+                      subtitle="Sender-attributed transfer legs · USD uses daily prices like Value handled"
                       value={data.concentration.top10AddressShareGrossUsd ?? "—"}
                     />
                     <KpiCardLite
@@ -1824,5 +1800,41 @@ function KpiCardLite({
       {subtitle && <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p>}
       <p className="mt-2 font-mono text-2xl text-[var(--text)]">{value}</p>
     </div>
+  );
+}
+
+/**
+ * One-sentence statement of what basis a USD figure has: day rows, spot fallback for some days, or
+ * spot only (table absent / not yet backfilled). Rendered inline after the USD explanation.
+ */
+function UsdBasisNote({ meta }: { meta: UsdPricingMeta }) {
+  const parts: string[] = [];
+  if (meta.basis === "daily-close") {
+    parts.push(`All ${meta.pricedDays.toLocaleString()} priced denom-days used stored daily prices.`);
+  } else if (meta.basis === "mixed") {
+    parts.push(
+      `${meta.pricedDays.toLocaleString()} denom-days used stored daily prices; ${meta.spotFallbackDays.toLocaleString()} (usually today) used current spot.`
+    );
+  } else if (meta.basis === "spot-fallback") {
+    parts.push(
+      `No stored daily prices for this range — ${meta.spotFallbackDays.toLocaleString()} denom-days used current spot (run the price backfill).`
+    );
+  } else {
+    parts.push("No USD prices were available for this range.");
+  }
+  if (meta.unpricedDays > 0) parts.push(`${meta.unpricedDays.toLocaleString()} mapped denom-days had no price and are excluded.`);
+  if (meta.partialOrStale) parts.push("The spot feed was unavailable or rate-limited, so some fallback cells may be empty.");
+  return (
+    <span>
+      {" "}
+      {parts.join(" ")}
+      {meta.spotFetchedAt && (
+        <>
+          {" "}
+          Spot fetched{" "}
+          <time dateTime={meta.spotFetchedAt}>{new Date(meta.spotFetchedAt).toLocaleString()}</time>.
+        </>
+      )}
+    </span>
   );
 }
