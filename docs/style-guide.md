@@ -44,7 +44,7 @@
 ## 1b. Section intros and methodology footer
 
 - **Section intros** (`Dashboard.tsx`, **`SECTION_INTRO_CLASS`**): full width under each main H2; **`text-sm`** + **`--color-text-secondary`** (not **`--muted`** on **`text-xs`**).
-- **Methodology & caveats** (`MethodologyPanel.tsx`): card uses **`--color-surface`**; each block has a **`text-sm font-bold`** title (**`--color-text-primary`**) and **`text-sm`** body (**`--color-text-secondary`**).
+- **Methodology & caveats** (`src/app/methodology/page.tsx`): standalone page; definitions and sections use **`--color-surface`** cards; each block has a **`text-sm font-bold`** title (**`--color-text-primary`**) and **`text-sm`** body (**`--color-text-secondary`**).
 
 ---
 

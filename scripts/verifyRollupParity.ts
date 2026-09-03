@@ -8,6 +8,8 @@
  *
  * Optional replay (requires RPC; respects indexer cursor so pruned RPC + indexed height align):
  *   DATABASE_URL=... RPC_URL=... npx tsx scripts/verifyRollupParity.ts --day=2026-04-01 --replay-ibc-flow-in
+ *   … --replay-offer-categories   (P2: offer_outcome_category daily totals + distinct
+ *                                  offer_category_participant_day rows for that day vs RPC replay)
  *
  * Env: PARITY_RPC_CONCURRENCY (default 12) — parallel block fetches for replay.
  */
@@ -17,6 +19,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "../src/db/schema";
 import { accumulateIbcTransferFlowInFromBlock } from "../src/lib/ibcTransferFlowInRollup";
+import { accumulateOfferCategoriesFromBlock, ROLLUP_KEY_DELIM as OFFER_KEY_DELIM } from "../src/lib/offerCategoryRollup";
 import {
   compareHourlyDailyParity,
   type DailyMetricRow,
@@ -46,11 +49,13 @@ const db = pool ? drizzle(pool, { schema }) : null;
 function parseArgs(argv: string[]) {
   let day = "";
   let replay = false;
+  let replayOfferCategories = false;
   for (const a of argv) {
     if (a.startsWith("--day=")) day = a.slice("--day=".length);
     else if (a === "--replay-ibc-flow-in") replay = true;
+    else if (a === "--replay-offer-categories") replayOfferCategories = true;
   }
-  return { day, replay };
+  return { day, replay, replayOfferCategories };
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -206,8 +211,40 @@ async function replayIbcFlowInForDay(
   return daily.get(key) ?? BigInt(0);
 }
 
+/** Replay one UTC day for the P2 outputs: outcome-category daily totals and distinct category-participant triples. */
+async function replayOfferCategoriesForDay(
+  rpcUrls: readonly string[],
+  dayUtc: string,
+  maxHeightInclusive: bigint
+): Promise<{ outcomeDims: Map<string, bigint>; participantTriples: Set<string> }> {
+  const { startMs, endMs } = utcDayMillisBounds(dayUtc);
+  const tip = await latestHeight(rpcUrls);
+  const tipBound = tip < maxHeightInclusive ? tip : maxHeightInclusive;
+  const hStart = await findHeightAtOrAfterTime(rpcUrls, startMs, tipBound);
+  const hEndExclusive = await findHeightAtOrAfterTime(rpcUrls, endMs, tipBound);
+  const outcomeDims = new Map<string, bigint>();
+  const participantTriples = new Set<string>();
+  if (hStart > tipBound || hStart >= hEndExclusive) return { outcomeDims, participantTriples };
+  const last = (hEndExclusive - BigInt(1)) < tipBound ? hEndExclusive - BigInt(1) : tipBound;
+  const daily = new Map<string, bigint>();
+  const hourly = new Map<string, bigint>();
+  const concurrency = Math.max(1, Math.min(64, Number(process.env.PARITY_RPC_CONCURRENCY ?? "12")));
+  let cursor = hStart;
+  while (cursor <= last) {
+    const batch: bigint[] = [];
+    for (let i = 0; i < concurrency && cursor <= last; i++, cursor++) batch.push(cursor);
+    const pairs = await Promise.all(batch.map((h) => fetchBlockPair(rpcUrls, h)));
+    for (const { block, results } of pairs) accumulateOfferCategoriesFromBlock(block, results, daily, hourly, participantTriples);
+  }
+  for (const [key, v] of daily) {
+    const [d, series, dim] = key.split(OFFER_KEY_DELIM);
+    if (d === dayUtc && series === SERIES.OFFER_OUTCOME_CATEGORY) outcomeDims.set(dim!, v);
+  }
+  return { outcomeDims, participantTriples };
+}
+
 async function main() {
-  const { day, replay } = parseArgs(process.argv.slice(2));
+  const { day, replay, replayOfferCategories } = parseArgs(process.argv.slice(2));
   if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
     console.error("Usage: DATABASE_URL=... npx tsx scripts/verifyRollupParity.ts --day=YYYY-MM-DD [--replay-ibc-flow-in]");
     process.exit(1);
@@ -281,6 +318,46 @@ async function main() {
     console.log(
       `[verifyRollupParity] OK ibc_transfer_flow_in RPC replay matches daily total (${replayed.toString()})`
     );
+  }
+
+  if (replayOfferCategories) {
+    const st = await db.select().from(schema.indexerState).where(eq(schema.indexerState.id, "singleton")).limit(1);
+    const cursorStr = st[0]?.lastIndexedHeight?.toString();
+    if (!cursorStr) {
+      console.error("[verifyRollupParity] indexer_state missing — cannot bound replay");
+      process.exitCode = 1;
+      return;
+    }
+    const { outcomeDims, participantTriples } = await replayOfferCategoriesForDay(RPC_URLS, day, BigInt(cursorStr));
+    // outcome-category: every dimension in either side must agree
+    const dbDims = new Map<string, bigint>();
+    for (const r of daily) if (r.series === SERIES.OFFER_OUTCOME_CATEGORY) dbDims.set(r.dimension, BigInt(r.value || "0"));
+    const dims = new Set([...outcomeDims.keys(), ...dbDims.keys()]);
+    let bad = 0;
+    for (const dim of dims) {
+      const a = outcomeDims.get(dim) ?? BigInt(0);
+      const b = dbDims.get(dim) ?? BigInt(0);
+      if (a !== b) {
+        bad += 1;
+        console.error(`[verifyRollupParity] offer_outcome_category ${JSON.stringify(dim)} replay=${a} db=${b}`);
+      }
+    }
+    // category participants: distinct (address, category) rows for the day
+    const rows = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM offer_category_participant_day WHERE day = $1::date`,
+      [day]
+    );
+    const dbTriples = Number(rows.rows[0]?.c ?? 0);
+    const replayTriples = [...participantTriples].filter((k) => k.startsWith(day + OFFER_KEY_DELIM)).length;
+    if (dbTriples !== replayTriples) {
+      bad += 1;
+      console.error(`[verifyRollupParity] offer_category_participant_day rows for ${day}: replay=${replayTriples} db=${dbTriples}`);
+    }
+    if (bad > 0) {
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`[verifyRollupParity] OK offer_outcome_category (${dims.size} dims) and offer_category_participant_day (${dbTriples} rows) match RPC replay for ${day}`);
   }
 
   } finally {

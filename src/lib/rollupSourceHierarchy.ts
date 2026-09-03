@@ -137,6 +137,12 @@ export const SERIES_ROLLUP_SOURCE: Record<(typeof SERIES)[keyof typeof SERIES], 
     secondary:
       "Self-indexed offer outcomes (no external indexer); EndBlock vstorage events, outside tx_results scope; CapData decoded with @endo/marshal (parseCapData) then summarized purely (walletOutcomeSummary.ts); intermediate non-terminal publications skipped to avoid over-counting",
   },
+  [SERIES.OFFER_OUTCOME_CATEGORY]: {
+    primary:
+      "Same terminal offerStatus events as offer_outcome; dimension = <category>|<outcome> where category is classifyOfferCategory() over the invitationSpec echoed in the status (OfferStatus = OfferSpec & updates), or `unclassified` when absent",
+    secondary:
+      "Per-category satisfaction (vaults vs PSM vs auction …) without a second table; sums to offer_outcome per outcome; category rule shared with the offer_category intent rollup (offerOutcomeCategory.ts, walletActionDecode.ts)",
+  },
   [SERIES.OFFER_GIVE_VOLUME]: {
     primary:
       "Decoded zoe_offer proposal.give legs in successful txs (sum atomic value), dimension = leg brand's vbank denom (agoricNames.json vbankAssets)",

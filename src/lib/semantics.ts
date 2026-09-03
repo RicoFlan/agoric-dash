@@ -140,6 +140,13 @@ export const SERIES = {
    */
   OFFER_OUTCOME: "offer_outcome",
   /**
+   * Settled Zoe offer outcomes by functional category; dimension = `<category>|<outcome>` where
+   * category follows offer_category (plus `unclassified` when the terminal offerStatus carried no
+   * invitationSpec) and outcome ∈ wants_satisfied | wants_unsatisfied | errored. Same counting rule
+   * and source events as OFFER_OUTCOME (offerOutcomeCategory.ts); summing over categories equals it.
+   */
+  OFFER_OUTCOME_CATEGORY: "offer_outcome_category",
+  /**
    * Summed Zoe offer `give` proposal amounts (intent, successful txs), dimension = vbank denom of the
    * leg's brand (brand Board id resolved via agoricNames.json vbankAssets). Atomic integer sums for
    * read-time USD via the existing denom pricing path. Non-vbank brands (no fungible denom) omitted.
@@ -157,7 +164,7 @@ export const SERIES = {
 
 export type MethodologySection = { title: string; body: string };
 
-/** Structured sections for the Methodology & caveats panel (`MethodologyPanel.tsx`). */
+/** Structured sections for the Methodology & caveats panel (`the /methodology page`). */
 export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Scope",
@@ -167,22 +174,22 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Layout",
     body:
-      'When /api/metrics returns indexer_state, last indexed block height may appear above the date-range toolbar. Sections (top to bottom): Value handled (denom table, then Value Flow Map), Gas and fees KPIs, Transaction activity KPIs, Volume and IBC time-series (successful txs vs IBC message/flow counts; IBC traffic out vs recv — each with dashed trend overlays), Staking & governance message counts, Economic participation & concentration when the API includes participation and/or concentration (distinct-account chart, KPI cards, optional daily table, top-10 gross USD share). Hour granularity with no hourly_metrics rows triggers a banner: the API falls back to daily rollups for that request. This footer expands Methodology & caveats.',
+      'The page is organised around four questions, one section each, in this order: Q1 Is the chain busier? (successful txs vs the prior window; chart with anomaly markers; distinct accounts per day, failure rate, paid fees), Q2 Is usage becoming more organic? (interactive ÷ all wallet actions; automated-vs-interactive chart; distinct interactive/automated wallets, satisfaction by category), Q3 Is value flowing in or out? (net IBC flow in day-priced USD; per-asset net-flow chart and table), Q4 Is the economic base broadening or concentrating? (effective number of fee payers = 1 ÷ HHI; breadth-over-time chart; retention, active 2+ days, top-10 fee share). Each section has one headline with its prior-window comparison, one chart, a few support figures with an ⓘ definition, and a collapsed Detail drawer holding what was demoted: network detail (gas, fees, IBC message counts, staking & governance, success rate) under Q1; offer breakdown tables and give/want/payout value under Q2; the bank-credits-by-asset table under Q3; signer/fee-payer counts, raw HHI and distinct accounts per day under Q4. Header jump links go to the four sections and this footer. Hour granularity with no hourly_metrics rows triggers a banner: the API falls back to daily rollups for that request.',
   },
   {
     title: "Value handled table",
     body:
-      'The table "Value by denom: gross in-tx vs bank credits (range total)" lists one row per denom. Gross in-tx = transfer_volume + indexed IBC receive (ibc_transfer_amount_in). Bank credits = coin_received to non-module receivers (bank_credits_volume). The two native columns often overlap the same settlement — do not add them or the two USD (EST) columns. USD cells price each day\'s native amount at that day\'s CoinGecko price (denom_price_day, the 00:00 UTC market_chart point; backfilled by scripts/backfillDenomPrices.ts and refreshed by the indexer) and sum over the range; a day with no stored price falls back to current spot and the panel says so (usdPricingMeta.basis: daily-close / spot-fallback / mixed). Optional COINGECKO_API_KEY helps rate limits. "View Denom" opens the full on-chain string in a fixed tooltip (portal to document.body). USD gross (EST) sorts client-side. Footer totals are per-column only, not additive with each other. Map symbols and decimals in src/config/denoms.json (labels are chain-disambiguated — see "Denom labels & chains").',
+      'Q3 Detail: "Value received by asset (bank credits, range total)" lists one row per denom: bank credits = coin_received to non-module receivers in successful txs (bank_credits_volume), the canonical value-received basis because it captures bank sends, IBC receipts and contract/vbank flows regardless of message type. One USD column, day-priced (denom_price_day, spot fallback for missing days; the panel states the basis). The sender-side transfer_volume basis is no longer shown as a column — it remains the input for gross-movement concentration in Q4. Rows sort by USD descending, unpriced last; the raw on-chain denom string is shown truncated with the full id on hover. Map symbols and decimals in src/config/denoms.json (labels are chain-disambiguated — see "Denom labels & chains").',
   },
   {
     title: "Value Flow Map",
     body:
-      'Below the table: one asset at a time. Default selection = highest gross USD (EST) in range (fallback: highest gross native total). Range tiles: gross in-tx, transfer-like (range gross minus summed IBC-in), IBC-in recv, bank credits, IBC-out, and distinct senders. Distinct senders = unique sending addresses for that denom (transfer legs only, module accounts excluded) — a wash/overcounting guardrail: high gross from few senders is concentrated or possible wash; it does not cover IBC-in recv or bank credits. "Momentum (last vs first bucket)" compares first and last time buckets in the span — not the KPI prior-window rule. Mini charts for the selected asset only: "Gross composition" (gross, transfer-like, IBC-in) and "Credits vs outbound IBC" (bank credits, IBC-out), each with dashed OLS trend overlays. Per bucket, transfer-like = gross minus IBC-in (floored at zero). Human units when mapped; use the table for cross-asset ranking.',
+      "Removed in the four-questions redesign. Its one-asset-at-a-time view became Q3's net IBC flow chart (asset selector, in − out per bucket) and the per-asset net-flow table; the 'Momentum (last vs first bucket)' tiles were dropped because they used a different comparison rule from every other figure (the prior-window rule is now the only one).",
   },
   {
     title: "Denom labels & chains",
     body:
-      "Many distinct ibc/… denoms are the same logical asset arriving over different bridges/chains, so labels are disambiguated as \"SYMBOL (Origin)\" — e.g. USDC (Noble) vs USDC (Axelar) vs USDC (Gravity Bridge), USDT (Wormhole), ATOM (Cosmos Hub) — to keep Value handled and Value Flow Map rows distinguishable. Origin is the chain the asset is native to / bridged from, derived from each denom's IBC base_denom: native micro-denoms map directly (uatom → Cosmos Hub; ubld/uist → Agoric; Stride st-tokens → Stride), bridge shapes are recognized (gravity0x… → Gravity Bridge, peggy0x… → Injective, bare 0x… → Wormhole, *-wei / uaxl → Axelar), and Circle/Noble vs Axelar uusdc/uusdt is split by Agoric's (stable) first IBC hop. base_denom is used rather than walking the full trace because historical channel numbers drift on round-trip paths. Two denoms that are the same asset from the same origin via different historical paths intentionally share a label (usually only one carries volume). Labels are cosmetic: USD pricing strips the trailing \" (…)\" tag before CoinGecko lookup, so tags never change valuations. Regenerate with scripts/refreshDenomChains.ts (writes denoms.json + public/denom-translations.csv).",
+      "Many distinct ibc/… denoms are the same logical asset arriving over different bridges/chains, so labels are disambiguated as \"SYMBOL (Origin)\" — e.g. USDC (Noble) vs USDC (Axelar) vs USDC (Gravity Bridge), USDT (Wormhole), ATOM (Cosmos Hub) — to keep the Q3 tables and asset selector distinguishable. Origin is the chain the asset is native to / bridged from, derived from each denom's IBC base_denom: native micro-denoms map directly (uatom → Cosmos Hub; ubld/uist → Agoric; Stride st-tokens → Stride), bridge shapes are recognized (gravity0x… → Gravity Bridge, peggy0x… → Injective, bare 0x… → Wormhole, *-wei / uaxl → Axelar), and Circle/Noble vs Axelar uusdc/uusdt is split by Agoric's (stable) first IBC hop. base_denom is used rather than walking the full trace because historical channel numbers drift on round-trip paths. Two denoms that are the same asset from the same origin via different historical paths intentionally share a label (usually only one carries volume). Labels are cosmetic: USD pricing strips the trailing \" (…)\" tag before CoinGecko lookup, so tags never change valuations. Regenerate with scripts/refreshDenomChains.ts (writes denoms.json + public/denom-translations.csv).",
   },
   {
     title: "Addresses",
@@ -231,12 +238,12 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Trend overlays",
     body:
-      'On Volume and IBC charts, the distinct-accounts chart, and Value Flow Map mini charts, dashed "(trend)" lines are ordinary least-squares fits vs bucket index (0…n−1), not calendar-weighted regression.',
+      'On Volume and IBC charts, the distinct-accounts chart,, dashed "(trend)" lines are ordinary least-squares fits vs bucket index (0…n−1), not calendar-weighted regression.',
   },
   {
     title: "IBC direction and amounts",
     body:
-      "Out = ICS-20 MsgTransfer on agoric-3; in = MsgRecvPacket / recv_packet as indexed. ibc_transfer_amount_in is a deduped single-count basis: per denom it takes max(coin_received sum, transfer sum) over events matching MsgRecvPacket msg_index when emitted. Typical SDK paths emit both event families for one settlement, so taking the max counts each base unit once instead of ~2× — see docs/ibcTransferAmountInEventInvestigation.md and npm run inspect:ibc-recv-tx-events. Value Flow Map IBC-in/gross use those recv amounts; IBC-out uses ibc_transfer_amount_out (decoded MsgTransfer), not bank credits.",
+      "Out = ICS-20 MsgTransfer on agoric-3; in = MsgRecvPacket / recv_packet as indexed. ibc_transfer_amount_in is a deduped single-count basis: per denom it takes max(coin_received sum, transfer sum) over events matching MsgRecvPacket msg_index when emitted. Typical SDK paths emit both event families for one settlement, so taking the max counts each base unit once instead of ~2× — see docs/ibcTransferAmountInEventInvestigation.md and npm run inspect:ibc-recv-tx-events. Q3 net IBC flow uses those recv amounts for in; out uses ibc_transfer_amount_out (decoded MsgTransfer), not bank credits.",
   },
   {
     title: "IBC scope and cross-chain",
@@ -246,7 +253,7 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Period-over-period",
     body:
-      "KPI cards compare the current range to an equal-length prior window ending immediately before From (UTC, per granularity). Value Flow Map momentum tiles use first vs last bucket only, not that prior window.",
+      "KPI cards compare the current range to an equal-length prior window ending immediately before From (UTC, per granularity).",
   },
   {
     title: "SwingSet & Zoe offers",

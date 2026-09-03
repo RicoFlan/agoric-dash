@@ -248,6 +248,15 @@ export const METRIC_DICTIONARY: readonly MetricDefinition[] = [
       "Per settled Zoe offer, counted once at its terminal offerStatus update (the cumulative update carrying `payouts`), self-indexed from vstorage `published.wallet.<addr>` state_change events in block_results.finalize_block_events: +1 to exactly one of wants_satisfied (numWantsSatisfied ≥ 1) | wants_unsatisfied (numWantsSatisfied === 0, refund) | errored (status carries an error). Mutually exclusive/additive → total settled offers. Block-grain (EndBlock vstorage), so unlike other offer_* series it is outside tx_results scope; intermediate result-only / numWantsSatisfied-only publications are skipped to avoid over-counting — see walletOutcomeSummary.ts.",
   },
   {
+    id: SERIES.OFFER_OUTCOME_CATEGORY,
+    seriesKey: SERIES.OFFER_OUTCOME_CATEGORY,
+    storage: "daily_metrics_hourly_metrics",
+    grain: "event",
+    successScope: "every_indexed_block",
+    inclusionRule:
+      "Per settled Zoe offer, from the same terminal offerStatus update as offer_outcome: +1 to dimension `<category>|<outcome>`, where category = classifyOfferCategory() over the invitationSpec the smart wallet echoes in the status (OfferStatus = OfferSpec & updates; resolved Instance name via agoricNames.json, maker), or `unclassified` when the status carries no invitationSpec, and outcome ∈ wants_satisfied | wants_unsatisfied | errored. Summing over categories reproduces offer_outcome per outcome. Backs per-category satisfaction (vaults vs PSM vs auction) for Q2 — see offerOutcomeCategory.ts.",
+  },
+  {
     id: SERIES.OFFER_GIVE_VOLUME,
     seriesKey: SERIES.OFFER_GIVE_VOLUME,
     storage: "daily_metrics_hourly_metrics",

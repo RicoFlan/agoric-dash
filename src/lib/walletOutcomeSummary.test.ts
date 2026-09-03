@@ -71,6 +71,7 @@ describe("summarizeOfferStatus", () => {
       offerId: "o1",
       outcome: "wants_satisfied",
       payouts: [{ keyword: "Out", brandBoardId: null, value: "5" }],
+      spec: null,
     });
   });
 
@@ -84,6 +85,7 @@ describe("summarizeOfferStatus", () => {
       offerId: "o2",
       outcome: "wants_unsatisfied",
       payouts: [{ keyword: "In", brandBoardId: null, value: "10" }],
+      spec: null,
     });
   });
 
@@ -97,6 +99,27 @@ describe("summarizeOfferStatus", () => {
       offerId: "o3",
       outcome: "errored",
       payouts: [{ keyword: "In", brandBoardId: null, value: "10" }],
+      spec: null,
+    });
+  });
+
+  it("echoes the offer's own invitationSpec as a summary for category classification", () => {
+    const fact = summarizeOfferStatus({
+      updated: "offerStatus",
+      status: {
+        id: "o5",
+        invitationSpec: { source: "contract", instance: new BoardSlot("board0188", "InstanceHandle"), publicInvitationMaker: "makeVaultInvitation" },
+        proposal: { give: { Collateral: { brand: new BoardSlot("board0001", "ATOM brand"), value: "1000" } }, want: {} },
+        numWantsSatisfied: 1,
+        payouts: {},
+      },
+    });
+    expect(fact?.spec).toMatchObject({
+      kind: "zoe_offer",
+      source: "contract",
+      instanceBoardId: "board0188",
+      maker: "makeVaultInvitation",
+      give: [{ keyword: "Collateral", brandBoardId: "board0001", value: "1000" }],
     });
   });
 

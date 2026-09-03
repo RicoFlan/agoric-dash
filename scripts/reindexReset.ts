@@ -10,7 +10,7 @@
  * correct them — the rows must be rebuilt.
  *
  * Tables truncated: daily_metrics, hourly_metrics, participant_day, address_volume_day,
- * address_fee_day, offer_participant_day. The indexer_state singleton row is deleted so `getCursor()`
+ * address_fee_day, offer_participant_day, offer_category_participant_day. The indexer_state singleton row is deleted so `getCursor()`
  * returns 0 and the indexer starts from the configured start date.
  *
  * SAFETY: this wipes indexed data. It only runs when `REINDEX_CONFIRM=YES` is set in the environment.
@@ -56,6 +56,7 @@ const ROLLUP_TABLES = [
   "address_volume_day",
   "address_fee_day",
   "offer_participant_day",
+  "offer_category_participant_day",
 ] as const;
 
 async function countRows(table: string): Promise<string> {

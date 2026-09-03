@@ -6,6 +6,7 @@
  * design (like participation/concentration), regardless of the dashboard's selected granularity.
  */
 import { pool } from "@/db/client";
+import { categoryAutomation, OFFER_CATEGORIES } from "@/lib/offerCategory";
 
 export interface OfferParticipantStats {
   /** Distinct wallets that submitted any wallet action in range. */
@@ -48,4 +49,61 @@ export async function queryOfferParticipantsRange(
     distinctInvocationWallets: Number(t?.inv_w ?? 0),
     perDay: perDay.rows.map((r) => ({ day: String(r.d).slice(0, 10), count: Number(r.c) })),
   };
+}
+
+export interface OfferCategoryParticipantStats {
+  /** Distinct wallets that submitted at least one action in an interactive category (vaults, PSM, auction, governance). */
+  distinctInteractiveWallets: number;
+  /** Distinct wallets that submitted at least one action in an automated category (orchestration, oracle, fast-USDC). */
+  distinctAutomatedWallets: number;
+  /** Distinct wallets per category. */
+  byCategory: Record<string, number>;
+  /** False when `offer_category_participant_day` does not exist yet (pre-deploy / pre-backfill) — counts are then 0, not "none". */
+  available: boolean;
+}
+
+/**
+ * Distinct wallets per functional category over `offer_category_participant_day` (day × owner ×
+ * category). The interactive/automated split reuses `categoryAutomation()` so it stays a read-time
+ * relabel. A missing table (before the P2 indexer deploy + backfill) yields zeros with
+ * `available: false` rather than an error, so the API keeps serving.
+ */
+export async function queryOfferCategoryParticipantsRange(
+  fromDay: string,
+  toDay: string
+): Promise<OfferCategoryParticipantStats> {
+  const interactive = OFFER_CATEGORIES.filter((c) => categoryAutomation(c) === "interactive");
+  const automated = OFFER_CATEGORIES.filter((c) => categoryAutomation(c) === "automated");
+  try {
+    const [split, per] = await Promise.all([
+      pool.query<{ inter: string; auto: string }>(
+        `SELECT
+           COUNT(DISTINCT address) FILTER (WHERE category = ANY($3::text[]))::text AS inter,
+           COUNT(DISTINCT address) FILTER (WHERE category = ANY($4::text[]))::text AS auto
+         FROM offer_category_participant_day
+         WHERE day >= $1::date AND day <= $2::date`,
+        [fromDay, toDay, interactive, automated]
+      ),
+      pool.query<{ category: string; c: string }>(
+        `SELECT category, COUNT(DISTINCT address)::text AS c
+         FROM offer_category_participant_day
+         WHERE day >= $1::date AND day <= $2::date
+         GROUP BY category`,
+        [fromDay, toDay]
+      ),
+    ]);
+    const byCategory: Record<string, number> = {};
+    for (const r of per.rows) byCategory[r.category] = Number(r.c);
+    return {
+      distinctInteractiveWallets: Number(split.rows[0]?.inter ?? 0),
+      distinctAutomatedWallets: Number(split.rows[0]?.auto ?? 0),
+      byCategory,
+      available: true,
+    };
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === "42P01") {
+      return { distinctInteractiveWallets: 0, distinctAutomatedWallets: 0, byCategory: {}, available: false };
+    }
+    throw e;
+  }
 }

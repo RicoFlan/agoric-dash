@@ -18,6 +18,8 @@ import { utcDaysInclusive, usdForLeg, type DailyPriceTable, type UsdPricingMeta 
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
 import { buildNetIbcFlow, type NetIbcFlow } from "@/lib/netIbcFlow";
 import { buildOrganicActivity, type DayBucketMap, type OrganicActivity } from "@/lib/organicActivity";
+import type { OfferCategoryParticipantStats } from "@/lib/offersQuery";
+import { outcomesByCategory, type OutcomeByCategory } from "@/lib/offerOutcomeCategory";
 import type { RetentionCounts } from "@/lib/participationQueries";
 import { buildRetention, type Retention } from "@/lib/retention";
 import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
@@ -52,6 +54,15 @@ export interface QuestionsPayload {
     daily: DayValue[];
     dailyCounts: OrganicActivity["dailyCounts"];
     anomalies: AnomalyPoint[];
+    support: {
+      /** Distinct wallets with ≥1 interactive-category action (offer_category_participant_day); the anti-overcounting signal for Q2. */
+      distinctInteractiveWallets: Delta;
+      distinctAutomatedWallets: Delta;
+      /** False until the P2 indexer + backfill have populated the table; counts are 0 then, not "none". */
+      available: boolean;
+      /** Settled-offer satisfaction per functional category over the range (offer_outcome_category); empty before the P2 backfill. */
+      satisfactionByCategory: OutcomeByCategory[];
+    };
   };
   q3: {
     id: "value-flow";
@@ -92,6 +103,8 @@ export interface QuestionsBuildInput {
   /** Distinct signer ∪ fee-payer addresses per day over the context window (sparse). */
   distinctUnionPerDay: { day: string; count: number }[];
   retention: { current: RetentionCounts; previous: RetentionCounts };
+  /** Distinct wallets by category for the range and the prior window. */
+  categoryParticipants: { current: OfferCategoryParticipantStats; previous: OfferCategoryParticipantStats };
   /** day → address → denom → paid fee over the context window (module accounts excluded). */
   feeByDay: Map<string, Map<string, Map<string, bigint>>>;
   grossUsdHhi: number | null;
@@ -116,6 +129,16 @@ function seriesOverDays(ctx: DayBucketMap, days: readonly string[], series: stri
   let t = BigInt(0);
   for (const d of days) t += ctx.get(d)?.get(series)?.get(dimension) ?? BigInt(0);
   return Number(t);
+}
+
+function dimTotalsOverDays(ctx: DayBucketMap, days: readonly string[], series: string): Map<string, bigint> {
+  const out = new Map<string, bigint>();
+  for (const d of days) {
+    const dm = ctx.get(d)?.get(series);
+    if (!dm) continue;
+    for (const [dim, v] of dm) out.set(dim, (out.get(dim) ?? BigInt(0)) + v);
+  }
+  return out;
 }
 
 function mean(values: number[]): number | null {
@@ -219,6 +242,18 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
       daily: organic.dailyRatioPct,
       dailyCounts: organic.dailyCounts,
       anomalies: flags(organic.dailyRatioPct),
+      support: {
+        distinctInteractiveWallets: delta(
+          input.categoryParticipants.current.distinctInteractiveWallets,
+          input.categoryParticipants.previous.distinctInteractiveWallets
+        ),
+        distinctAutomatedWallets: delta(
+          input.categoryParticipants.current.distinctAutomatedWallets,
+          input.categoryParticipants.previous.distinctAutomatedWallets
+        ),
+        available: input.categoryParticipants.current.available && input.categoryParticipants.previous.available,
+        satisfactionByCategory: outcomesByCategory(dimTotalsOverDays(dailyContext, days, SERIES.OFFER_OUTCOME_CATEGORY)),
+      },
     },
     q3: {
       id: "value-flow",
