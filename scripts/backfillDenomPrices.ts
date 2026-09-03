@@ -26,8 +26,13 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const days = Math.max(1, Math.min(365, Number(process.env.PRICE_BACKFILL_DAYS ?? "365") || 365));
-const delayMs = Math.max(0, Number(process.env.PRICE_REQUEST_DELAY_MS ?? "2500") || 2500);
+/** Parse an env number; only a missing/non-numeric value takes the default (explicit 0 is preserved). */
+function envNumber(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return process.env[name] !== undefined && Number.isFinite(n) ? n : fallback;
+}
+const days = Math.max(1, Math.min(365, envNumber("PRICE_BACKFILL_DAYS", 365)));
+const delayMs = Math.max(0, envNumber("PRICE_REQUEST_DELAY_MS", 2500));
 const ids = (process.env.PRICE_BACKFILL_IDS ?? "")
   .split(",")
   .map((s) => s.trim())

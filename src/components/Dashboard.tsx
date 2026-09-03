@@ -936,7 +936,7 @@ export function Dashboard() {
                   <code className="text-[var(--accent)]">bank_credits_volume</code>). The two native columns often overlap the same settlement —{" "}
                   <strong className="font-medium text-[var(--color-text-secondary)]">do not add them</strong> or the two USD columns to infer a single
                   &quot;total value moved.&quot; USD prices each day&apos;s native amount at{" "}
-                  <strong className="font-medium text-[var(--color-text-secondary)]">that day&apos;s CoinGecko price</strong> (00:00 UTC), summed over the range — gross flow, not TVL.
+                  <strong className="font-medium text-[var(--color-text-secondary)]">that day&apos;s CoinGecko daily price</strong>, summed over the range — gross flow, not TVL.
                   <UsdBasisNote meta={data.usdPricingMeta} />
                 </p>
                 <div className="min-w-0 max-w-full overflow-x-auto">
@@ -1010,7 +1010,7 @@ export function Dashboard() {
                         <th
                           scope="col"
                           className="px-1.5 py-2 text-right align-bottom font-semibold normal-case sm:px-2"
-                          title="Same spot snapshot as gross; not additive with USD gross"
+                          title="Same daily-price basis as gross; not additive with USD gross"
                         >
                           USD credits (EST)
                         </th>
@@ -1093,13 +1093,13 @@ export function Dashboard() {
                         </td>
                         <td
                           className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
-                          title="Sum of per-asset gross USD (current spot); not additive with USD credits — do not treat like TVL"
+                          title="Sum of per-asset gross USD (day-priced); not additive with USD credits — do not treat like TVL"
                         >
                           {data.transferVolumeUsdTotal ?? "—"}
                         </td>
                         <td
                           className="px-1.5 py-3 text-right font-mono tabular-nums sm:px-2"
-                          title="Sum of per-asset bank-credits USD (current spot); not additive with USD gross — overlapping bases"
+                          title="Sum of per-asset bank-credits USD (day-priced); not additive with USD gross — overlapping bases"
                         >
                           {data.bankCreditsVolumeUsdTotal ?? "—"}
                         </td>
@@ -1231,7 +1231,7 @@ export function Dashboard() {
                 <p className={SECTION_INTRO_CLASS}>
                   Denominator-aware views of the totals above — less sensitive to raw-count inflation. Active
                   address = distinct signer addresses in range; gas is divided by all included txs (success +
-                  failed), fees and value by successful-tx and participation bases. USD uses current spot like
+                  failed), fees and value by successful-tx and participation bases. USD uses daily prices like
                   Value handled.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1515,7 +1515,7 @@ export function Dashboard() {
                 <strong className="font-medium text-[var(--color-text-secondary)]">
                   Do not rank or ratio these counts against successful tx totals without normalization
                 </strong>{" "}
-                — one address can authorize many txs per day. Top-10 gross share: USD spot on sender-side transfer legs only (same spot caveat as Value handled) — see methodology.{" "}
+                — one address can authorize many txs per day. Top-10 gross share: day-priced USD on sender-side transfer legs only (same pricing basis as Value handled) — see methodology.{" "}
                 <IndexerScopeCaveatInline />
               </p>
               {data.participation && chartDistinctAccountsRows.length > 0 && (
@@ -1553,7 +1553,7 @@ export function Dashboard() {
                   <>
                     <KpiCardLite
                       title="Top 10 addresses — gross USD share"
-                      subtitle="Sender-attributed transfer legs · USD uses current spot like Value handled"
+                      subtitle="Sender-attributed transfer legs · USD uses daily prices like Value handled"
                       value={data.concentration.top10AddressShareGrossUsd ?? "—"}
                     />
                     <KpiCardLite
@@ -1823,7 +1823,7 @@ function UsdBasisNote({ meta }: { meta: UsdPricingMeta }) {
     parts.push("No USD prices were available for this range.");
   }
   if (meta.unpricedDays > 0) parts.push(`${meta.unpricedDays.toLocaleString()} mapped denom-days had no price and are excluded.`);
-  if (meta.partialOrStale) parts.push("The spot feed was rate-limited, so some fallback cells may be empty.");
+  if (meta.partialOrStale) parts.push("The spot feed was unavailable or rate-limited, so some fallback cells may be empty.");
   return (
     <span>
       {" "}

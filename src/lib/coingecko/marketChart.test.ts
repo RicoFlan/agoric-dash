@@ -25,6 +25,7 @@ describe("bucketPricePointsByUtcDay", () => {
       [D("2026-08-02T00:00:00Z"), -1],
       [D("2026-08-01T00:00:00Z"), 1],
       ["x", 1],
+      [1e20, 2], // finite but outside the Date range
     ] as unknown as MarketChartPoint[];
     expect(bucketPricePointsByUtcDay(pts)).toEqual([
       { day: "2026-08-01", usd: 1 },

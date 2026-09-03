@@ -21,7 +21,9 @@ export function bucketPricePointsByUtcDay(points: readonly MarketChartPoint[]): 
     if (!Array.isArray(p) || p.length < 2) continue;
     const [ms, usd] = p;
     if (!Number.isFinite(ms) || !Number.isFinite(usd) || usd < 0) continue;
-    const day = new Date(ms).toISOString().slice(0, 10);
+    const date = new Date(ms);
+    if (Number.isNaN(date.getTime())) continue; // outside the Date range → toISOString would throw
+    const day = date.toISOString().slice(0, 10);
     const cur = first.get(day);
     if (!cur || ms < cur.ms) first.set(day, { ms, usd });
   }

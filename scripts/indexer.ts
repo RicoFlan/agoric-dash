@@ -60,8 +60,12 @@ import {
 
 const DATABASE_URL = process.env.DATABASE_URL;
 /** Daily CoinGecko price refresh (denom_price_day): interval, history depth per run, kill switch. */
-const PRICE_REFRESH_MS = Math.max(60_000, Number(process.env.PRICE_REFRESH_MS ?? String(6 * 60 * 60 * 1000)) || 6 * 60 * 60 * 1000);
-const PRICE_REFRESH_DAYS = Math.max(1, Math.min(365, Number(process.env.PRICE_REFRESH_DAYS ?? "3") || 3));
+function envNumber(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return process.env[name] !== undefined && Number.isFinite(n) ? n : fallback;
+}
+const PRICE_REFRESH_MS = Math.max(60_000, envNumber("PRICE_REFRESH_MS", 6 * 60 * 60 * 1000));
+const PRICE_REFRESH_DAYS = Math.max(1, Math.min(365, envNumber("PRICE_REFRESH_DAYS", 3)));
 const PRICE_REFRESH_DISABLED = ["1", "true", "yes"].includes((process.env.PRICE_REFRESH_DISABLED ?? "").trim().toLowerCase());
 /**
  * Primary CometBFT RPC. Defaults to the canonical Agoric mainnet RPC when unset.
