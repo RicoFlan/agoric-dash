@@ -24,6 +24,7 @@ import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { chartTheme } from "@/lib/chartTheme";
 import { effectiveNumberFromHhi } from "@/lib/concentrationMath";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { DEFINITIONS } from "@/lib/definitions";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 
@@ -105,7 +106,7 @@ export function Q4Base({
           previous={fmtNum(q?.headline.previous ?? null, 1)}
           delta={fmtPct(q?.headline.pctChange ?? null)}
           deltaValue={q?.headline.pctChange ?? null}
-          definition="1 ÷ Σ(shareᵢ²) over each fee payer's share of day-priced fee USD in range. Equals N when N addresses pay equal fees; falls toward 1 as one address dominates."
+          definition={DEFINITIONS.q4_effective_fee_payers}
           aside={
             q ? (
               <>
@@ -173,25 +174,25 @@ export function Q4Base({
           previous={pct1(r?.previous.retainedSharePct)}
           delta={fmtPts(r?.retainedShareDeltaPts ?? null)}
           deltaValue={r?.retainedShareDeltaPts ?? null}
-          definition="Share of addresses active in this window (signer ∪ fee payer) that were also active in the equal-length prior window."
+          definition={DEFINITIONS.q4_retained_addresses}
           note={r ? `${fmtInt(r.current.retained)} of ${fmtInt(r.current.active)} active` : undefined}
         />
         <SupportFigure
           label="New addresses"
           value={pct1(r?.current.newSharePct)}
           previous={pct1(r?.previous.newSharePct)}
-          definition="Share of this window's active addresses with no earlier appearance in indexed history (since 2026-01-01)."
+          definition={DEFINITIONS.q4_new_addresses}
           note={r ? `${fmtInt(r.current.newAddresses)} first seen` : undefined}
         />
         <SupportFigure
           label="Active 2+ days"
           value={fmtInt(q?.support.multiDayInRange ?? (p ? Number(p.multiDayInRange) : null))}
-          definition="Addresses that appeared on two or more UTC calendar days within the range."
+          definition={DEFINITIONS.q4_active_multi_day}
         />
         <SupportFigure
           label="Top-10 fee share"
           value={pct1(q?.support.top10FeeSharePct)}
-          definition="Share of day-priced fee USD paid by the ten largest fee payers in range."
+          definition={DEFINITIONS.q4_top10_fee_share}
           upIsGood={false}
         />
       </div>

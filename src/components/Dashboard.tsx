@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MethodologyPanel } from "@/components/dashboard/MethodologyPanel";
+import Link from "next/link";
 import { Q1Busier } from "@/components/dashboard/questions/Q1Busier";
 import { Q2Organic } from "@/components/dashboard/questions/Q2Organic";
 import { Q3ValueFlow } from "@/components/dashboard/questions/Q3ValueFlow";
 import { Q4Base } from "@/components/dashboard/questions/Q4Base";
+import { WhatChanged } from "@/components/dashboard/WhatChanged";
 import type { Granularity, MetricsPayload } from "@/components/dashboard/types";
 import { chartTheme } from "@/lib/chartTheme";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
-import { INDEXED_HISTORY_FROM_DAY, METHODOLOGY_SECTIONS } from "@/lib/semantics";
+import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
 
 /**
  * Page shell: range/granularity controls, the metrics fetch, and the four question sections
@@ -101,7 +102,6 @@ export function Dashboard() {
   const [data, setData] = useState<MetricsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [methodologyOpen, setMethodologyOpen] = useState(false);
 
   /** Latest metrics fetch; `finally` clears `loading` only when this controller is still current. */
   const metricsFlightRef = useRef<AbortController | null>(null);
@@ -365,6 +365,7 @@ export function Dashboard() {
 
       {data && data.kpis && (
         <>
+          <WhatChanged data={data} />
           <Q1Busier data={data} q={data.questions?.q1} granularity={granularity} timeAxis={timeAxis} />
           <Q2Organic data={data} q={data.questions?.q2} timeAxis={timeAxis} />
           <Q3ValueFlow data={data} q={data.questions?.q3} timeAxis={timeAxis} />
@@ -372,11 +373,11 @@ export function Dashboard() {
         </>
       )}
 
-      <footer id={dashboardSectionIds.methodology} className="scroll-mt-6 border-t border-[var(--border)] pt-6">
-        <button type="button" onClick={() => setMethodologyOpen((o) => !o)} className="text-sm text-[var(--accent)] hover:underline">
-          {methodologyOpen ? "Hide methodology" : "Methodology & caveats"}
-        </button>
-        {methodologyOpen && <MethodologyPanel sections={METHODOLOGY_SECTIONS} />}
+      <footer id={dashboardSectionIds.methodology} className="scroll-mt-6 border-t border-[var(--border)] pt-6 text-sm">
+        <Link href="/methodology" className="text-[var(--accent)] underline-offset-2 hover:underline">
+          How these numbers are made — methodology &amp; caveats →
+        </Link>
+        <span className="ml-2 text-[var(--muted)]">Every ⓘ on this page is a one-line definition; the full text lives there.</span>
       </footer>
     </div>
   );

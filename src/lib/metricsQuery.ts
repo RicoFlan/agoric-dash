@@ -202,8 +202,8 @@ export async function buildMetricsPayload(
 
   const msPerDay = 86400000;
   const fromMs = new Date(fromDay + "T00:00:00Z").getTime();
-  const toMs = new Date(toDay + "T23:59:59Z").getTime();
-  const windowDays = Math.max(1, Math.round((toMs - fromMs) / msPerDay) + 1);
+  /** Inclusive calendar days in [fromDay, toDay]; both at 00:00Z so a 19-day range yields 19, not 20. */
+  const windowDays = Math.max(1, Math.round((new Date(toDay + "T00:00:00Z").getTime() - fromMs) / msPerDay) + 1);
   const prevToMs = fromMs - msPerDay;
   const prevFromMs = prevToMs - (windowDays - 1) * msPerDay;
   const prevFromDay = new Date(prevFromMs).toISOString().slice(0, 10);

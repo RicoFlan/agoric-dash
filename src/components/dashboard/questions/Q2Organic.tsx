@@ -25,6 +25,7 @@ import type { MetricsPayload } from "@/components/dashboard/types";
 import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { atomicToHumanString } from "@/lib/amountFormat";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { DEFINITIONS } from "@/lib/definitions";
 import { buildOffersActivityRows } from "@/lib/offersActivitySeries";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 
@@ -104,7 +105,7 @@ export function Q2Organic({
           previous={pct1(ratio?.previous)}
           delta={fmtPts(ratio?.deltaPts ?? null)}
           deltaValue={ratio?.deltaPts ?? null}
-          definition="Interactive-category wallet actions ÷ all wallet actions in successful txs, from the offer_category rollup (exactly one category per action)."
+          definition={DEFINITIONS.q2_organic_ratio}
           aside={
             counts ? (
               <>
@@ -208,7 +209,7 @@ export function Q2Organic({
           previous={walletsAvailable ? fmtInt(q?.support.distinctInteractiveWallets.previous ?? null) : undefined}
           delta={walletsAvailable ? fmtPct(q?.support.distinctInteractiveWallets.pctChange ?? null) : undefined}
           deltaValue={q?.support.distinctInteractiveWallets.pctChange ?? null}
-          definition="Unique smart-wallet owners that submitted at least one interactive-category action in range (offer_category_participant_day). The check against a few bots inflating action counts."
+          definition={DEFINITIONS.q2_distinct_interactive_wallets}
           note={walletsAvailable ? undefined : "Available after the offer-category backfill."}
         />
         <SupportFigure
@@ -217,13 +218,13 @@ export function Q2Organic({
           previous={walletsAvailable ? fmtInt(q?.support.distinctAutomatedWallets.previous ?? null) : undefined}
           delta={walletsAvailable ? fmtPct(q?.support.distinctAutomatedWallets.pctChange ?? null) : undefined}
           deltaValue={q?.support.distinctAutomatedWallets.pctChange ?? null}
-          definition="Unique smart-wallet owners with at least one orchestration, oracle, or fast-USDC action in range."
+          definition={DEFINITIONS.q2_distinct_automated_wallets}
           note={walletsAvailable ? undefined : "Available after the offer-category backfill."}
         />
         <SupportFigure
           label="Satisfaction rate (all offers)"
           value={pct1(offers?.outcomes.satisfactionRatePct)}
-          definition="Share of settled Zoe offers with numWantsSatisfied ≥ 1, counted once per offer at its terminal payout. Self-indexed from vstorage offerStatus updates."
+          definition={DEFINITIONS.q2_satisfaction_rate}
           note={offers ? `${offers.outcomes.settled.current} settled in range` : undefined}
         />
       </div>

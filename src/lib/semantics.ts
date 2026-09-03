@@ -164,7 +164,7 @@ export const SERIES = {
 
 export type MethodologySection = { title: string; body: string };
 
-/** Structured sections for the Methodology & caveats panel (`MethodologyPanel.tsx`). */
+/** Structured sections for the Methodology & caveats panel (`the /methodology page`). */
 export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Scope",

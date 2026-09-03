@@ -21,6 +21,7 @@ import type { MetricsPayload } from "@/components/dashboard/types";
 import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { atomicToFloat } from "@/lib/amountFormat";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { DEFINITIONS } from "@/lib/definitions";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 import { INDEXER_SCOPE_CAVEAT_SUBTITLE } from "@/lib/semantics";
 
@@ -124,7 +125,7 @@ export function Q3ValueFlow({
           previous={fmtUsd(h?.previousNetUsd ?? null, true)}
           delta={h?.deltaUsd === null || h?.deltaUsd === undefined ? "n/a" : `${fmtUsd(h.deltaUsd, true)} vs prior`}
           deltaValue={h?.deltaUsd ?? null}
-          definition="Σ over priced assets of (IBC amount in − IBC amount out), each (asset, day) leg × that day's price. Positive = net inflow to Agoric."
+          definition={DEFINITIONS.q3_net_ibc_flow}
           aside={
             q ? (
               <>
@@ -212,8 +213,8 @@ export function Q3ValueFlow({
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
-        <SupportFigure label="IBC in (USD)" value={fmtUsd(h?.inUsd ?? null)} definition="IBC amounts received on agoric-3 (deduped recv_packet basis), day-priced and summed across assets." />
-        <SupportFigure label="Value received on-chain (USD)" value={data.bankCreditsVolumeUsdTotal ?? "—"} definition="Bank credits to non-module receivers in successful txs, day-priced; broader than IBC (includes bank sends and contract flows). See Detail." />
+        <SupportFigure label="IBC in (USD)" value={fmtUsd(h?.inUsd ?? null)} definition={DEFINITIONS.q3_ibc_in_usd} />
+        <SupportFigure label="Value received on-chain (USD)" value={data.bankCreditsVolumeUsdTotal ?? "—"} definition={DEFINITIONS.q3_value_received_usd} />
       </div>
       <div className={CARD_CLASS}>
         <h3 className={IN_CARD_TITLE_CLASS}>Net flow by asset</h3>

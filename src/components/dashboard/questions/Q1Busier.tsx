@@ -19,6 +19,7 @@ import {
 import type { Granularity, MetricsPayload } from "@/components/dashboard/types";
 import { atomicToHumanString } from "@/lib/amountFormat";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { DEFINITIONS } from "@/lib/definitions";
 import { buildGasUtilizationRows } from "@/lib/gasUtilizationSeries";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 import { FEE_DENOM_UBLB, INDEXER_SCOPE_CAVEAT_SUBTITLE } from "@/lib/semantics";
@@ -123,7 +124,7 @@ export function Q1Busier({
           previous={fmtInt(q?.headline.previous ?? Number(k.txSuccess.previous))}
           delta={fmtPct(q?.headline.pctChange ?? k.txSuccess.pctChange)}
           deltaValue={q?.headline.pctChange ?? k.txSuccess.pctChange}
-          definition="Count of transactions included with ABCI result code 0 in the selected range, from block_results.txs_results."
+          definition={DEFINITIONS.q1_successful_txs}
           aside={
             flagged.length > 0 ? (
               <>
@@ -189,13 +190,13 @@ export function Q1Busier({
           previous={fmtNum(q?.support.distinctAccountsPerDayAvg.previous ?? null, 1)}
           delta={fmtPct(q?.support.distinctAccountsPerDayAvg.pctChange ?? null)}
           deltaValue={q?.support.distinctAccountsPerDayAvg.pctChange ?? null}
-          definition="Average over the range of unique addresses per UTC day that signed or paid fees on a successful tx (each address once per day). Not users: bots and vaults inflate."
+          definition={DEFINITIONS.q1_distinct_accounts_per_day}
         />
         <SupportFigure
           label="Failure rate"
           value={q?.support.failureRatePct.current === null || q?.support.failureRatePct.current === undefined ? "—" : `${q.support.failureRatePct.current.toFixed(2)}%`}
           previous={q?.support.failureRatePct.previous === null || q?.support.failureRatePct.previous === undefined ? "—" : `${q.support.failureRatePct.previous.toFixed(2)}%`}
-          definition="Failed ÷ (successful + failed) inclusions. Failed txs consume gas but pay no fee_paid."
+          definition={DEFINITIONS.q1_failure_rate}
           upIsGood={false}
         />
         <SupportFigure
@@ -204,7 +205,7 @@ export function Q1Busier({
           previous={q?.support.feePaidBld.previous === null || q?.support.feePaidBld.previous === undefined ? bld(k.feePaidUbld.previous) : `${fmtNum(q.support.feePaidBld.previous, 2)} BLD`}
           delta={fmtPct(q?.support.feePaidBld.pctChange ?? k.feePaidUbld.pctChange)}
           deltaValue={q?.support.feePaidBld.pctChange ?? k.feePaidUbld.pctChange}
-          definition="On-chain paid fees in uBLD from tx result events (what was actually paid, not the signed max), successful txs only, shown as BLD."
+          definition={DEFINITIONS.q1_paid_fees}
         />
       </div>
     </QuestionBlock>

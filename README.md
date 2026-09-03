@@ -19,7 +19,7 @@ Removed in the redesign: the Value Flow Map (and its Momentum tiles), the normal
 
 All KPIs that support it show **prior window** and **percent change** vs an equal-length period ending immediately before the selected range (`pctChange` in `src/lib/metricsQuery.ts`).
 
-The in-app **Methodology & caveats** footer expands structured sections from **`METHODOLOGY_SECTIONS`** in `src/lib/semantics.ts` (rendered by **`MethodologyPanel.tsx`**; plain-text **`METHODOLOGY_BLURB`** is the same content joined for search and contracts). The bullets below are a shorter reference.
+The dashboard footer links to **`/methodology`** (`src/app/methodology/page.tsx`), which renders the one-line indicator definitions from **`DEFINITIONS`** (`src/lib/definitions.ts` — the same strings behind every ⓘ hint) and the full structured text from **`METHODOLOGY_SECTIONS`** in `src/lib/semantics.ts` (plain-text **`METHODOLOGY_BLURB`** is the same content joined for search and contracts). Above Q1, a **What changed this period** strip (`src/lib/narrative.ts`, deterministic templates — no model) names up to three movers ranked by largest unusual day, then change vs the prior window. The bullets below are a shorter reference.
 
 ## Definitions (v1)
 
@@ -189,7 +189,7 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `src/lib/valueFlowMapSeries.ts` | Per-bucket rows for Value Flow Map mini charts (`buildValueFlowMiniRows`) |
 | `src/components/dashboard/ValueFlowMap.tsx` | Value handled: denom selector, relationship tiles, mini-chart host |
 | `src/components/dashboard/ValueFlowMapMiniCharts.tsx` | Gross composition + Credits vs outbound IBC Recharts panels |
-| `src/components/dashboard/MethodologyPanel.tsx` | Footer **Methodology & caveats** structured sections |
+| `src/app/methodology/page.tsx` | **/methodology** page: indicator definitions (`DEFINITIONS`) + the full **`METHODOLOGY_SECTIONS`** text with anchors |
 | `src/lib/metricsApiValidation.ts` | `GET /api/metrics` query validation (range caps, ISO dates); **`clampMetricsRangeToIndexedHistory`** |
 | `src/lib/metricsQuery.ts` | `buildMetricsPayload`, KPIs, series for charts, comparison window |
 | `src/lib/metricsEnrichment.ts` | `resolveDenom`-based **metas** for `display` |
