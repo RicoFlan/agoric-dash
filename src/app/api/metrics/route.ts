@@ -9,6 +9,7 @@ import { allDenoms, denomToCoinIdMap } from "@/lib/denomPrices";
 import { loadDailyPriceTable } from "@/lib/loadDailyPriceTable";
 import { queryAddressFeeTotalsByDay, queryDistinctUnionPerDay, queryRetentionCounts } from "@/lib/participationQueries";
 import { queryOfferCategoryParticipantsRange } from "@/lib/offersQuery";
+import { queryYmaxSnapshot } from "@/lib/ymaxQueries";
 import { buildQuestions } from "@/lib/questionsPayload";
 import { utcDaysInclusive } from "@/lib/denomPrices";
 import { parseUsdEstimateSortKey } from "@/lib/grossTableUsdSort";
@@ -90,15 +91,19 @@ export async function GET(req: NextRequest) {
     const windowDays = utcDaysInclusive(fromDay, toDay).length;
     const prevPrevToDay = shiftDay(prevFromDay, -1);
     const prevPrevFromDay = shiftDay(prevPrevToDay, -(windowDays - 1));
-    const [feeByDayContext, distinctUnionPerDay, retentionCur, retentionPrev, catPartCur, catPartPrev] = await Promise.all([
+    const [feeByDayContext, distinctUnionPerDay, retentionCur, retentionPrev, catPartCur, catPartPrev, ymax] = await Promise.all([
       queryAddressFeeTotalsByDay(contextFromDay, toDay),
       queryDistinctUnionPerDay(contextFromDay, toDay),
       queryRetentionCounts(fromDay, toDay, prevFromDay, prevToDay),
       queryRetentionCounts(prevFromDay, prevToDay, prevPrevFromDay, prevPrevToDay),
       queryOfferCategoryParticipantsRange(fromDay, toDay),
       queryOfferCategoryParticipantsRange(prevFromDay, prevToDay),
+      queryYmaxSnapshot(fromDay, toDay),
     ]);
     for (const byAddr of feeByDayContext.values()) for (const byDenom of byAddr.values()) for (const d of byDenom.keys()) pricedDenoms.add(d);
+    for (const v of ymax.byVenue) if (v.denom) pricedDenoms.add(v.denom);
+    for (const f of ymax.flowsInRange) if (f.denom) pricedDenoms.add(f.denom);
+    for (const sm of questionsInputs.dailyContext.values()) for (const d of sm.get(SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH)?.keys() ?? []) pricedDenoms.add(d);
     const denomToCoinId = denomToCoinIdMap(pricedDenoms);
     const table = await loadDailyPriceTable(contextFromDay, toDay, denomToCoinId.values());
 
@@ -126,6 +131,7 @@ export async function GET(req: NextRequest) {
       distinctUnionPerDay,
       retention: { current: retentionCur, previous: retentionPrev },
       categoryParticipants: { current: catPartCur, previous: catPartPrev },
+      ymax,
       feeByDay: feeByDayContext,
       grossUsdHhi: participationConcentration.concentrationRaw.grossUsdHhi,
       top10FeeSharePct:

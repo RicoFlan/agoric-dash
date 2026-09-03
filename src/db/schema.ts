@@ -130,3 +130,73 @@ export const offerCategoryParticipantDay = pgTable(
   },
   (t) => [primaryKey({ columns: [t.day, t.address, t.category] })]
 );
+
+/**
+ * YMax (published.ymax0/ymax1) — latest-state tables fed from vstorage state_change events
+ * (src/lib/ymaxVstorage.ts) and seeded by scripts/seedYmaxSnapshot.ts. Positions carry cumulative
+ * totals, so the newest record per (contract, portfolio, key) is the truth and
+ * Σ(total_in − total_out) is principal currently deployed (not marked to yield). Created idempotently
+ * (ensureAdditiveTables.ts); never part of reindex:reset.
+ */
+export const ymaxPortfolio = pgTable(
+  "ymax_portfolio",
+  {
+    contract: varchar("contract", { length: 16 }).notNull(),
+    portfolio: varchar("portfolio", { length: 32 }).notNull(),
+    depositAddress: varchar("deposit_address", { length: 128 }),
+    agoricAccount: varchar("agoric_account", { length: 128 }),
+    /** JSON: chain label → CAIP account id. */
+    accountsJson: varchar("accounts_json", { length: 4096 }).notNull().default("{}"),
+    policyVersion: bigint("policy_version", { mode: "number" }),
+    flowCount: bigint("flow_count", { mode: "number" }),
+    updatedHeight: bigint("updated_height", { mode: "bigint" }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.contract, t.portfolio] })]
+);
+
+export const ymaxPosition = pgTable(
+  "ymax_position",
+  {
+    contract: varchar("contract", { length: 16 }).notNull(),
+    portfolio: varchar("portfolio", { length: 32 }).notNull(),
+    positionKey: varchar("position_key", { length: 64 }).notNull(),
+    protocol: varchar("protocol", { length: 64 }),
+    chain: varchar("chain", { length: 64 }),
+    accountId: varchar("account_id", { length: 160 }),
+    /** vbank denom resolved from the brand Board id at write time (null when unmapped). */
+    denom: varchar("denom", { length: 512 }),
+    totalIn: numeric("total_in", { precision: 78, scale: 0 }).notNull(),
+    totalOut: numeric("total_out", { precision: 78, scale: 0 }).notNull(),
+    netTransfers: numeric("net_transfers", { precision: 78, scale: 0 }).notNull(),
+    updatedHeight: bigint("updated_height", { mode: "bigint" }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.contract, t.portfolio, t.positionKey] })]
+);
+
+/** One row per flow (deposit / withdraw / rebalance …), first seen on the portfolio status's flowsRunning; deduped by id. */
+export const ymaxFlow = pgTable(
+  "ymax_flow",
+  {
+    contract: varchar("contract", { length: 16 }).notNull(),
+    portfolio: varchar("portfolio", { length: 32 }).notNull(),
+    flowId: varchar("flow_id", { length: 32 }).notNull(),
+    flowType: varchar("flow_type", { length: 32 }).notNull(),
+    denom: varchar("denom", { length: 512 }),
+    amount: numeric("amount", { precision: 78, scale: 0 }),
+    /** UTC day of the block where the flow was first seen. */
+    day: date("day", { mode: "string" }).notNull(),
+    firstHeight: bigint("first_height", { mode: "bigint" }).notNull(),
+    lastState: varchar("last_state", { length: 32 }),
+    lastHeight: bigint("last_height", { mode: "bigint" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.contract, t.portfolio, t.flowId] })]
+);
+
+/** Last committed height per additive backfill job (see ensureAdditiveTables.ts); resume must start above it. */
+export const backfillCheckpoint = pgTable("backfill_checkpoint", {
+  job: varchar("job", { length: 64 }).primaryKey(),
+  lastHeight: bigint("last_height", { mode: "bigint" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

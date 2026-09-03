@@ -239,6 +239,23 @@ export const METRIC_DICTIONARY: readonly MetricDefinition[] = [
       "Per wallet action in a successful tx: +1 to exactly one functional category, dimension ∈ oracle | governance | vaults | psm | auction | fast_usdc | orchestration | other. Category = classifyOfferCategory(kind, source, resolved Instance name via agoricNames.json, maker, targetName) — see offerCategory.ts. Additive/non-overlapping (one per action), so it covers continuing/instance-less offers (e.g. fast_usdc settlement) that offer_instance omits. Baked at index time from the committed name map (refresh via scripts/refreshAgoricNames.ts on reindex); the category→automated/interactive grouping is applied at read time and is refinable without reindex.",
   },
   {
+    id: SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH,
+    seriesKey: SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH,
+    storage: "daily_metrics_hourly_metrics",
+    grain: "event",
+    successScope: "every_indexed_block",
+    inclusionRule:
+      "Per send_packet event with packet_src_port=transfer in block_results.finalize_block_events (EndBlock/BeginBlock mode only): sum the ICS-20 packet amount, dimension = the packet denom normalised to the on-chain id (trace path → ibc/SHA256, native denoms unchanged). These are orchestration sends (vlocalchain acting for LocalChainAccounts) and never appear in txs_results, so they are disjoint from ibc_transfer_amount_out; Q3 net flow subtracts both.",
+  },
+  {
+    id: SERIES.IBC_TRANSFER_OUT_COUNT_ORCH,
+    seriesKey: SERIES.IBC_TRANSFER_OUT_COUNT_ORCH,
+    storage: "daily_metrics_hourly_metrics",
+    grain: "event",
+    successScope: "every_indexed_block",
+    inclusionRule: "Count of the events summed by ibc_transfer_amount_out_orch; dimension = \"\".",
+  },
+  {
     id: SERIES.OFFER_OUTCOME,
     seriesKey: SERIES.OFFER_OUTCOME,
     storage: "daily_metrics_hourly_metrics",

@@ -27,6 +27,8 @@
     "backfill:bank-credits": "tsx scripts/backfillBankCreditsVolume.ts",
     "backfill:prices": "tsx scripts/backfillDenomPrices.ts",
     "backfill:offer-categories": "tsx scripts/backfillOfferCategories.ts",
+    "seed:ymax": "tsx scripts/seedYmaxSnapshot.ts",
+    "backfill:endblock": "tsx scripts/backfillEndBlock.ts",
     "enumerate:module-accounts": "tsx scripts/enumerateModuleAccounts.ts",
     "parity:rollup": "tsx scripts/verifyRollupParity.ts",
     "test": "vitest run",

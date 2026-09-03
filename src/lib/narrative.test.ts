@@ -30,12 +30,13 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
     },
     q3: {
       id: "value-flow",
-      headline: { netUsd: -1_200_000, previousNetUsd: 800_000, deltaUsd: -2_000_000, inUsd: 1e6, outUsd: 2.2e6 },
-      byAsset: [{ denom: "ibc/USDC", in: "1", out: "2", net: "-1", inUsd: 1e6, outUsd: 2.2e6, netUsd: -1_200_000 }],
+      headline: { netUsd: -1_200_000, previousNetUsd: 800_000, deltaUsd: -2_000_000, inUsd: 1e6, outUsd: 2.2e6, outOrchUsd: null },
+      byAsset: [{ denom: "ibc/USDC", in: "1", out: "2", outOrch: "0", net: "-1", inUsd: 1e6, outUsd: 2.2e6, netUsd: -1_200_000 }],
       perBucket: [],
       daily: [],
       anomalies: [],
       usdPricingMeta: meta,
+      orchestrated: { available: false, principalUsd: null, byVenue: [], portfoliosActive: 0, portfoliosWithPositions: 0, portfoliosTotal: 0, flowsInRange: [], netDepositsUsd: null, latestHeight: null, oldestHeight: null, usdPricingMeta: meta },
     },
     q4: {
       id: "base",
@@ -69,7 +70,7 @@ describe("buildWhatChanged", () => {
     const s = buildWhatChanged(
       fixture({
         q1: { headline: { current: 100, previous: 100, pctChange: 0 }, anomalies: [] },
-        q3: { headline: { netUsd: 500_000, previousNetUsd: 900_000, deltaUsd: -400_000, inUsd: 1, outUsd: 1 }, byAsset: [] },
+        q3: { headline: { netUsd: 500_000, previousNetUsd: 900_000, deltaUsd: -400_000, inUsd: 1, outUsd: 1, outOrchUsd: null }, byAsset: [] },
       }),
       { max: 4 }
     );
@@ -83,7 +84,7 @@ describe("buildWhatChanged", () => {
       fixture({
         q1: { headline: { current: 112, previous: 100, pctChange: 12 }, anomalies: [] },
         q2: { headline: { current: 4, previous: 2, deltaPts: 2 } },
-        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null }, byAsset: [] },
+        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null, outOrchUsd: null }, byAsset: [] },
         q4: { headline: { current: 10, previous: 10, pctChange: 0 } },
       }),
       { max: 4 }
@@ -97,7 +98,7 @@ describe("buildWhatChanged", () => {
       fixture({
         q1: { headline: { current: 0, previous: 0, pctChange: 0 }, anomalies: [] },
         q2: { headline: { current: null, previous: null, deltaPts: null } },
-        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null }, byAsset: [] },
+        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null, outOrchUsd: null }, byAsset: [] },
       }),
       { max: 4 }
     );

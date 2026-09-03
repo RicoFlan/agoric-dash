@@ -93,8 +93,8 @@ export function Q2Organic({
         <>
           Most Agoric activity is smart-wallet intent (Zoe offers and invocations), and a few automation wallets submit most
           of it. The organic ratio is the share of wallet actions in interactive categories — vaults, PSM, auction,
-          governance — versus automated ones (orchestration, oracle price feeds, fast-USDC). Distinct interactive wallets
-          is the anti-overcounting check.
+          governance, and YMax users (portfolio offers, EVM-wallet deposits) — versus automated ones (the YMax planner and other
+          orchestration, oracle price feeds, fast-USDC). Distinct interactive wallets is the anti-overcounting check.
         </>
       }
       headline={

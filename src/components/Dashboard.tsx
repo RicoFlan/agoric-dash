@@ -45,13 +45,14 @@ function lastCompleteUtcDay(): string {
   return utcCalendarDate(-1);
 }
 
-function activeQuickPreset(from: string, to: string, g: Granularity): "24h" | "week" | "30" | "90" | null {
+function activeQuickPreset(from: string, to: string, g: Granularity): "24h" | "week" | "30" | "90" | "all" | null {
   const t0 = utcCalendarDate(0);
   const t1 = lastCompleteUtcDay();
   if (from === t0 && to === t0 && g === "hour") return "24h";
   if (from === utcCalendarDate(-7) && to === t1 && g === "day") return "week";
   if (from === utcCalendarDate(-30) && to === t1 && g === "day") return "30";
   if (from === utcCalendarDate(-90) && to === t1 && g === "day") return "90";
+  if (from === INDEXED_HISTORY_FROM_DAY && to === t1 && g === "week") return "all";
   return null;
 }
 
@@ -312,6 +313,19 @@ export function Dashboard() {
               }}
             >
               Last 90 Days
+            </button>
+            <button
+              type="button"
+              className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "all" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
+              title={`UTC: everything since indexed history began (${INDEXED_HISTORY_FROM_DAY}) through the last complete day, weekly buckets — for stock-style figures and historical inflows.`}
+              onClick={() => {
+                setCustomRangeOpen(false);
+                setFrom(INDEXED_HISTORY_FROM_DAY);
+                setTo(lastCompleteUtcDay());
+                setGranularity("week");
+              }}
+            >
+              All history
             </button>
             <button
               type="button"

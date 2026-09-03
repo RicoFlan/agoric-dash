@@ -39,7 +39,9 @@ import { parseCapData } from "../src/lib/walletOfferMarshal";
 import { walletActionRollupDeltas } from "../src/lib/walletOfferRollup";
 import { extractWalletStreamCells, summarizeOfferStatus } from "../src/lib/walletOutcomeSummary";
 import { refreshDailyPrices } from "../src/lib/coingecko/priceRefresh";
-import { ensureOfferCategoryParticipantDayTable } from "../src/db/ensureAdditiveTables";
+import { ensureOfferCategoryParticipantDayTable, ensureYmaxTables } from "../src/db/ensureAdditiveTables";
+import { accumulateYmaxFromBlock, persistYmax, YmaxAccumulator } from "../src/lib/ymaxRollup";
+import { endBlockIbcSends } from "../src/lib/endBlockIbc";
 import { decodeWalletAction, offerCategoryOf } from "../src/lib/walletActionDecode";
 import { outcomeCategoryDim, OUTCOME_CATEGORY_UNCLASSIFIED } from "../src/lib/offerOutcomeCategory";
 import { brandDenom, instanceName } from "../src/lib/agoricInstanceNames";
@@ -417,7 +419,8 @@ function accumulateBlock(
   volumeDeltas: Map<string, bigint>,
   feeDeltas: Map<string, bigint>,
   offerParticipantTriples: Set<string>,
-  offerCategoryParticipantTriples: Set<string>
+  offerCategoryParticipantTriples: Set<string>,
+  ymaxAcc: YmaxAccumulator
 ) {
   const hStr = block.block.header.height;
   const iso = block.block.header.time;
@@ -442,6 +445,13 @@ function accumulateBlock(
 
   // Settled Zoe offer outcomes (block-grain, EndBlock vstorage offerStatus events).
   accumulateBlockOutcomes(results, daily, hourly, day, hour);
+  // YMax published state (portfolios / positions / flows) from the same vstorage events.
+  accumulateYmaxFromBlock(results, BigInt(hStr), iso, ymaxAcc);
+  // Orchestration IBC sends (EndBlock send_packet) — outside tx scope, disjoint from MsgTransfer.
+  for (const s of endBlockIbcSends(results.finalize_block_events ?? results.end_block_events)) {
+    addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH, s.denom, s.amount);
+    addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_OUT_COUNT_ORCH, "", BigInt(1));
+  }
 
   const n = pairedTxCount(blockTxCount, resultsCount);
 
@@ -724,6 +734,7 @@ async function loop(startFloorHeight: bigint) {
     const feeDeltas = new Map<string, bigint>();
     const offerParticipantTriples = new Set<string>();
     const offerCategoryParticipantTriples = new Set<string>();
+    const ymaxAcc = new YmaxAccumulator();
     for (const p of pairs) {
       accumulateBlock(
         p.block,
@@ -734,10 +745,14 @@ async function loop(startFloorHeight: bigint) {
         volumeDeltas,
         feeDeltas,
         offerParticipantTriples,
-        offerCategoryParticipantTriples
+        offerCategoryParticipantTriples,
+        ymaxAcc
       );
     }
     const lastH = heights[heights.length - 1]!;
+    // YMax latest-state upserts are idempotent (latest-wins by height), so they go BEFORE the
+    // cursor advances: a crash in between re-applies them with the next chunk instead of losing them.
+    await persistYmax(db, ymaxAcc);
     await persistIndexedChunk(
       daily,
       hourly,
@@ -785,6 +800,7 @@ async function priceRefreshLoop(): Promise<void> {
 
 async function main() {
   await ensureOfferCategoryParticipantDayTable(db);
+  await ensureYmaxTables(db);
   if (PRICE_REFRESH_DISABLED) console.log("[prices] refresh disabled (PRICE_REFRESH_DISABLED)");
   else void priceRefreshLoop();
 

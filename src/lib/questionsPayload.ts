@@ -22,6 +22,7 @@ import type { OfferCategoryParticipantStats } from "@/lib/offersQuery";
 import { outcomesByCategory, type OutcomeByCategory } from "@/lib/offerOutcomeCategory";
 import type { RetentionCounts } from "@/lib/participationQueries";
 import { buildRetention, type Retention } from "@/lib/retention";
+import type { YmaxSnapshot } from "@/lib/ymaxQueries";
 import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
 
 export interface Delta {
@@ -72,6 +73,40 @@ export interface QuestionsPayload {
     daily: DayValue[];
     anomalies: AnomalyPoint[];
     usdPricingMeta: UsdPricingMeta;
+    /**
+     * Value deployed via orchestration (YMax): a STOCK, not a range figure — Σ over portfolios and
+     * positions of (totalIn − totalOut), each position at its LATEST OBSERVED state (positions publish
+     * at different heights; `latestHeight` is the maximum observed, per-venue `latestHeight` the max in
+     * that venue), priced at the range end day. Principal, not marked to yield. `available` is false
+     * before the P6 seed/deploy.
+     */
+    orchestrated: {
+      available: boolean;
+      principalUsd: number | null;
+      byVenue: {
+        contract: string;
+        protocol: string | null;
+        chain: string | null;
+        denom: string | null;
+        positions: number;
+        portfolios: number;
+        principal: string;
+        principalUsd: number | null;
+        /** Newest published height within this venue (positions publish at different heights). */
+        latestHeight: string;
+      }[];
+      portfoliosActive: number;
+      portfoliosWithPositions: number;
+      portfoliosTotal: number;
+      /** Flows first seen in the range (deposit / withdraw / rebalance …), amounts priced at the range end day. */
+      flowsInRange: { flowType: string; denom: string | null; count: number; amount: string; amountUsd: number | null }[];
+      /** deposits − withdrawals in range, USD; null when neither is priced. */
+      netDepositsUsd: number | null;
+      /** Max / min observed position heights — the aggregate mixes positions published at different heights. */
+      latestHeight: string | null;
+      oldestHeight: string | null;
+      usdPricingMeta: UsdPricingMeta;
+    };
   };
   q4: {
     id: "base";
@@ -110,6 +145,8 @@ export interface QuestionsBuildInput {
   grossUsdHhi: number | null;
   top10FeeSharePct: number | null;
   multiDayInRange: number;
+  /** YMax snapshot (positions are cumulative, so latest-state; flows scoped to the range). */
+  ymax: YmaxSnapshot;
   anomalyOptions?: AnomalyOptions;
   /** Current UTC day (YYYY-MM-DD); it is incomplete, so it is never flagged as an anomaly. Defaults to now. */
   todayUtc?: string;
@@ -207,6 +244,24 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     pricer: q3Pricer,
   });
 
+  // Q3b — orchestrated value (stock at the range end day's price)
+  const orchPricer = table.pricer();
+  const priceDay = input.toDay;
+  const usdAt = (denom: string | null, atomic: string): number | null => {
+    if (!denom || !/^-?\d+$/.test(atomic)) return null;
+    const neg = atomic.startsWith("-");
+    const u = usdForLeg(denom, priceDay, neg ? atomic.slice(1) : atomic, display, denomToCoinId, orchPricer);
+    return u === null ? null : neg ? -u : u;
+  };
+  const byVenue = input.ymax.byVenue
+    .map((v) => ({ ...v, principalUsd: usdAt(v.denom, v.principal) }))
+    .sort((a, b) => (b.principalUsd ?? -Infinity) - (a.principalUsd ?? -Infinity));
+  const principalUsd = byVenue.some((v) => v.principalUsd !== null) ? byVenue.reduce((s, v) => s + (v.principalUsd ?? 0), 0) : null;
+  const flowsInRange = input.ymax.flowsInRange.map((f) => ({ ...f, amountUsd: usdAt(f.denom, f.amount) }));
+  const dep = flowsInRange.filter((f) => f.flowType === "deposit" && f.amountUsd !== null).reduce((s, f) => s + (f.amountUsd ?? 0), 0);
+  const wd = flowsInRange.filter((f) => f.flowType === "withdraw" && f.amountUsd !== null).reduce((s, f) => s + (f.amountUsd ?? 0), 0);
+  const anyPricedFlow = flowsInRange.some((f) => (f.flowType === "deposit" || f.flowType === "withdraw") && f.amountUsd !== null);
+
   // Q4 — base
   const q4Pricer = table.pricer();
   const effNCur = feeEffectiveN(input.feeByDay, days, display, denomToCoinId, q4Pricer);
@@ -263,6 +318,19 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
       daily: flow.dailyNetUsd,
       anomalies: flags(flow.dailyNetUsd),
       usdPricingMeta: q3Pricer.meta(),
+      orchestrated: {
+        available: input.ymax.available,
+        principalUsd,
+        byVenue,
+        portfoliosActive: input.ymax.portfoliosActive,
+        portfoliosWithPositions: input.ymax.portfoliosWithPositions,
+        portfoliosTotal: input.ymax.portfoliosTotal,
+        flowsInRange,
+        netDepositsUsd: anyPricedFlow ? dep - wd : null,
+        latestHeight: input.ymax.latestHeight,
+        oldestHeight: input.ymax.oldestHeight,
+        usdPricingMeta: orchPricer.meta(),
+      },
     },
     q4: {
       id: "base",

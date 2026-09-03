@@ -18,12 +18,13 @@ const denomToCoinId = new Map([
 
 const D = ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04"] as const;
 
-function ctx(rows: Record<string, { in?: Record<string, number>; out?: Record<string, number> }>): DayBucketMap {
+function ctx(rows: Record<string, { in?: Record<string, number>; out?: Record<string, number>; outOrch?: Record<string, number> }>): DayBucketMap {
   const m: DayBucketMap = new Map();
   for (const [day, r] of Object.entries(rows)) {
     const sm = new Map<string, Map<string, bigint>>();
     if (r.in) sm.set(SERIES.IBC_TRANSFER_AMOUNT_IN, new Map(Object.entries(r.in).map(([d, n]) => [d, BigInt(n)])));
     if (r.out) sm.set(SERIES.IBC_TRANSFER_AMOUNT_OUT, new Map(Object.entries(r.out).map(([d, n]) => [d, BigInt(n)])));
+    if (r.outOrch) sm.set(SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH, new Map(Object.entries(r.outOrch).map(([d, n]) => [d, BigInt(n)])));
     m.set(day, sm);
   }
   return m;
@@ -63,7 +64,7 @@ describe("buildNetIbcFlow", () => {
 
     // priced assets first by |netUsd| (IST 5, BLD 0), unpriced last
     expect(r.byAsset.map((a) => a.denom)).toEqual(["uist", "ubld", "ibc/UNMAPPED"]);
-    expect(r.headline).toEqual({ netUsd: 5, previousNetUsd: 10, deltaUsd: -5, inUsd: 45, outUsd: 40 });
+    expect(r.headline).toEqual({ netUsd: 5, previousNetUsd: 10, deltaUsd: -5, inUsd: 45, outUsd: 40, outOrchUsd: null });
 
     expect(r.dailyNetUsd).toEqual([
       { day: D[0], value: 10 },
@@ -94,5 +95,14 @@ describe("buildNetIbcFlow", () => {
       { day: D[0], value: 0 },
       { day: D[1], value: null },
     ]);
+  });
+
+  it("counts orchestration (EndBlock) sends as outflow and reports them separately", () => {
+    const dailyContext = ctx({ [D[1]]: { in: { ubld: 10_000_000 }, out: { ubld: 2_000_000 }, outOrch: { ubld: 5_000_000 } } });
+    const pricer = table({ agoric: { [D[1]]: 1 } }).pricer();
+    const r = buildNetIbcFlow({ dailyContext, days: [D[1]], prevDays: [D[0]], contextDays: [D[0], D[1]], curBuckets: dailyContext, display, denomToCoinId, pricer });
+    expect(r.byAsset[0]).toMatchObject({ denom: "ubld", in: "10000000", out: "7000000", outOrch: "5000000", net: "3000000", netUsd: 3 });
+    expect(r.headline).toMatchObject({ netUsd: 3, inUsd: 10, outUsd: 7, outOrchUsd: 5 });
+    expect(r.perBucket[0]!.data[0]).toEqual({ bucket: D[1], in: "10000000", out: "7000000", net: "3000000" });
   });
 });

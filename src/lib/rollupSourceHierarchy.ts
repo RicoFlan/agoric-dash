@@ -131,6 +131,16 @@ export const SERIES_ROLLUP_SOURCE: Record<(typeof SERIES)[keyof typeof SERIES], 
     secondary:
       "Resolved Instance name from committed agoricNames.json (scripts/refreshAgoricNames.ts); one category per action (additive, non-overlapping) so it covers instance-less continuing offers that offer_instance omits; category→automated/interactive grouping applied at read time (offerCategory.ts)",
   },
+  [SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH]: {
+    primary:
+      "send_packet events (packet_src_port=transfer) in block_results.finalize_block_events, i.e. EndBlock — ICS-20 packet JSON decoded from packet_data_hex; dimension = on-chain denom (trace → ibc/SHA256)",
+    secondary:
+      "Orchestration-originated outflow (SwingSet vlocalchain executing MsgTransfer for a LocalChainAccount); invisible to the tx-scoped ibc_transfer_amount_out. Found via YMax: H1-2026 USDC inflow ≈ $6.8M, tx-scoped outflow ≈ $1.2M, on-chain supply ≈ $25k",
+  },
+  [SERIES.IBC_TRANSFER_OUT_COUNT_ORCH]: {
+    primary: "Count of the same EndBlock send_packet events; dimension = \"\"",
+    secondary: "Pairs with ibc_transfer_out_count (tx scope) for total outbound message count",
+  },
   [SERIES.OFFER_OUTCOME]: {
     primary:
       "vstorage published.wallet.<addr> offerStatus state_change in block_results.finalize_block_events (count once per settled offer at terminal payouts update), dimension = wants_satisfied | wants_unsatisfied | errored",
