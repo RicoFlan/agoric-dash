@@ -119,6 +119,11 @@ async function fetchBlockPair(height: bigint): Promise<{ block: RpcBlockResponse
         rpcCallWithFallback<RpcBlockResponse>(RPC_URLS, "block", { height: hStr }),
         rpcCallWithFallback<RpcBlockResultsResponse>(RPC_URLS, "block_results", { height: hStr }),
       ]);
+      // A pruned fallback node answers old heights with `block: null` / empty results rather than an
+      // error; treat that as a failed attempt so the retry goes back to the archive primary.
+      if (!block?.block?.header?.time || !results || typeof results !== "object") {
+        throw new Error(`empty block/results at height ${hStr} (pruned node?)`);
+      }
       return { block, results };
     } catch (e) {
       lastErr = e;
@@ -210,14 +215,20 @@ async function main() {
     const daily = new Map<string, bigint>();
     const hourly = new Map<string, bigint>();
     const triples = new Set<string>();
-    let x = h;
-    while (x <= batchEnd) {
-      const n = Number(minBigint(batchEnd - x + BigInt(1), BigInt(CONCURRENCY)));
-      const heights = Array.from({ length: n }, (_, i) => x + BigInt(i));
-      const pairs = await Promise.all(heights.map(fetchBlockPair));
-      for (const p of pairs) accumulateOfferCategoriesFromBlock(p.block, p.results, daily, hourly, triples);
-      x += BigInt(n);
-    }
+    // Worker pool: CONCURRENCY fetches stay in flight continuously, so one slow/retrying height
+    // never stalls the rest of the batch (a Promise.all chunk would wait on its slowest member).
+    // Accumulation order does not matter — keys are day/hour-based sums and a set of triples.
+    let nextH = h;
+    const worker = async () => {
+      for (;;) {
+        if (nextH > batchEnd) return;
+        const ht = nextH;
+        nextH += BigInt(1);
+        const p = await fetchBlockPair(ht);
+        accumulateOfferCategoriesFromBlock(p.block, p.results, daily, hourly, triples);
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     await persist(daily, hourly, triples);
     done += batchEnd - h + BigInt(1);
     const pct = Number((done * BigInt(1000)) / span) / 10;

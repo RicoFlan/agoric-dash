@@ -36,12 +36,22 @@ const QUICK_RANGE_BTN =
 const QUICK_RANGE_BTN_ACTIVE =
   "border-2 border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_14%,var(--bg))] font-semibold text-[var(--color-text-primary)] shadow-md ring-2 ring-[var(--color-accent)]/45";
 
+/**
+ * Daily presets end at the last COMPLETE UTC day. The current UTC day is only partially indexed
+ * (and, for readers west of UTC, is literally tomorrow's date), so including it made every daily
+ * chart fall to ~zero at the right edge. "Last 24 hours" keeps today at hourly grain by design.
+ */
+function lastCompleteUtcDay(): string {
+  return utcCalendarDate(-1);
+}
+
 function activeQuickPreset(from: string, to: string, g: Granularity): "24h" | "week" | "30" | "90" | null {
   const t0 = utcCalendarDate(0);
+  const t1 = lastCompleteUtcDay();
   if (from === t0 && to === t0 && g === "hour") return "24h";
-  if (from === utcCalendarDate(-6) && to === t0 && g === "day") return "week";
-  if (from === utcCalendarDate(-29) && to === t0 && g === "day") return "30";
-  if (from === utcCalendarDate(-89) && to === t0 && g === "day") return "90";
+  if (from === utcCalendarDate(-7) && to === t1 && g === "day") return "week";
+  if (from === utcCalendarDate(-30) && to === t1 && g === "day") return "30";
+  if (from === utcCalendarDate(-90) && to === t1 && g === "day") return "90";
   return null;
 }
 
@@ -94,9 +104,9 @@ function MetricsFailureSetupHint() {
 }
 
 export function Dashboard() {
-  /** Default load: last 30 calendar days (daily buckets); custom pickers stay hidden until "Custom Range". */
-  const [from, setFrom] = useState(() => clampDayNotBeforeIndexed(utcCalendarDate(-29)));
-  const [to, setTo] = useState(() => utcCalendarDate(0));
+  /** Default load: the last 30 complete UTC days (daily buckets); custom pickers stay hidden until "Custom Range". */
+  const [from, setFrom] = useState(() => clampDayNotBeforeIndexed(utcCalendarDate(-30)));
+  const [to, setTo] = useState(() => lastCompleteUtcDay());
   const [granularity, setGranularity] = useState<Granularity>("day");
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [data, setData] = useState<MetricsPayload | null>(null);
@@ -267,11 +277,11 @@ export function Dashboard() {
             <button
               type="button"
               className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "week" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
-              title="UTC: last 7 calendar days inclusive, daily buckets."
+              title="UTC: the last 7 complete calendar days (today's partial day excluded), daily buckets."
               onClick={() => {
                 setCustomRangeOpen(false);
-                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-6)));
-                setTo(utcCalendarDate(0));
+                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-7)));
+                setTo(lastCompleteUtcDay());
                 setGranularity("day");
               }}
             >
@@ -280,11 +290,11 @@ export function Dashboard() {
             <button
               type="button"
               className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "30" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
-              title="UTC: last 30 calendar days inclusive, daily buckets."
+              title="UTC: the last 30 complete calendar days (today's partial day excluded), daily buckets."
               onClick={() => {
                 setCustomRangeOpen(false);
-                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-29)));
-                setTo(utcCalendarDate(0));
+                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-30)));
+                setTo(lastCompleteUtcDay());
                 setGranularity("day");
               }}
             >
@@ -293,11 +303,11 @@ export function Dashboard() {
             <button
               type="button"
               className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "90" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
-              title="UTC: last 90 calendar days inclusive, daily buckets."
+              title="UTC: the last 90 complete calendar days (today's partial day excluded), daily buckets."
               onClick={() => {
                 setCustomRangeOpen(false);
-                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-89)));
-                setTo(utcCalendarDate(0));
+                setFrom(clampDayNotBeforeIndexed(utcCalendarDate(-90)));
+                setTo(lastCompleteUtcDay());
                 setGranularity("day");
               }}
             >
@@ -330,6 +340,8 @@ export function Dashboard() {
               <span className="whitespace-nowrap text-sm font-medium text-[var(--color-text-secondary)]">To</span>
               <input
                 type="date"
+                min={INDEXED_HISTORY_FROM_DAY}
+                max={utcCalendarDate(0)}
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]"
@@ -343,7 +355,8 @@ export function Dashboard() {
             UTC.
           </span>{" "}
           The API clamps <strong className="font-medium text-[var(--color-text-secondary)]">From</strong> to that day when
-          needed so results match the indexer window. Every comparison is against an equal-length window ending just before From.
+          needed so results match the indexer window. Daily presets end at the last complete UTC day — today&apos;s partial day
+          is excluded (use Custom Range to include it). Every comparison is against an equal-length window ending just before From.
         </p>
       </section>
 
