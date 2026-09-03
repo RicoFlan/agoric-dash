@@ -74,9 +74,11 @@ export interface QuestionsPayload {
     anomalies: AnomalyPoint[];
     usdPricingMeta: UsdPricingMeta;
     /**
-     * Value deployed via orchestration (YMax): a STOCK at the newest published height, not a range
-     * figure — Σ over portfolios and positions of (totalIn − totalOut), priced at the range end day.
-     * Principal, not marked to yield. `available` is false before the P6 seed/deploy.
+     * Value deployed via orchestration (YMax): a STOCK, not a range figure — Σ over portfolios and
+     * positions of (totalIn − totalOut), each position at its LATEST OBSERVED state (positions publish
+     * at different heights; `latestHeight` is the maximum observed, per-venue `latestHeight` the max in
+     * that venue), priced at the range end day. Principal, not marked to yield. `available` is false
+     * before the P6 seed/deploy.
      */
     orchestrated: {
       available: boolean;
@@ -90,6 +92,8 @@ export interface QuestionsPayload {
         portfolios: number;
         principal: string;
         principalUsd: number | null;
+        /** Newest published height within this venue (positions publish at different heights). */
+        latestHeight: string;
       }[];
       portfoliosActive: number;
       portfoliosWithPositions: number;
@@ -98,7 +102,9 @@ export interface QuestionsPayload {
       flowsInRange: { flowType: string; denom: string | null; count: number; amount: string; amountUsd: number | null }[];
       /** deposits − withdrawals in range, USD; null when neither is priced. */
       netDepositsUsd: number | null;
+      /** Max / min observed position heights — the aggregate mixes positions published at different heights. */
       latestHeight: string | null;
+      oldestHeight: string | null;
       usdPricingMeta: UsdPricingMeta;
     };
   };
@@ -322,6 +328,7 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
         flowsInRange,
         netDepositsUsd: anyPricedFlow ? dep - wd : null,
         latestHeight: input.ymax.latestHeight,
+        oldestHeight: input.ymax.oldestHeight,
         usdPricingMeta: orchPricer.meta(),
       },
     },

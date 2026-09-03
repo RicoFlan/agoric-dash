@@ -36,7 +36,7 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
       daily: [],
       anomalies: [],
       usdPricingMeta: meta,
-      orchestrated: { available: false, principalUsd: null, byVenue: [], portfoliosActive: 0, portfoliosWithPositions: 0, portfoliosTotal: 0, flowsInRange: [], netDepositsUsd: null, latestHeight: null, usdPricingMeta: meta },
+      orchestrated: { available: false, principalUsd: null, byVenue: [], portfoliosActive: 0, portfoliosWithPositions: 0, portfoliosTotal: 0, flowsInRange: [], netDepositsUsd: null, latestHeight: null, oldestHeight: null, usdPricingMeta: meta },
     },
     q4: {
       id: "base",

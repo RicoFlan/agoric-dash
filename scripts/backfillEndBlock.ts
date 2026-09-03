@@ -26,7 +26,8 @@ import { ensureYmaxTables } from "../src/db/ensureAdditiveTables";
 import { endBlockIbcSends } from "../src/lib/endBlockIbc";
 import { rpcCallWithFallback, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
 import { SERIES } from "../src/lib/semantics";
-import { accumulateYmaxFromBlock, persistYmax, YmaxAccumulator } from "../src/lib/ymaxRollup";
+import { applyYmaxCells, persistYmax, YmaxAccumulator } from "../src/lib/ymaxRollup";
+import { extractYmaxStreamCells } from "../src/lib/ymaxVstorage";
 
 const TAG = "[backfillEndBlock]";
 const args = new Set(process.argv.slice(2));
@@ -152,6 +153,10 @@ async function main() {
     console.error(`${TAG} indexer_state cursor is 0 — run the indexer first.`);
     process.exit(1);
   }
+  if (DO_IBC && SKIP_DELETE && !process.env.BACKFILL_FROM_HEIGHT) {
+    console.error(`${TAG} BACKFILL_SKIP_DELETE=1 (resume mode) requires BACKFILL_FROM_HEIGHT — replaying from the start date would double-count additive series.`);
+    process.exit(1);
+  }
   const fromH = process.env.BACKFILL_FROM_HEIGHT ? BigInt(process.env.BACKFILL_FROM_HEIGHT) : await findStartHeight(START_DATE_MS, tip);
   const toH = process.env.BACKFILL_TO_HEIGHT ? BigInt(process.env.BACKFILL_TO_HEIGHT) : cursor;
   if (fromH > toH) {
@@ -179,6 +184,8 @@ async function main() {
     const daily = new Map<string, bigint>();
     const hourly = new Map<string, bigint>();
     const ymax = new YmaxAccumulator();
+    /** YMax cells per height, applied in height order after the pool (workers finish out of order). */
+    const ymaxCells: { height: bigint; timeIso: string; cells: ReturnType<typeof extractYmaxStreamCells> }[] = [];
     let sends = 0;
     let nextH = h;
     const worker = async () => {
@@ -198,10 +205,17 @@ async function main() {
             bump(hourly, [hr, SERIES.IBC_TRANSFER_OUT_COUNT_ORCH, ""].join(ROLLUP_KEY_DELIM), BigInt(1));
           }
         }
-        if (DO_YMAX) accumulateYmaxFromBlock(results, ht, timeIso, ymax);
+        if (DO_YMAX) {
+          const cells = extractYmaxStreamCells(results.finalize_block_events ?? results.end_block_events);
+          if (cells.length > 0) ymaxCells.push({ height: ht, timeIso, cells });
+        }
       }
     };
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    if (DO_YMAX) {
+      ymaxCells.sort((a, b) => (a.height < b.height ? -1 : a.height > b.height ? 1 : 0));
+      for (const c of ymaxCells) applyYmaxCells(c.cells, c.height, c.timeIso, ymax);
+    }
     if (DO_IBC) await persistMetrics(daily, hourly);
     if (DO_YMAX) await persistYmax(db, ymax);
     done += batchEnd - h + BigInt(1);

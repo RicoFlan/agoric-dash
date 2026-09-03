@@ -17,7 +17,7 @@ export const DEFINITIONS = {
 
   // Q2 — organic
   q2_organic_ratio:
-    "Interactive-category wallet actions ÷ all wallet actions in successful txs, from the offer_category rollup (exactly one category per action). Interactive = vaults, PSM, auction, governance; automated = orchestration, oracle, fast-USDC.",
+    "Interactive-category wallet actions ÷ all wallet actions in successful txs, from the offer_category rollup (exactly one category per action). Interactive = vaults, PSM, auction, governance, and YMax user actions (portfolio offers, EVM-wallet deposits); automated = the YMax planner and other orchestration, oracle price feeds, fast-USDC settlement.",
   q2_distinct_interactive_wallets:
     "Unique smart-wallet owners that submitted at least one interactive-category action in range (offer_category_participant_day). The check against a few bots inflating action counts.",
   q2_distinct_automated_wallets:
@@ -34,7 +34,7 @@ export const DEFINITIONS = {
   q3_orch_outflow:
     "Of the outflow, IBC sends executed by orchestration in EndBlock (a contract moving funds from its own Agoric account) — invisible to transaction-scoped counts. Found via YMax.",
   q3_deployed_principal:
-    "Σ over YMax portfolios and positions of (totalIn − totalOut) as published to vstorage — principal currently deployed at yield venues on other chains, priced at the range end. A stock at the newest published height, not a range flow; principal, not marked to yield.",
+    "Σ over YMax portfolios and positions of (totalIn − totalOut), each position at its latest published state (positions publish at different heights; the venue table shows each venue's newest). Principal currently deployed at yield venues on other chains, priced at the range end — a balance, not a range flow; principal, not marked to yield.",
   q3_active_portfolios: "YMax portfolios whose positions sum to positive principal, out of all portfolios ever created.",
   q3_net_deposits: "YMax deposit flows minus withdraw flows first seen in the range (from portfolio status updates), priced at the range end day.",
 

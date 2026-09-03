@@ -81,6 +81,7 @@ function build() {
         { flowType: "rebalance", denom: null, count: 2, amount: "0" },
       ],
       latestHeight: "100",
+      oldestHeight: "90",
     },
     grossUsdHhi: 0.25,
     top10FeeSharePct: 74.5,
@@ -141,6 +142,7 @@ describe("questions payload (contract)", () => {
     expect(o.netDepositsUsd).toBe(2); // 3 − 1
     expect(o.portfoliosActive).toBe(2);
     expect(o.latestHeight).toBe("100");
+    expect(o.oldestHeight).toBe("90");
   });
 
   it("Q4: effective number of fee payers, gross effective-N, retention, support", () => {

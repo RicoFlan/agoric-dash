@@ -37,8 +37,10 @@ export interface YmaxSnapshot {
   byVenue: YmaxPositionAgg[];
   /** Flows first seen in [fromDay, toDay]. */
   flowsInRange: YmaxFlowAgg[];
-  /** Newest published height across positions (freshness of the stock figure). */
+  /** Maximum observed position height (constituent positions may be older — see per-venue latestHeight). */
   latestHeight: string | null;
+  /** Minimum observed position height: the staleness floor of the aggregate. */
+  oldestHeight: string | null;
 }
 
 export async function queryYmaxSnapshot(fromDay: string, toDay: string): Promise<YmaxSnapshot> {
@@ -81,6 +83,8 @@ export async function queryYmaxSnapshot(fromDay: string, toDay: string): Promise
     }));
     let latest: string | null = null;
     for (const v of byVenue) if (latest === null || BigInt(v.latestHeight) > BigInt(latest)) latest = v.latestHeight;
+    const oldestRow = await pool.query<{ oldest: string | null }>(`SELECT MIN(updated_height)::text AS oldest FROM ymax_position`);
+    const oldestHeight = oldestRow.rows[0]?.oldest ?? null;
     return {
       available: true,
       portfoliosWithPositions: Number(counts.rows[0]?.with_positions ?? 0),
@@ -89,10 +93,11 @@ export async function queryYmaxSnapshot(fromDay: string, toDay: string): Promise
       byVenue,
       flowsInRange: flows.rows.map((r) => ({ flowType: r.flow_type, denom: r.denom, count: Number(r.c), amount: r.amount })),
       latestHeight: latest,
+      oldestHeight,
     };
   } catch (e) {
     if ((e as { code?: string } | null)?.code === "42P01") {
-      return { available: false, portfoliosWithPositions: 0, portfoliosActive: 0, portfoliosTotal: 0, byVenue: [], flowsInRange: [], latestHeight: null };
+      return { available: false, portfoliosWithPositions: 0, portfoliosActive: 0, portfoliosTotal: 0, byVenue: [], flowsInRange: [], latestHeight: null, oldestHeight: null };
     }
     throw e;
   }

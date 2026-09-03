@@ -91,9 +91,15 @@ export class YmaxAccumulator {
         const existing = this.flows.get(fk);
         if (existing) {
           if (existing.lastHeight < height) existing.lastHeight = height;
+          // A progress-only placeholder ("unknown") created before the announcement is upgraded here.
+          if (existing.flowType === "unknown" && f.type !== "unknown") existing.flowType = f.type;
           if (!existing.amount && f.amount) {
             existing.amount = f.amount.value;
             existing.denom = brandDenom(f.amount.brandBoardId);
+          }
+          if (existing.firstHeight > height) {
+            existing.firstHeight = height;
+            existing.day = day;
           }
           continue;
         }
@@ -160,21 +166,22 @@ export class YmaxAccumulator {
   }
 }
 
-function dayUtc(isoTime: string): string {
-  return new Date(isoTime).toISOString().slice(0, 10);
+/** UTC day of a block time, or null when the timestamp is unparsable (the block is then skipped). */
+function dayUtc(isoTime: string): string | null {
+  const d = new Date(isoTime);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
-/** Decode every YMax cell in a block's finalize events into the accumulator. Never throws. */
-export function accumulateYmaxFromBlock(
-  results: RpcBlockResultsResponse,
+/** Apply already-extracted cells for one block (callers that need height order buffer these). Never throws. */
+export function applyYmaxCells(
+  cells: ReturnType<typeof extractYmaxStreamCells>,
   height: bigint,
   blockTimeIso: string,
   acc: YmaxAccumulator
 ): void {
-  const events = results.finalize_block_events ?? results.end_block_events;
-  const cells = extractYmaxStreamCells(events);
   if (cells.length === 0) return;
   const day = dayUtc(blockTimeIso);
+  if (!day) return;
   for (const cell of cells) {
     for (const capDataString of cell.capDataStrings) {
       let decoded: unknown;
@@ -186,6 +193,16 @@ export function accumulateYmaxFromBlock(
       acc.applyDecoded(cell.path, decoded, height, day);
     }
   }
+}
+
+/** Decode every YMax cell in a block's finalize events into the accumulator. Never throws. */
+export function accumulateYmaxFromBlock(
+  results: RpcBlockResultsResponse,
+  height: bigint,
+  blockTimeIso: string,
+  acc: YmaxAccumulator
+): void {
+  applyYmaxCells(extractYmaxStreamCells(results.finalize_block_events ?? results.end_block_events), height, blockTimeIso, acc);
 }
 
 /** Upsert the accumulator (latest-wins by updated_height / last_height). */

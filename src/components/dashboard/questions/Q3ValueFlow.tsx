@@ -237,7 +237,7 @@ export function Q3ValueFlow({
             <p className="mt-2 font-mono text-4xl leading-none tracking-tight text-[var(--text)]">{o?.available ? fmtUsd(o.principalUsd) : "—"}</p>
             <p className="mt-2 text-xs text-[var(--muted)]">
               {o?.available
-                ? `Principal deployed at yield venues on other chains, as published by YMax at height ${o.latestHeight ?? "—"} — a balance now, not a range flow; not marked to yield.`
+                ? `Principal deployed at yield venues on other chains: each position at its latest published state (heights ${o.oldestHeight ?? "—"}–${o.latestHeight ?? "—"}) — a balance, not a range flow; not marked to yield.`
                 : "Available after the YMax snapshot seed (npm run seed:ymax)."}
             </p>
           </div>
@@ -260,7 +260,8 @@ export function Q3ValueFlow({
                   <th className="py-2 pr-4 font-semibold">Contract</th>
                   <th className="py-2 pr-4 text-right font-semibold">Portfolios</th>
                   <th className="py-2 pr-4 text-right font-semibold">Principal</th>
-                  <th className="py-2 text-right font-semibold">USD</th>
+                  <th className="py-2 pr-4 text-right font-semibold">USD</th>
+                  <th className="py-2 text-right font-semibold">Newest height</th>
                 </tr>
               </thead>
               <tbody>
@@ -271,7 +272,8 @@ export function Q3ValueFlow({
                     <td className="py-1.5 pr-4 font-mono text-[var(--muted)]">{v.contract}</td>
                     <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--muted)]">{v.portfolios}</td>
                     <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--text)]">{fmtNative(humanSigned(v.principal, v.denom ? disp?.metas[v.denom]?.decimals : undefined))} {v.denom ? sym(v.denom) : ""}</td>
-                    <td className="py-1.5 text-right font-mono tabular-nums text-[var(--text)]">{fmtUsd(v.principalUsd)}</td>
+                    <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--text)]">{fmtUsd(v.principalUsd)}</td>
+                    <td className="py-1.5 text-right font-mono tabular-nums text-[var(--muted)]">{v.latestHeight}</td>
                   </tr>
                 ))}
               </tbody>

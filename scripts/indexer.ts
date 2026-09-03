@@ -750,6 +750,9 @@ async function loop(startFloorHeight: bigint) {
       );
     }
     const lastH = heights[heights.length - 1]!;
+    // YMax latest-state upserts are idempotent (latest-wins by height), so they go BEFORE the
+    // cursor advances: a crash in between re-applies them with the next chunk instead of losing them.
+    await persistYmax(db, ymaxAcc);
     await persistIndexedChunk(
       daily,
       hourly,
@@ -760,9 +763,6 @@ async function loop(startFloorHeight: bigint) {
       offerCategoryParticipantTriples,
       lastH
     );
-    // YMax latest-state upserts are idempotent (latest-wins by height), so they sit outside the
-    // rollup transaction: a crash between the two only means the next chunk re-applies them.
-    await persistYmax(db, ymaxAcc);
     cursor = lastH;
     next = lastH + BigInt(1);
     processed += chunkN;

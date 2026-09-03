@@ -191,6 +191,10 @@ async function main() {
     console.error(`${TAG} indexer_state cursor is 0 — run the indexer first.`);
     process.exit(1);
   }
+  if (BACKFILL_SKIP_DELETE && !process.env.BACKFILL_FROM_HEIGHT) {
+    console.error(`${TAG} BACKFILL_SKIP_DELETE=1 (resume mode) requires BACKFILL_FROM_HEIGHT — replaying from the start date would double-count additive series.`);
+    process.exit(1);
+  }
   const fromH = process.env.BACKFILL_FROM_HEIGHT ? BigInt(process.env.BACKFILL_FROM_HEIGHT) : await findStartHeightByTime(START_DATE_MS, tip);
   const toH = process.env.BACKFILL_TO_HEIGHT ? BigInt(process.env.BACKFILL_TO_HEIGHT) : cursor;
   if (fromH > toH) {
