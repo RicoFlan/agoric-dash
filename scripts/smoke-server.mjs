@@ -48,6 +48,16 @@ try {
 
   const home = await get(`${base}/`);
   if (!home.ok) throw new Error(`GET / expected 200, got ${home.status}`);
+  // The four question sections render client-side after the metrics fetch; their header jump links
+  // are server-rendered, so assert those (docs: "Four Questions").
+  const homeHtml = await home.text();
+  for (const anchor of ["#busier", "#organic", "#value-flow", "#base", "#methodology"]) {
+    if (!homeHtml.includes(`href="${anchor}"`)) throw new Error(`GET / is missing the ${anchor} jump link`);
+  }
+  const methodology = await get(`${base}/methodology`);
+  if (!methodology.ok) throw new Error(`GET /methodology expected 200, got ${methodology.status}`);
+  const methodologyHtml = await methodology.text();
+  if (!methodologyHtml.includes("Indicator definitions")) throw new Error("GET /methodology is missing the definitions section");
 
   if (checkApi) {
     const apiUrl = `${base}/api/metrics?from=2020-01-01&to=2020-01-02&granularity=day`;
@@ -60,8 +70,8 @@ try {
 
   console.log(
     checkApi
-      ? "smoke: ok (GET /, GET /api/metrics)"
-      : "smoke: ok (GET /; set SMOKE_API=1 to assert /api/metrics too)"
+      ? "smoke: ok (GET / + question anchors, GET /methodology, GET /api/metrics)"
+      : "smoke: ok (GET / + question anchors, GET /methodology; set SMOKE_API=1 to assert /api/metrics too)"
   );
   exitCode = 0;
 } catch (e) {
