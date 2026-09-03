@@ -170,8 +170,8 @@ export function Q4Base({
         <SupportFigure
           label="Retained addresses"
           value={fmtPct1(r?.current.retainedSharePct)}
-          previous={fmtPct1(r?.previous.retainedSharePct)}
-          delta={fmtPts(r?.retainedShareDeltaPts ?? null)}
+          previous={r ? fmtPct1(r.previous.retainedSharePct) : undefined}
+          delta={r ? fmtPts(r.retainedShareDeltaPts) : undefined}
           deltaValue={r?.retainedShareDeltaPts ?? null}
           definition={DEFINITIONS.q4_retained_addresses}
           note={r ? `${fmtInt(r.current.retained)} of ${fmtInt(r.current.active)} active` : undefined}
@@ -179,7 +179,7 @@ export function Q4Base({
         <SupportFigure
           label="New addresses"
           value={fmtPct1(r?.current.newSharePct)}
-          previous={fmtPct1(r?.previous.newSharePct)}
+          previous={r ? fmtPct1(r.previous.newSharePct) : undefined}
           definition={DEFINITIONS.q4_new_addresses}
           note={r ? `${fmtInt(r.current.newAddresses)} first seen` : undefined}
         />
