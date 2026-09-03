@@ -47,6 +47,19 @@ USD figures are **day-accurate**: each UTC day's native amount × that day's Coi
 - **Read path**: `/api/metrics` loads the range's rows once (`src/lib/loadDailyPriceTable.ts`), fetches spot only for ids missing a day (normally today), and each USD section reports `usdPricingMeta` — `basis` of `daily-close` / `spot-fallback` / `mixed` / `none` plus `pricedDays` / `spotFallbackDays` / `unpricedDays` counts. Before the first backfill the table is absent and everything is spot; the dashboard says so.
 - Not touched by `reindex:reset`; the rollup tables are never read or written by price code.
 
+## Questions payload (`questions` in `/api/metrics`)
+
+Read-time derived indicators for the four headline questions (design doc: "Four Questions", P1). Each block has a headline with a **prior-window** comparison, a **day-grain** series over a context window (`contextFromDay` = the earlier of the prior window start and a 30-day anomaly lookback), and **anomaly flags** (trailing-30-day z-score, |z| ≥ 2.5, `src/lib/anomalies.ts`).
+
+| Block | Headline | Support / detail | Source |
+|-------|----------|------------------|--------|
+| `q1` busier | successful txs | distinct accounts/day avg, failure rate, paid fees (BLD) | `daily_metrics`, `participant_day` |
+| `q2` organic | interactive ÷ all wallet actions (%) | counts by automation class, per-day ratio | `offer_category` via `categoryAutomation()` (`src/lib/organicActivity.ts`) |
+| `q3` value-flow | net IBC flow in USD (in − out), day-priced | per-asset in/out/net (native + USD), chart-grain per-bucket series for top assets | `ibc_transfer_amount_in/out` + `denom_price_day` (`src/lib/netIbcFlow.ts`) |
+| `q4` base | effective number of fee payers = 1 ÷ HHI(fee USD) | gross-basis effective-N, retention (share of this window's addresses active in the prior window; share new to indexed history), top-10 fee share, active 2+ days | `address_fee_day`, `participant_day` (`src/lib/retention.ts`, `queryRetentionCounts`) |
+
+Everything here is computed from existing rollups — no indexer change and no reindex. Day-grain by design, so at hour granularity the daily series and prior window still refer to UTC calendar days.
+
 ## Denoms, symbols, and IBC hashes
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.

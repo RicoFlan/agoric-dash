@@ -92,22 +92,38 @@ export type ParticipationConcentrationPackage = {
     /** Basis of the USD figures above (day rows vs spot fallback). */
     usdPricingMeta: UsdPricingMeta;
   };
+  /** Unformatted concentration numbers (0–1 shares / HHI) for downstream derivations such as effective-N. */
+  concentrationRaw: {
+    topNShareGrossUsd: number | null;
+    topNShareFeesUsd: number | null;
+    grossUsdHhi: number | null;
+    feesUsdHhi: number | null;
+  };
   /** Distinct sending addresses per denom (range) — wash/overcounting guardrail for gross volume. */
   distinctSendersByDenom: Record<string, number>;
   /** Daily concentration trend (HHI + top-10 share) for gross-movement USD and paid-fee USD. */
   concentrationOverTime: ConcentrationTimePoint[];
 };
 
+/** Keep only the days in [fromDay, toDay] of a wider day-keyed map. */
+function sliceDays<T>(m: Map<string, T>, fromDay: string, toDay: string): Map<string, T> {
+  const out = new Map<string, T>();
+  for (const [day, v] of m) if (day >= fromDay && day <= toDay) out.set(day, v);
+  return out;
+}
+
 export async function enrichParticipationAndConcentration(
   fromDay: string,
   toDay: string,
   display: EnrichedDisplay,
-  table: DailyPriceTable
+  table: DailyPriceTable,
+  /** Fee map already fetched for a wider window (the questions context) — sliced here instead of re-queried. */
+  prefetched?: { feeByDay: ByDayAddrDenom }
 ): Promise<ParticipationConcentrationPackage> {
   const [participation, volumeByDay, feeByDay] = await Promise.all([
     queryParticipationRange(fromDay, toDay),
     queryAddressVolumeTotalsByDay(fromDay, toDay),
-    queryAddressFeeTotalsByDay(fromDay, toDay),
+    prefetched ? Promise.resolve(sliceDays(prefetched.feeByDay, fromDay, toDay)) : queryAddressFeeTotalsByDay(fromDay, toDay),
   ]);
 
   const denomToCoinId = denomToCoinIdMap(new Set([...denomsIn(volumeByDay), ...denomsIn(feeByDay)]));
@@ -137,6 +153,12 @@ export async function enrichParticipationAndConcentration(
       grossUsdHhi: summary.grossUsdHhi === null ? null : formatHhi(summary.grossUsdHhi),
       feesUsdHhi: summary.feesUsdHhi === null ? null : formatHhi(summary.feesUsdHhi),
       usdPricingMeta: pricer.meta(),
+    },
+    concentrationRaw: {
+      topNShareGrossUsd: summary.topNShareGrossUsd,
+      topNShareFeesUsd: summary.topNShareFeesUsd,
+      grossUsdHhi: summary.grossUsdHhi,
+      feesUsdHhi: summary.feesUsdHhi,
     },
     distinctSendersByDenom: distinctSendersByDenom(collapseDays(volumeByDay)),
     concentrationOverTime,

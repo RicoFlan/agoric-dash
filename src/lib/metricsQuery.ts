@@ -12,6 +12,7 @@ import { blockGasUtilizationPct, gasEfficiencyPct } from "@/lib/gasEfficiency";
 import { buildOffersSection } from "@/lib/offersMetrics";
 import { queryOfferParticipantsRange } from "@/lib/offersQuery";
 import type { DayDenomAmounts } from "@/lib/denomPrices";
+import { DEFAULT_ANOMALY_OPTIONS } from "@/lib/anomalies";
 
 export type Granularity = "hour" | "day" | "week";
 
@@ -208,6 +209,15 @@ export async function buildMetricsPayload(
   const prevFromDay = new Date(prevFromMs).toISOString().slice(0, 10);
   const prevToDay = new Date(prevToMs).toISOString().slice(0, 10);
 
+  /**
+   * Day-grain context for the `questions` section: the prior window plus the anomaly lookback,
+   * whichever starts earlier. Fetched once as daily rows regardless of chart granularity.
+   */
+  const lookbackFromMs = fromMs - DEFAULT_ANOMALY_OPTIONS.windowDays * msPerDay;
+  const contextFromDay = new Date(Math.min(prevFromMs, lookbackFromMs)).toISOString().slice(0, 10);
+  const contextToDayExclusive = new Date(fromMs - msPerDay).toISOString().slice(0, 10);
+  const contextRowsPromise = fetchMetricsRange(contextFromDay, contextToDayExclusive);
+
   let curBuckets: Map<string, Map<string, Map<string, bigint>>>;
   let prevBuckets: Map<string, Map<string, Map<string, bigint>>>;
   let comparisonWindow: { from: string; to: string };
@@ -266,6 +276,11 @@ export async function buildMetricsPayload(
   /** Table + USD enrichment: always daily rollups for the calendar range (stable vs chart granularity). */
   const transferTableBuckets = aggregateFlatRows(dailyRowsToFlat(currentDailyRows, "day"));
   ensureDenseUtcDayBuckets(transferTableBuckets, fromDay, toDay);
+
+  const dailyContext = aggregateFlatRows(dailyRowsToFlat([...(await contextRowsPromise), ...currentDailyRows], "day"));
+  ensureDenseUtcDayBuckets(dailyContext, contextFromDay, toDay);
+  /** Inputs for `buildQuestions` (route-side); day-grain, stripped from the response like pricingInputs. */
+  const questionsInputs = { dailyContext, contextFromDay, prevFromDay, prevToDay, curBuckets };
 
   /**
    * Day-grain native amounts per denom for day-accurate USD pricing (`src/lib/denomPrices.ts`).
@@ -505,6 +520,7 @@ export async function buildMetricsPayload(
     offers: { ...offersSection, participants: offerParticipants },
     indexer: await getIndexerStatus(),
     pricingInputs,
+    questionsInputs,
     ...(usedDailyFallbackForHourView ? { usedDailyFallbackForHourView: true as const } : {}),
   };
 }
