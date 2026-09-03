@@ -140,12 +140,17 @@ async function fetchBlockPair(height: bigint): Promise<{ block: RpcBlockResponse
 }
 
 async function deleteExistingOutcomeCategoryRows() {
-  for (const s of REBUILT_SERIES) {
-    await db.delete(dailyMetrics).where(eq(dailyMetrics.series, s));
-    await db.delete(hourlyMetrics).where(eq(hourlyMetrics.series, s));
-  }
-  await db.delete(offerCategoryParticipantDay);
-  console.error(`${TAG} FULL mode: deleted ${REBUILT_SERIES.join(", ")} rows (daily + hourly) and all offer_category_participant_day rows`);
+  // Deletion and checkpoint reset commit together: a crash after this point leaves no stale
+  // checkpoint for a later resume to skip past deleted history.
+  await db.transaction(async (tx) => {
+    for (const s of REBUILT_SERIES) {
+      await tx.delete(dailyMetrics).where(eq(dailyMetrics.series, s));
+      await tx.delete(hourlyMetrics).where(eq(hourlyMetrics.series, s));
+    }
+    await tx.delete(offerCategoryParticipantDay);
+    await tx.delete(backfillCheckpoint).where(eq(backfillCheckpoint.job, JOB));
+  });
+  console.error(`${TAG} FULL mode: deleted ${REBUILT_SERIES.join(", ")} rows (daily + hourly), all offer_category_participant_day rows, and reset the ${JOB} checkpoint`);
 }
 
 async function persist(daily: Map<string, bigint>, hourly: Map<string, bigint>, triples: Set<string>, lastHeight: bigint) {

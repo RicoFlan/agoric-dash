@@ -188,11 +188,16 @@ async function main() {
   if (DO_IBC) {
     if (SKIP_DELETE) console.error(`${TAG} BACKFILL_SKIP_DELETE set — upserting orch-IBC series on top of existing rows.`);
     else {
-      for (const s of [SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH, SERIES.IBC_TRANSFER_OUT_COUNT_ORCH]) {
-        await db.delete(dailyMetrics).where(eq(dailyMetrics.series, s));
-        await db.delete(hourlyMetrics).where(eq(hourlyMetrics.series, s));
-      }
-      console.error(`${TAG} deleted existing orch-IBC series rows`);
+      // Series deletion and checkpoint reset commit together: a crash after this point leaves no
+      // stale checkpoint for a later resume to skip past deleted history.
+      await db.transaction(async (tx) => {
+        for (const s of [SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH, SERIES.IBC_TRANSFER_OUT_COUNT_ORCH]) {
+          await tx.delete(dailyMetrics).where(eq(dailyMetrics.series, s));
+          await tx.delete(hourlyMetrics).where(eq(hourlyMetrics.series, s));
+        }
+        await tx.delete(backfillCheckpoint).where(eq(backfillCheckpoint.job, JOB));
+      });
+      console.error(`${TAG} deleted existing orch-IBC series rows and reset the ${JOB} checkpoint`);
     }
   }
 
@@ -237,8 +242,10 @@ async function main() {
       ymaxCells.sort((a, b) => (a.height < b.height ? -1 : a.height > b.height ? 1 : 0));
       for (const c of ymaxCells) applyYmaxCells(c.cells, c.height, c.timeIso, ymax);
     }
-    if (DO_IBC) await persistMetrics(daily, hourly, batchEnd);
+    // YMax first (idempotent, latest-wins), then the additive series + checkpoint: the checkpoint
+    // only advances once every write for this batch has succeeded.
     if (DO_YMAX) await persistYmax(db, ymax);
+    if (DO_IBC) await persistMetrics(daily, hourly, batchEnd);
     done += batchEnd - h + BigInt(1);
     const pct = Number((done * BigInt(1000)) / span) / 10;
     console.error(`${TAG} ${done}/${span} blocks (${pct}%) through ${batchEnd} — ${sends} orch sends, ymax rows ${ymax.size}; ${Math.round((Date.now() - t0) / 1000)}s`);
