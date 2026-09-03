@@ -22,7 +22,7 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "../src/db/schema";
-import { ensureYmaxTables } from "../src/db/ensureAdditiveTables";
+import { ensureBackfillCheckpointTable, ensureYmaxTables } from "../src/db/ensureAdditiveTables";
 import { endBlockIbcSends } from "../src/lib/endBlockIbc";
 import { rpcCallWithFallback, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
 import { SERIES } from "../src/lib/semantics";
@@ -51,7 +51,8 @@ if (!DATABASE_URL) {
 }
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
-const { dailyMetrics, hourlyMetrics, indexerState } = schema;
+const { dailyMetrics, hourlyMetrics, indexerState, backfillCheckpoint } = schema;
+const JOB = "endblock_ibc_orch";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
@@ -103,7 +104,8 @@ async function fetchResults(height: bigint): Promise<{ results: RpcBlockResultsR
         rpcCallWithFallback<RpcBlockResultsResponse>(RPC_URLS, "block_results", { height: hStr }),
         rpcCallWithFallback<{ block: { header: { time: string } } }>(RPC_URLS, "block", { height: hStr }),
       ]);
-      if (!results || typeof results !== "object" || !block?.block?.header?.time) throw new Error(`empty response at ${hStr} (pruned node?)`);
+      if (!results || typeof results !== "object" || Array.isArray(results) || !block?.block?.header?.time) throw new Error(`empty response at ${hStr} (pruned node?)`);
+      if (String((results as { height?: unknown }).height ?? "") !== hStr) throw new Error(`block_results height mismatch at ${hStr}`);
       return { results, timeIso: block.block.header.time };
     } catch (e) {
       lastErr = e;
@@ -124,7 +126,7 @@ function hourIso(iso: string): string {
   return d.toISOString();
 }
 
-async function persistMetrics(daily: Map<string, bigint>, hourly: Map<string, bigint>) {
+async function persistMetrics(daily: Map<string, bigint>, hourly: Map<string, bigint>, lastHeight: bigint) {
   await db.transaction(async (tx) => {
     for (const [key, delta] of daily) {
       if (delta === BigInt(0)) continue;
@@ -142,11 +144,17 @@ async function persistMetrics(daily: Map<string, bigint>, hourly: Map<string, bi
         .values({ hour: new Date(iso), series, dimension, value: delta.toString() })
         .onConflictDoUpdate({ target: [hourlyMetrics.hour, hourlyMetrics.series, hourlyMetrics.dimension], set: { value: sql`${hourlyMetrics.value} + ${sql.raw("excluded.value")}` } });
     }
+    // Checkpoint commits with the batch (see backfill_checkpoint): a resume must start above it.
+    await tx
+      .insert(backfillCheckpoint)
+      .values({ job: JOB, lastHeight, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: backfillCheckpoint.job, set: { lastHeight, updatedAt: new Date() } });
   });
 }
 
 async function main() {
   if (DO_YMAX) await ensureYmaxTables(db);
+  await ensureBackfillCheckpointTable(db);
   const tip = await latestHeight();
   const cursor = await getCursor();
   if (cursor === BigInt(0)) {
@@ -156,6 +164,19 @@ async function main() {
   if (DO_IBC && SKIP_DELETE && !process.env.BACKFILL_FROM_HEIGHT) {
     console.error(`${TAG} BACKFILL_SKIP_DELETE=1 (resume mode) requires BACKFILL_FROM_HEIGHT — replaying from the start date would double-count additive series.`);
     process.exit(1);
+  }
+  if (DO_IBC && !SKIP_DELETE && (process.env.BACKFILL_FROM_HEIGHT || process.env.BACKFILL_TO_HEIGHT)) {
+    console.error(`${TAG} destructive mode deletes ALL orch-IBC series rows, so it must replay the whole window: unset BACKFILL_FROM_HEIGHT / BACKFILL_TO_HEIGHT, or set BACKFILL_SKIP_DELETE=1 to resume a bounded range.`);
+    process.exit(1);
+  }
+  if (DO_IBC && SKIP_DELETE) {
+    const cp = await db.select().from(backfillCheckpoint).where(eq(backfillCheckpoint.job, JOB)).limit(1);
+    const last = cp[0]?.lastHeight ?? null;
+    const fromReq = BigInt(process.env.BACKFILL_FROM_HEIGHT!);
+    if (last !== null && fromReq <= last) {
+      console.error(`${TAG} resume start ${fromReq} is not above the committed checkpoint ${last} — use BACKFILL_FROM_HEIGHT=${(last + BigInt(1)).toString()}.`);
+      process.exit(1);
+    }
   }
   const fromH = process.env.BACKFILL_FROM_HEIGHT ? BigInt(process.env.BACKFILL_FROM_HEIGHT) : await findStartHeight(START_DATE_MS, tip);
   const toH = process.env.BACKFILL_TO_HEIGHT ? BigInt(process.env.BACKFILL_TO_HEIGHT) : cursor;
@@ -216,7 +237,7 @@ async function main() {
       ymaxCells.sort((a, b) => (a.height < b.height ? -1 : a.height > b.height ? 1 : 0));
       for (const c of ymaxCells) applyYmaxCells(c.cells, c.height, c.timeIso, ymax);
     }
-    if (DO_IBC) await persistMetrics(daily, hourly);
+    if (DO_IBC) await persistMetrics(daily, hourly, batchEnd);
     if (DO_YMAX) await persistYmax(db, ymax);
     done += batchEnd - h + BigInt(1);
     const pct = Number((done * BigInt(1000)) / span) / 10;

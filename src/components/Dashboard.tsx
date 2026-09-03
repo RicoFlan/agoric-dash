@@ -317,7 +317,7 @@ export function Dashboard() {
             <button
               type="button"
               className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "all" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
-              title={`UTC: everything since indexed history began (${INDEXED_HISTORY_FROM_DAY}) through the last complete day, weekly buckets — for stock-style figures and the H1 inflows.`}
+              title={`UTC: everything since indexed history began (${INDEXED_HISTORY_FROM_DAY}) through the last complete day, weekly buckets — for stock-style figures and historical inflows.`}
               onClick={() => {
                 setCustomRangeOpen(false);
                 setFrom(INDEXED_HISTORY_FROM_DAY);

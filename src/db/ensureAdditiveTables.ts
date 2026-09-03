@@ -67,3 +67,18 @@ export const YMAX_TABLES_CREATE_SQL = [
 export async function ensureYmaxTables(db: Db): Promise<void> {
   for (const stmt of YMAX_TABLES_CREATE_SQL) await db.execute(sql.raw(stmt));
 }
+
+/**
+ * Checkpoints for additive backfills: the last height whose batch was committed, per job. A resume
+ * (BACKFILL_SKIP_DELETE=1) must start strictly above it, which makes re-running a partially
+ * completed range unable to double-count additive series.
+ */
+export const BACKFILL_CHECKPOINT_CREATE_SQL = `CREATE TABLE IF NOT EXISTS backfill_checkpoint (
+  job varchar(64) PRIMARY KEY,
+  last_height bigint NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+)`;
+
+export async function ensureBackfillCheckpointTable(db: Db): Promise<void> {
+  await db.execute(sql.raw(BACKFILL_CHECKPOINT_CREATE_SQL));
+}

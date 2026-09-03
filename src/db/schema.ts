@@ -193,3 +193,10 @@ export const ymaxFlow = pgTable(
   },
   (t) => [primaryKey({ columns: [t.contract, t.portfolio, t.flowId] })]
 );
+
+/** Last committed height per additive backfill job (see ensureAdditiveTables.ts); resume must start above it. */
+export const backfillCheckpoint = pgTable("backfill_checkpoint", {
+  job: varchar("job", { length: 64 }).primaryKey(),
+  lastHeight: bigint("last_height", { mode: "bigint" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
