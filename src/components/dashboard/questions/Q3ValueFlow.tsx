@@ -219,7 +219,7 @@ export function Q3ValueFlow({
       <div className={CARD_CLASS}>
         <h3 className={IN_CARD_TITLE_CLASS}>Net flow by asset</h3>
         <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
-          Range totals per asset. Priced assets first by absolute net USD; unpriced assets last (no CoinGecko mapping).
+          Range totals for the top 10 assets by absolute net USD (priced first; unpriced assets last, no CoinGecko mapping). Assets beyond the top 10 are omitted here, not zero.
         </p>
         {byAsset.length === 0 ? (
           <EmptyNote>No IBC transfers in range.</EmptyNote>

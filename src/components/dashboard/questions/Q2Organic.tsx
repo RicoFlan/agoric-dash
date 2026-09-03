@@ -225,7 +225,7 @@ export function Q2Organic({
           label="Satisfaction rate (all offers)"
           value={pct1(offers?.outcomes.satisfactionRatePct)}
           definition={DEFINITIONS.q2_satisfaction_rate}
-          note={offers ? `${offers.outcomes.settled.current} settled in range` : undefined}
+          note={offers ? `${fmtInt(Number(offers.outcomes.settled.current))} settled in range` : undefined}
         />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

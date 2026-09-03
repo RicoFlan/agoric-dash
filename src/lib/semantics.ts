@@ -238,7 +238,7 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Trend overlays",
     body:
-      'On Volume and IBC charts, the distinct-accounts chart, and Value Flow Map mini charts, dashed "(trend)" lines are ordinary least-squares fits vs bucket index (0…n−1), not calendar-weighted regression.',
+      'On Volume and IBC charts, the distinct-accounts chart,, dashed "(trend)" lines are ordinary least-squares fits vs bucket index (0…n−1), not calendar-weighted regression.',
   },
   {
     title: "IBC direction and amounts",
@@ -253,7 +253,7 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
   {
     title: "Period-over-period",
     body:
-      "KPI cards compare the current range to an equal-length prior window ending immediately before From (UTC, per granularity). Value Flow Map momentum tiles use first vs last bucket only, not that prior window.",
+      "KPI cards compare the current range to an equal-length prior window ending immediately before From (UTC, per granularity).",
   },
   {
     title: "SwingSet & Zoe offers",
