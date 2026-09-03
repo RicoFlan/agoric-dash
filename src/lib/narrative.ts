@@ -86,7 +86,8 @@ export function buildWhatChanged(
           : `Organic share ${pts > 0 ? "rose" : "fell"} ${Math.abs(pts).toFixed(1)} pts to ${h.current.toFixed(1)}%`;
       const actions =
         total.verb === "held" ? `total wallet actions were flat at ${fmtInt(c.current.total)}` : `total wallet actions ${total.verb} ${total.mag} to ${fmtInt(c.current.total)}`;
-      out.push({ id: "organic", text: `${share} while ${actions}${anomalyClause(q.q2.anomalies)}.`, maxZ: topZ(q.q2.anomalies), absDeltaPct: Math.abs(pts  ?? 0) });
+      const relPct = h.previous !== null && h.previous > 0 ? ((h.current - h.previous) / h.previous) * 100 : null;
+      out.push({ id: "organic", text: `${share} while ${actions}${anomalyClause(q.q2.anomalies)}.`, maxZ: topZ(q.q2.anomalies), absDeltaPct: Math.abs(relPct ?? 0) });
     }
   }
 

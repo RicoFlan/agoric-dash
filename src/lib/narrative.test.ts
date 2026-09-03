@@ -77,6 +77,21 @@ describe("buildWhatChanged", () => {
     expect(s.find((x) => x.id === "value-flow")!.text).toBe("Net inflow narrowed to +$500.0k (+$900.0k in the prior 30 days).");
   });
 
+  it("ranks Q2 by the relative change of the ratio, not by percentage points", () => {
+    // 2% → 4% is +2 pts but +100% relative; it must outrank a 12%-ish move elsewhere when no anomalies are flagged.
+    const s = buildWhatChanged(
+      fixture({
+        q1: { headline: { current: 112, previous: 100, pctChange: 12 }, anomalies: [] },
+        q2: { headline: { current: 4, previous: 2, deltaPts: 2 } },
+        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null }, byAsset: [] },
+        q4: { headline: { current: 10, previous: 10, pctChange: 0 } },
+      }),
+      { max: 4 }
+    );
+    expect(s.map((x) => x.id)).toEqual(["organic", "busier", "base"]);
+    expect(s[0]!.absDeltaPct).toBe(100);
+  });
+
   it("omits questions with no data instead of writing about nothing", () => {
     const s = buildWhatChanged(
       fixture({

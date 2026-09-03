@@ -89,7 +89,7 @@ export function Q3ValueFlow({
   const creditsRows = useMemo(() => {
     const bc = data.bankCreditsVolumeByDenom ?? {};
     return Object.keys(bc)
-      .filter((d) => BigInt(bc[d]!) > BigInt(0))
+      .filter((d) => /^\d+$/.test(bc[d]!) && BigInt(bc[d]!) > BigInt(0))
       .map((denom) => {
         const dec = disp?.metas[denom]?.decimals;
         const usd = data.bankCreditsVolumeUsdByDenom?.[denom] ?? null;
