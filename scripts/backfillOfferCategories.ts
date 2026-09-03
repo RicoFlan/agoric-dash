@@ -115,6 +115,11 @@ async function fetchBlockPair(height: bigint): Promise<{ block: RpcBlockResponse
         rpcCallWithFallback<RpcBlockResponse>(RPC_URLS, "block", { height: hStr }),
         rpcCallWithFallback<RpcBlockResultsResponse>(RPC_URLS, "block_results", { height: hStr }),
       ]);
+      // A pruned fallback node answers old heights with `block: null` / empty results rather than an
+      // error; treat that as a failed attempt so the retry goes back to the archive primary.
+      if (!block?.block?.header?.time || !results || typeof results !== "object") {
+        throw new Error(`empty block/results at height ${hStr} (pruned node?)`);
+      }
       return { block, results };
     } catch (e) {
       lastErr = e;
