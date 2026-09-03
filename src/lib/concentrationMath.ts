@@ -25,3 +25,12 @@ export function topNShare(valuesSortedDesc: number[], n: number): number | null 
   }
   return top / total;
 }
+
+/**
+ * Effective number of equally-weighted participants implied by an HHI: 1 / H. An HHI of 0.071 reads
+ * as "activity equivalent to ~14 equally-active addresses" — same information, human units.
+ */
+export function effectiveNumberFromHhi(hhi: number | null): number | null {
+  if (hhi === null || !Number.isFinite(hhi) || hhi <= 0) return null;
+  return 1 / hhi;
+}
