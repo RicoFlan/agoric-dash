@@ -8,11 +8,14 @@
  * helpers the indexer uses — and writes ONLY these two outputs. No other series or table is read or
  * modified; never runs reindex:reset.
  *
- * Idempotency:
- *   - participant rows are inserted ON CONFLICT DO NOTHING (natural PK) — always safe to re-run.
- *   - `offer_outcome_category` deltas are additive on upsert, so by default the script first DELETES
- *     every existing row of that one series (both tables) and rebuilds it. To resume a partial run
- *     without double-counting, set BACKFILL_SKIP_DELETE=1 together with BACKFILL_FROM_HEIGHT.
+ * Idempotency / modes:
+ *   - FULL mode (default, no BACKFILL_SKIP_DELETE): rebuilds history after a category-rule change —
+ *     deletes every row of `offer_outcome_category` AND `offer_category` (both metric tables) and
+ *     every row of `offer_category_participant_day`, then replays from the start height to the
+ *     cursor. Run it with the default BACKFILL_TO_HEIGHT (= cursor at start): rows the live indexer
+ *     writes for later heights during the run are appended, never deleted.
+ *   - RESUME mode (BACKFILL_SKIP_DELETE=1 + BACKFILL_FROM_HEIGHT): upserts only; participant rows are
+ *     ON CONFLICT DO NOTHING and metric deltas are additive, so never re-replay a persisted range.
  *
  * Deploy order: indexer with P2 first (it creates the table and starts writing from the cursor),
  * then run this once with BACKFILL_TO_HEIGHT = the cursor at deploy, BACKFILL_SKIP_DELETE=1 (so the
@@ -58,6 +61,7 @@ if (!Number.isFinite(START_DATE_MS)) {
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
 const { dailyMetrics, hourlyMetrics, indexerState, offerCategoryParticipantDay } = schema;
+const REBUILT_SERIES = [SERIES.OFFER_OUTCOME_CATEGORY, SERIES.OFFER_CATEGORY] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, Math.max(0, ms)));
@@ -127,9 +131,12 @@ async function fetchBlockPair(height: bigint): Promise<{ block: RpcBlockResponse
 }
 
 async function deleteExistingOutcomeCategoryRows() {
-  await db.delete(dailyMetrics).where(eq(dailyMetrics.series, SERIES.OFFER_OUTCOME_CATEGORY));
-  await db.delete(hourlyMetrics).where(eq(hourlyMetrics.series, SERIES.OFFER_OUTCOME_CATEGORY));
-  console.error(`${TAG} deleted existing ${SERIES.OFFER_OUTCOME_CATEGORY} rows from daily_metrics and hourly_metrics`);
+  for (const s of REBUILT_SERIES) {
+    await db.delete(dailyMetrics).where(eq(dailyMetrics.series, s));
+    await db.delete(hourlyMetrics).where(eq(hourlyMetrics.series, s));
+  }
+  await db.delete(offerCategoryParticipantDay);
+  console.error(`${TAG} FULL mode: deleted ${REBUILT_SERIES.join(", ")} rows (daily + hourly) and all offer_category_participant_day rows`);
 }
 
 async function persist(daily: Map<string, bigint>, hourly: Map<string, bigint>, triples: Set<string>) {
@@ -137,7 +144,8 @@ async function persist(daily: Map<string, bigint>, hourly: Map<string, bigint>, 
     for (const [key, delta] of daily) {
       if (delta === BigInt(0)) continue;
       const [day, series, dimension] = key.split(ROLLUP_KEY_DELIM);
-      if (series !== SERIES.OFFER_OUTCOME_CATEGORY) continue;
+      if (!(REBUILT_SERIES as readonly string[]).includes(series!)) continue;
+      if (BACKFILL_SKIP_DELETE && series === SERIES.OFFER_CATEGORY) continue; // resume mode never touches the intent series
       await tx
         .insert(dailyMetrics)
         .values({ day, series, dimension, value: delta.toString() })
@@ -149,7 +157,8 @@ async function persist(daily: Map<string, bigint>, hourly: Map<string, bigint>, 
     for (const [key, delta] of hourly) {
       if (delta === BigInt(0)) continue;
       const [iso, series, dimension] = key.split(ROLLUP_KEY_DELIM);
-      if (series !== SERIES.OFFER_OUTCOME_CATEGORY) continue;
+      if (!(REBUILT_SERIES as readonly string[]).includes(series!)) continue;
+      if (BACKFILL_SKIP_DELETE && series === SERIES.OFFER_CATEGORY) continue;
       await tx
         .insert(hourlyMetrics)
         .values({ hour: new Date(iso), series, dimension, value: delta.toString() })

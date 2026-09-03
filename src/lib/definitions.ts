@@ -31,6 +31,12 @@ export const DEFINITIONS = {
   q3_ibc_in_usd: "IBC amounts received on agoric-3 (deduped recv_packet basis), day-priced and summed across assets.",
   q3_value_received_usd:
     "Bank credits to non-module receivers in successful txs, day-priced; broader than IBC (includes bank sends and contract/vbank flows). See Detail.",
+  q3_orch_outflow:
+    "Of the outflow, IBC sends executed by orchestration in EndBlock (a contract moving funds from its own Agoric account) — invisible to transaction-scoped counts. Found via YMax.",
+  q3_deployed_principal:
+    "Σ over YMax portfolios and positions of (totalIn − totalOut) as published to vstorage — principal currently deployed at yield venues on other chains, priced at the range end. A stock at the newest published height, not a range flow; principal, not marked to yield.",
+  q3_active_portfolios: "YMax portfolios whose positions sum to positive principal, out of all portfolios ever created.",
+  q3_net_deposits: "YMax deposit flows minus withdraw flows first seen in the range (from portfolio status updates), priced at the range end day.",
 
   // Q4 — base
   q4_effective_fee_payers:

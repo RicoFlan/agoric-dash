@@ -66,6 +66,22 @@ function build() {
       previous: { distinctInteractiveWallets: 8, distinctAutomatedWallets: 3, byCategory: { vaults: 8, oracle: 3 }, available: true },
     },
     feeByDay: feeByDay(),
+    ymax: {
+      available: true,
+      portfoliosWithPositions: 3,
+      portfoliosActive: 2,
+      portfoliosTotal: 5,
+      byVenue: [
+        { contract: "ymax1", protocol: "ERC4626", chain: "Ethereum", denom: "ubld", positions: 4, portfolios: 2, principal: "12000000", latestHeight: "100" },
+        { contract: "ymax0", protocol: "Aave", chain: "Avalanche", denom: "ibc/UNMAPPED", positions: 1, portfolios: 1, principal: "5", latestHeight: "90" },
+      ],
+      flowsInRange: [
+        { flowType: "deposit", denom: "ubld", count: 3, amount: "3000000" },
+        { flowType: "withdraw", denom: "ubld", count: 1, amount: "1000000" },
+        { flowType: "rebalance", denom: null, count: 2, amount: "0" },
+      ],
+      latestHeight: "100",
+    },
     grossUsdHhi: 0.25,
     top10FeeSharePct: 74.5,
     multiDayInRange: 7,
@@ -113,6 +129,18 @@ describe("questions payload (contract)", () => {
     expect(q3.headline).toMatchObject({ netUsd: 4, previousNetUsd: 2, deltaUsd: 2, inUsd: 4, outUsd: null });
     expect(q3.byAsset[0]).toMatchObject({ denom: "ubld", net: "4000000", netUsd: 4 });
     expect(q3.usdPricingMeta.basis).toBe("daily-close");
+  });
+
+  it("Q3: orchestrated value is a stock priced at the range end, with flows scoped to the range", () => {
+    const { q3 } = build();
+    const o = q3.orchestrated;
+    expect(o.available).toBe(true);
+    expect(o.principalUsd).toBe(12); // 12 BLD @ $1 on D[3]; the unmapped venue contributes nothing
+    expect(o.byVenue[0]).toMatchObject({ protocol: "ERC4626", chain: "Ethereum", principalUsd: 12 });
+    expect(o.byVenue[1]).toMatchObject({ denom: "ibc/UNMAPPED", principalUsd: null });
+    expect(o.netDepositsUsd).toBe(2); // 3 − 1
+    expect(o.portfoliosActive).toBe(2);
+    expect(o.latestHeight).toBe("100");
   });
 
   it("Q4: effective number of fee payers, gross effective-N, retention, support", () => {

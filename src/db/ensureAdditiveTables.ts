@@ -20,3 +20,50 @@ export const OFFER_CATEGORY_PARTICIPANT_DAY_CREATE_SQL = `CREATE TABLE IF NOT EX
 export async function ensureOfferCategoryParticipantDayTable(db: Db): Promise<void> {
   await db.execute(sql.raw(OFFER_CATEGORY_PARTICIPANT_DAY_CREATE_SQL));
 }
+
+export const YMAX_TABLES_CREATE_SQL = [
+  `CREATE TABLE IF NOT EXISTS ymax_portfolio (
+  contract varchar(16) NOT NULL,
+  portfolio varchar(32) NOT NULL,
+  deposit_address varchar(128),
+  agoric_account varchar(128),
+  accounts_json varchar(4096) NOT NULL DEFAULT '{}',
+  policy_version bigint,
+  flow_count bigint,
+  updated_height bigint NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (contract, portfolio)
+)`,
+  `CREATE TABLE IF NOT EXISTS ymax_position (
+  contract varchar(16) NOT NULL,
+  portfolio varchar(32) NOT NULL,
+  position_key varchar(64) NOT NULL,
+  protocol varchar(64),
+  chain varchar(64),
+  account_id varchar(160),
+  denom varchar(512),
+  total_in numeric(78, 0) NOT NULL,
+  total_out numeric(78, 0) NOT NULL,
+  net_transfers numeric(78, 0) NOT NULL,
+  updated_height bigint NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (contract, portfolio, position_key)
+)`,
+  `CREATE TABLE IF NOT EXISTS ymax_flow (
+  contract varchar(16) NOT NULL,
+  portfolio varchar(32) NOT NULL,
+  flow_id varchar(32) NOT NULL,
+  flow_type varchar(32) NOT NULL,
+  denom varchar(512),
+  amount numeric(78, 0),
+  day date NOT NULL,
+  first_height bigint NOT NULL,
+  last_state varchar(32),
+  last_height bigint NOT NULL,
+  PRIMARY KEY (contract, portfolio, flow_id)
+)`,
+];
+
+export async function ensureYmaxTables(db: Db): Promise<void> {
+  for (const stmt of YMAX_TABLES_CREATE_SQL) await db.execute(sql.raw(stmt));
+}

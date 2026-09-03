@@ -3,7 +3,8 @@
  * indexer computes the same things inline in its main tx loop, from the same helpers):
  *
  *  - `offer_category_participant_day` triples (day × owner × category) from MsgWallet(Spend)Action
- *    in SUCCESSFUL txs — `decodeWalletAction` (walletActionDecode.ts).
+ *    in SUCCESSFUL txs — `decodeWalletAction` (walletActionDecode.ts) — plus the `offer_category`
+ *    intent series (+1 per action) so a full re-run can rebuild history after a category-rule change.
  *  - `offer_outcome_category` daily/hourly deltas (`<category>|<outcome>`) from terminal offerStatus
  *    updates in `finalize_block_events` — `summarizeOfferStatus` + the echoed invitationSpec.
  *
@@ -86,7 +87,10 @@ export function accumulateOfferCategoriesFromBlock(
       const enc = msg as EncodeObject;
       if (!WALLET_ACTION_MSG_TYPES.has(enc.typeUrl)) continue;
       const w = decodeWalletAction(enc);
-      if (w?.owner) categoryTriples.add([day, w.owner, w.category].join(ROLLUP_KEY_DELIM));
+      if (!w) continue;
+      bump(daily, [day, SERIES.OFFER_CATEGORY, w.category].join(ROLLUP_KEY_DELIM), BigInt(1));
+      bump(hourly, [hourIso, SERIES.OFFER_CATEGORY, w.category].join(ROLLUP_KEY_DELIM), BigInt(1));
+      if (w.owner) categoryTriples.add([day, w.owner, w.category].join(ROLLUP_KEY_DELIM));
     }
   }
 }

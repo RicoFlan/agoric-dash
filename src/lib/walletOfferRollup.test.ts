@@ -55,12 +55,12 @@ describe("walletActionRollupDeltas", () => {
     expect(dims(deltas, SERIES.OFFER_MAKER)).toEqual(["SettleTransaction"]);
   });
 
-  it("emits invoke_target + orchestration category for a wallet invocation", () => {
+  it("emits invoke_target + category for a wallet invocation (evmWalletHandler is a YMax user → ymax)", () => {
     const deltas = walletActionRollupDeltas(
       summary({ kind: "wallet_invocation", targetName: "evmWalletHandler" })
     );
     expect(dims(deltas, SERIES.WALLET_ACTIONS)).toEqual(["wallet_invocation"]);
-    expect(dims(deltas, SERIES.OFFER_CATEGORY)).toEqual(["orchestration"]);
+    expect(dims(deltas, SERIES.OFFER_CATEGORY)).toEqual(["ymax"]);
     expect(dims(deltas, SERIES.INVOKE_TARGET)).toEqual(["evmWalletHandler"]);
     expect(dims(deltas, SERIES.OFFER_SOURCE)).toEqual([]);
   });

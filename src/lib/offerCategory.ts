@@ -25,6 +25,8 @@ export type OfferCategory =
   | "auction"
   | "fast_usdc"
   | "orchestration"
+  /** YMax users: portfolio offers on ymax0/ymax1 and EVM-wallet deposits via evmWalletHandler (P6). */
+  | "ymax"
   | "other";
 
 export type AutomationClass = "automated" | "interactive" | "unknown";
@@ -37,6 +39,7 @@ export const OFFER_CATEGORIES: readonly OfferCategory[] = [
   "auction",
   "fast_usdc",
   "orchestration",
+  "ymax",
   "other",
 ];
 
@@ -55,14 +58,20 @@ function categoryFromInstanceName(name: string): OfferCategory {
   if (/^psm-/i.test(name)) return "psm";
   if (name === "auctioneer" || name === "reserve") return "auction";
   if (name === "fastUsdc") return "fast_usdc";
-  if (/^ymax/i.test(name)) return "orchestration";
+  if (/^ymax/i.test(name)) return "ymax";
   return "other";
 }
 
+/** invokeEntry targets that are a user acting through YMax's EVM-wallet handler, not a bot. */
+const YMAX_USER_INVOKE_TARGETS = new Set(["evmWalletHandler"]);
+
 /** Exactly one functional category per wallet action (objective; baked into offer_category). */
 export function classifyOfferCategory(input: OfferCategoryInput): OfferCategory {
-  // invokeEntry: direct entry invocations are orchestration/automation by construction.
-  if (input.kind === "wallet_invocation") return "orchestration";
+  // invokeEntry: automation by construction (planner, delegates…) — except YMax's EVM-wallet
+  // handler, which is how a user with an EVM wallet deposits into a portfolio.
+  if (input.kind === "wallet_invocation") {
+    return input.targetName && YMAX_USER_INVOKE_TARGETS.has(input.targetName) ? "ymax" : "orchestration";
+  }
 
   if (input.instanceName) return categoryFromInstanceName(input.instanceName);
 
@@ -88,6 +97,7 @@ export function categoryAutomation(category: OfferCategory): AutomationClass {
     case "psm":
     case "auction":
     case "governance":
+    case "ymax":
       return "interactive";
     default:
       return "unknown";

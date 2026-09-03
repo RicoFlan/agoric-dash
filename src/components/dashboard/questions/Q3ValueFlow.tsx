@@ -105,6 +105,13 @@ export function Q3ValueFlow({
   }, [data.bankCreditsVolumeByDenom, data.bankCreditsVolumeUsdByDenom, disp]);
 
   const h = q?.headline;
+  const o = q?.orchestrated;
+  const orchVenues = useMemo(() => (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0)), [o?.byVenue]);
+  const flowLine = useMemo(() => {
+    if (!o) return null;
+    const by = (t: string) => o.flowsInRange.filter((f) => f.flowType === t).reduce((s, f) => s + f.count, 0);
+    return `${by("deposit")} deposits · ${by("withdraw")} withdrawals · ${by("rebalance")} rebalances in range`;
+  }, [o]);
 
   return (
     <QuestionBlock
@@ -130,6 +137,9 @@ export function Q3ValueFlow({
             q ? (
               <>
                 In {fmtUsd(h?.inUsd ?? null)} · Out {fmtUsd(h?.outUsd ?? null)}
+                {h?.outOrchUsd !== null && h?.outOrchUsd !== undefined && h.outOrchUsd > 0 && (
+                  <> (of which orchestrated {fmtUsd(h.outOrchUsd)})</>
+                )}
                 <UsdBasisNote meta={q.usdPricingMeta} />
               </>
             ) : undefined
@@ -212,9 +222,62 @@ export function Q3ValueFlow({
           <EmptyNote>No IBC transfers in range.</EmptyNote>
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <SupportFigure label="IBC in (USD)" value={fmtUsd(h?.inUsd ?? null)} definition={DEFINITIONS.q3_ibc_in_usd} />
+        <SupportFigure label="Orchestrated IBC out (USD)" value={fmtUsd(h?.outOrchUsd ?? null)} definition={DEFINITIONS.q3_orch_outflow} note="EndBlock sends by contracts; not in tx-scoped counts." />
         <SupportFigure label="Value received on-chain (USD)" value={data.bankCreditsVolumeUsdTotal ?? "—"} definition={DEFINITIONS.q3_value_received_usd} />
+      </div>
+      <div className={CARD_CLASS}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+              Value deployed via orchestration (YMax)
+              <span className="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[var(--border)] align-middle text-[10px] font-semibold normal-case tracking-normal" title={DEFINITIONS.q3_deployed_principal} aria-label={DEFINITIONS.q3_deployed_principal} tabIndex={0}>i</span>
+            </h3>
+            <p className="mt-2 font-mono text-4xl leading-none tracking-tight text-[var(--text)]">{o?.available ? fmtUsd(o.principalUsd) : "—"}</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              {o?.available
+                ? `Principal deployed at yield venues on other chains, as published by YMax at height ${o.latestHeight ?? "—"} — a balance now, not a range flow; not marked to yield.`
+                : "Available after the YMax snapshot seed (npm run seed:ymax)."}
+            </p>
+          </div>
+          {o?.available && (
+            <div className="shrink-0 text-xs text-[var(--muted)] sm:max-w-xs sm:text-right">
+              {o.portfoliosActive} active portfolios of {o.portfoliosTotal} created · net deposits in range {fmtUsd(o.netDepositsUsd, true)}
+              <br />
+              {flowLine}
+              <UsdBasisNote meta={o.usdPricingMeta} />
+            </div>
+          )}
+        </div>
+        {orchVenues.length > 0 && (
+          <div className="mt-4 min-w-0 max-w-full overflow-x-auto">
+            <table className={TABLE_CLASS}>
+              <thead>
+                <tr className={TABLE_HEAD_ROW_CLASS}>
+                  <th className="py-2 pr-4 font-semibold">Venue</th>
+                  <th className="py-2 pr-4 font-semibold">Chain</th>
+                  <th className="py-2 pr-4 font-semibold">Contract</th>
+                  <th className="py-2 pr-4 text-right font-semibold">Portfolios</th>
+                  <th className="py-2 pr-4 text-right font-semibold">Principal</th>
+                  <th className="py-2 text-right font-semibold">USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orchVenues.map((v) => (
+                  <tr key={`${v.contract}|${v.protocol}|${v.chain}|${v.denom}`} className={TABLE_ROW_CLASS}>
+                    <td className="py-1.5 pr-4 font-mono text-[var(--text)]">{v.protocol ?? "—"}</td>
+                    <td className="py-1.5 pr-4 text-[var(--text)]">{v.chain ?? "—"}</td>
+                    <td className="py-1.5 pr-4 font-mono text-[var(--muted)]">{v.contract}</td>
+                    <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--muted)]">{v.portfolios}</td>
+                    <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--text)]">{fmtNative(humanSigned(v.principal, v.denom ? disp?.metas[v.denom]?.decimals : undefined))} {v.denom ? sym(v.denom) : ""}</td>
+                    <td className="py-1.5 text-right font-mono tabular-nums text-[var(--text)]">{fmtUsd(v.principalUsd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       <div className={CARD_CLASS}>
         <h3 className={IN_CARD_TITLE_CLASS}>Net flow by asset</h3>

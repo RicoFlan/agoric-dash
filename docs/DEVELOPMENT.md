@@ -86,6 +86,7 @@ The page is four `QuestionBlock`s (`primitives.tsx`: `QuestionBlock`, `Headline`
 - **What changed**: `src/lib/narrative.ts` — deterministic templates over `questions`, ranked by max |z| then |Δ%|; fixtures in `narrative.test.ts`. Add a template when adding a question; never a model call here.
 - **Anomaly markers**: `TxActivityLineChart` draws `ReferenceDot`s only at day granularity, because flags are day-grain (`anomalies.ts`).
 - **Detail drawers** are native `<details>`; keep demoted content there rather than adding sections.
+- **YMax (P6)**: `ymaxVstorage.ts` is the pure decoder (fixtures from mainnet in its test); `ymaxRollup.ts` accumulates/persists latest-state rows and is shared by the indexer, `seedYmaxSnapshot.ts` and `backfillEndBlock.ts`. Shapes vary by contract version (`accountIdByChain` vs `accountStateByChain`) — decode defensively, never throw per cell. `endBlockIbc.ts` decodes `send_packet` packet JSON from hex and normalises ICS-20 traces to `ibc/SHA256` so the orch-out series shares denoms with everything else.
 - **Removed** in the redesign (do not resurrect without a design reason): Value Flow Map, normalized ratios, the two-basis gross/credits table with client-side USD sort, the txs-vs-IBC chart.
 
 ### Methodology & caveats panel

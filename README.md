@@ -65,6 +65,15 @@ Two Q2 support figures need the P2 indexer outputs (forward-only from the deploy
 
 Parity for both: `npx tsx scripts/verifyRollupParity.ts --day=YYYY-MM-DD --replay-offer-categories`.
 
+### Orchestrated value (YMax) — P6
+
+YMax moves user USDC to yield venues on other chains by orchestration, so its value is neither on Agoric nor in transactions. Q3 therefore carries a **stock** metric from YMax's own published state:
+
+- **Tables** (latest-wins by height, `CREATE IF NOT EXISTS`, never in `reindex:reset`): `ymax_portfolio`, `ymax_position` (cumulative `total_in` / `total_out` / `net_transfers` per `<protocol>_<chain>`), `ymax_flow` (deposit / withdraw / rebalance, deduped by flow id). Source: `published.ymax0|ymax1.portfolios.*` vstorage `state_change` events — the indexer reads them per block (`src/lib/ymaxRollup.ts`); **`npm run seed:ymax`** snapshots the current state over REST (positions are cumulative, so the snapshot is the truth for the stock).
+- **`questions.q3.orchestrated`**: `principalUsd` = Σ(total_in − total_out) priced at the range end day (principal, not marked to yield), `byVenue`, active/total portfolios, flows first seen in range and `netDepositsUsd`.
+- **Orchestration IBC out**: `ibc_transfer_amount_out_orch` / `ibc_transfer_out_count_orch` from `send_packet` events in `finalize_block_events` (`src/lib/endBlockIbc.ts`) — contracts moving funds from their Agoric accounts in EndBlock, invisible to tx-scoped counts; Q3 net flow subtracts them. Backfill both with **`npm run backfill:endblock`** (`--ibc-orch`, `--ymax`; same `BACKFILL_*` semantics).
+- **Category `ymax`** (interactive): `ymax0`/`ymax1` offers and `evmWalletHandler` invocations; the `planner` stays `orchestration` (automated). Re-run `backfill:offer-categories` in full mode after deploying to reclassify history.
+
 ## Denoms, symbols, and IBC hashes
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.

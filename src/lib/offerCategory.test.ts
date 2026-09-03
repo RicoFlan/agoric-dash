@@ -7,9 +7,9 @@ function input(overrides: Partial<OfferCategoryInput>): OfferCategoryInput {
 }
 
 describe("classifyOfferCategory", () => {
-  it("classifies invokeEntry as orchestration regardless of other fields", () => {
+  it("classifies invokeEntry as orchestration, except YMax's EVM-wallet handler (a user)", () => {
     expect(classifyOfferCategory(input({ kind: "wallet_invocation", targetName: "planner" }))).toBe("orchestration");
-    expect(classifyOfferCategory(input({ kind: "wallet_invocation", targetName: "evmWalletHandler" }))).toBe("orchestration");
+    expect(classifyOfferCategory(input({ kind: "wallet_invocation", targetName: "evmWalletHandler" }))).toBe("ymax");
   });
 
   it("maps real instance names to functional categories", () => {
@@ -24,7 +24,7 @@ describe("classifyOfferCategory", () => {
       ["auctioneer", "auction"],
       ["reserve", "auction"],
       ["fastUsdc", "fast_usdc"],
-      ["ymax0", "orchestration"],
+      ["ymax0", "ymax"],
       ["kread", "other"],
     ];
     for (const [name, expected] of cases) {

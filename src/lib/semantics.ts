@@ -100,6 +100,14 @@ export const SERIES = {
   /** Distinct recv_packet events (packet channel + sequence) per successful tx; summed in rollups for comparability with external IBC dashboards. */
   IBC_TRANSFER_FLOW_IN: "ibc_transfer_flow_in",
   IBC_TRANSFER_AMOUNT_OUT: "ibc_transfer_amount_out",
+  /**
+   * ICS-20 sends executed in EndBlock — orchestration (vlocalchain acting for a contract's
+   * LocalChainAccount), never a user tx — from block_results.finalize_block_events send_packet
+   * (endBlockIbc.ts). Per denom (voucher traces normalised to ibc/HASH). Disjoint from
+   * ibc_transfer_amount_out (tx scope); add both for total outflow.
+   */
+  IBC_TRANSFER_AMOUNT_OUT_ORCH: "ibc_transfer_amount_out_orch",
+  IBC_TRANSFER_OUT_COUNT_ORCH: "ibc_transfer_out_count_orch",
   IBC_TRANSFER_AMOUNT_IN: "ibc_transfer_amount_in",
   /** Staking & governance activity (message counts in successful txs; see stakingGovMsgTypes.ts). */
   STAKING_DELEGATIONS: "staking_delegations",
@@ -264,6 +272,11 @@ export const METHODOLOGY_SECTIONS: MethodologySection[] = [
     title: "Economic participation & concentration",
     body:
       "Successful txs only. Signers: every pubkey in signer_infos. Fee payer: fee.granter else fee.payer else first signer (participantRollupPolicy.ts). Distinct signers and fee payers are counted per role, not merged. Active 1 vs 2+ days uses UTC calendar days in participant_day. Distinct-accounts chart: one count per address per day (signer ∪ fee payer). Concentration is reported on two USD bases, each leg priced at its day's CoinGecko daily price (spot fallback for missing days): gross-movement USD (top-10 share + Herfindahl HHI 0–1) over sender-side transfer_volume only (not IBC recv), and paid-fee USD (top-10 share + HHI) over resolved fee payers from address_fee_day — fees are the costliest signal and hardest to wash. HHI = Σ(addressShare²); higher means more concentrated. A concentration-over-time chart plots both HHI bases (left, 0–1) and top-10 shares (right, %) per UTC day — daily-grain regardless of the selected granularity, since address_volume_day / address_fee_day are daily; days without priced activity are gaps. Module accounts in agoricModuleAccounts.json are excluded from participation and concentration at read time.",
+  },
+  {
+    title: "Orchestrated value (YMax)",
+    body:
+      "YMax — Agoric's yield product — moves user USDC to lending/vault venues on other chains by orchestration, so its value is neither on Agoric nor visible in transactions. Q3 therefore adds a STOCK metric from YMax's own published state: the indexer (and a one-off REST snapshot, scripts/seedYmaxSnapshot.ts) reads published.ymax0/ymax1.portfolios.<p> (accounts by chain, running flows with amounts) and …/positions/<venue> (cumulative totalIn / totalOut / netTransfers per protocol and chain) from the same vstorage state_change events as offer outcomes, into ymax_portfolio / ymax_position / ymax_flow (latest-wins by height). Value deployed via orchestration = Σ(totalIn − totalOut) over all positions, priced at the range end day — principal currently deployed, not marked to yield, at the newest published height; the venue table breaks it down by protocol, chain and contract version. Flows (deposit / withdraw / rebalance) are counted once at first sighting on the portfolio status and scoped to the range for net deposits. Separately, IBC sends executed in EndBlock (send_packet events in finalize_block_events — orchestration acting for a contract's LocalChainAccount, never a user tx) are rolled up as ibc_transfer_amount_out_orch so Q3's net flow subtracts them; they were the missing outflow (H1-2026 USDC inflow ≈ $6.8M, tx-scoped outflow ≈ $1.2M, on-chain supply ≈ $25k). YMax users' actions (ymax0/ymax1 offers, evmWalletHandler invocations) are the `ymax` category and count as interactive in Q2; the planner and other invocations stay orchestration (automated).",
   },
   {
     title: "Rollup parity and upgrades",
