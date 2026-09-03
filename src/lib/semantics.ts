@@ -140,6 +140,13 @@ export const SERIES = {
    */
   OFFER_OUTCOME: "offer_outcome",
   /**
+   * Settled Zoe offer outcomes by functional category; dimension = `<category>|<outcome>` where
+   * category follows offer_category (plus `unclassified` when the terminal offerStatus carried no
+   * invitationSpec) and outcome ∈ wants_satisfied | wants_unsatisfied | errored. Same counting rule
+   * and source events as OFFER_OUTCOME (offerOutcomeCategory.ts); summing over categories equals it.
+   */
+  OFFER_OUTCOME_CATEGORY: "offer_outcome_category",
+  /**
    * Summed Zoe offer `give` proposal amounts (intent, successful txs), dimension = vbank denom of the
    * leg's brand (brand Board id resolved via agoricNames.json vbankAssets). Atomic integer sums for
    * read-time USD via the existing denom pricing path. Non-vbank brands (no fungible denom) omitted.

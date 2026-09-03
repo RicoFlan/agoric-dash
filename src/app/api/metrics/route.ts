@@ -7,9 +7,20 @@ import { enrichTransferAndBankCreditsUsdEstimates } from "@/lib/transferVolumeUs
 import { enrichOfferValueUsd } from "@/lib/offerValueUsd";
 import { allDenoms, denomToCoinIdMap } from "@/lib/denomPrices";
 import { loadDailyPriceTable } from "@/lib/loadDailyPriceTable";
+import { queryAddressFeeTotalsByDay, queryDistinctUnionPerDay, queryRetentionCounts } from "@/lib/participationQueries";
+import { queryOfferCategoryParticipantsRange } from "@/lib/offersQuery";
+import { buildQuestions } from "@/lib/questionsPayload";
+import { utcDaysInclusive } from "@/lib/denomPrices";
 import { parseUsdEstimateSortKey } from "@/lib/grossTableUsdSort";
 import { computeNormalizedRatios, formatNormalizedRatios } from "@/lib/normalizedRatios";
-import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
+import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, SERIES } from "@/lib/semantics";
+
+/** YYYY-MM-DD shifted by `days` (UTC). */
+function shiftDay(day: string, days: number): string {
+  const d = new Date(`${day}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 /** Parse a numeric-string kpi value to bigint, tolerating "" / non-numeric (→ 0). */
 function bigintOrZero(s: string | undefined | null): bigint {
@@ -60,8 +71,9 @@ export async function GET(req: NextRequest) {
     const fromDay = qFrom.slice(0, 10);
     const toDay = qTo.slice(0, 10);
 
-    /** Day-grain pricing inputs are consumed here and not sent to the client. */
-    const { pricingInputs, ...payloadForResponse } = payload;
+    /** Day-grain pricing / questions inputs are consumed here and not sent to the client. */
+    const { pricingInputs, questionsInputs, ...payloadForResponse } = payload;
+    const { contextFromDay, prevFromDay, prevToDay } = questionsInputs;
 
     /**
      * One price table per request: `denom_price_day` rows for the range plus spot only for ids
@@ -69,7 +81,26 @@ export async function GET(req: NextRequest) {
      */
     const pricedDenoms = new Set<string>();
     for (const m of Object.values(pricingInputs)) for (const d of allDenoms(m)) pricedDenoms.add(d);
-    const table = await loadDailyPriceTable(fromDay, toDay, denomToCoinIdMap(pricedDenoms).values());
+    for (const sm of questionsInputs.dailyContext.values()) {
+      for (const series of [SERIES.IBC_TRANSFER_AMOUNT_IN, SERIES.IBC_TRANSFER_AMOUNT_OUT]) {
+        for (const d of sm.get(series)?.keys() ?? []) pricedDenoms.add(d);
+      }
+    }
+    /** Questions context (prior window + anomaly lookback) is day-grain and needs the same tables over the wider span. */
+    const windowDays = utcDaysInclusive(fromDay, toDay).length;
+    const prevPrevToDay = shiftDay(prevFromDay, -1);
+    const prevPrevFromDay = shiftDay(prevPrevToDay, -(windowDays - 1));
+    const [feeByDayContext, distinctUnionPerDay, retentionCur, retentionPrev, catPartCur, catPartPrev] = await Promise.all([
+      queryAddressFeeTotalsByDay(contextFromDay, toDay),
+      queryDistinctUnionPerDay(contextFromDay, toDay),
+      queryRetentionCounts(fromDay, toDay, prevFromDay, prevToDay),
+      queryRetentionCounts(prevFromDay, prevToDay, prevPrevFromDay, prevPrevToDay),
+      queryOfferCategoryParticipantsRange(fromDay, toDay),
+      queryOfferCategoryParticipantsRange(prevFromDay, prevToDay),
+    ]);
+    for (const byAddr of feeByDayContext.values()) for (const byDenom of byAddr.values()) for (const d of byDenom.keys()) pricedDenoms.add(d);
+    const denomToCoinId = denomToCoinIdMap(pricedDenoms);
+    const table = await loadDailyPriceTable(contextFromDay, toDay, denomToCoinId.values());
 
     const usd = enrichTransferAndBankCreditsUsdEstimates(
       pricingInputs.transferVolumeByDayDenom,
@@ -77,7 +108,32 @@ export async function GET(req: NextRequest) {
       display,
       table
     );
-    const participationConcentration = await enrichParticipationAndConcentration(fromDay, toDay, display, table);
+    const participationConcentration = await enrichParticipationAndConcentration(fromDay, toDay, display, table, {
+      feeByDay: feeByDayContext,
+    });
+
+    const questions = buildQuestions({
+      fromDay,
+      toDay,
+      prevFromDay,
+      prevToDay,
+      contextFromDay,
+      dailyContext: questionsInputs.dailyContext,
+      curBuckets: questionsInputs.curBuckets,
+      display,
+      denomToCoinId,
+      table,
+      distinctUnionPerDay,
+      retention: { current: retentionCur, previous: retentionPrev },
+      categoryParticipants: { current: catPartCur, previous: catPartPrev },
+      feeByDay: feeByDayContext,
+      grossUsdHhi: participationConcentration.concentrationRaw.grossUsdHhi,
+      top10FeeSharePct:
+        participationConcentration.concentrationRaw.topNShareFeesUsd === null
+          ? null
+          : participationConcentration.concentrationRaw.topNShareFeesUsd * 100,
+      multiDayInRange: Number(participationConcentration.participation.multiDayInRange) || 0,
+    });
 
     const offerValueUsd = payload.offers
       ? enrichOfferValueUsd(
@@ -109,6 +165,7 @@ export async function GET(req: NextRequest) {
       ...participationConcentration,
       offerValueUsd,
       normalizedRatios,
+      questions,
       indexedHistoryFromDay: INDEXED_HISTORY_FROM_DAY,
     });
   } catch (e) {

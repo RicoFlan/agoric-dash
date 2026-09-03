@@ -17,7 +17,7 @@ import "dotenv/config";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { EncodeObject } from "@cosmjs/proto-signing";
-import { fromBase64, toBech32 } from "@cosmjs/encoding";
+import { fromBase64 } from "@cosmjs/encoding";
 import pg from "pg";
 import * as schema from "../src/db/schema";
 import { decodeMsg, decodeTxRawTx, extractPaidFeesFromEvents } from "../src/lib/cosmos";
@@ -35,11 +35,13 @@ import { rpcCallWithFallback, type RpcBlockResponse, type RpcBlockResultsRespons
 import { addIbcTransferFlowInForTx } from "../src/lib/ibcTransferFlowInRollup";
 import { maxGasFromBlockResults } from "../src/lib/blockGasLimit";
 import { stakingGovSeriesForTypeUrl } from "../src/lib/stakingGovMsgTypes";
-import { parseCapData, parseWalletActionString } from "../src/lib/walletOfferMarshal";
-import { summarizeWalletAction } from "../src/lib/walletOfferSummary";
+import { parseCapData } from "../src/lib/walletOfferMarshal";
 import { walletActionRollupDeltas } from "../src/lib/walletOfferRollup";
 import { extractWalletStreamCells, summarizeOfferStatus } from "../src/lib/walletOutcomeSummary";
 import { refreshDailyPrices } from "../src/lib/coingecko/priceRefresh";
+import { ensureOfferCategoryParticipantDayTable } from "../src/db/ensureAdditiveTables";
+import { decodeWalletAction, offerCategoryOf } from "../src/lib/walletActionDecode";
+import { outcomeCategoryDim, OUTCOME_CATEGORY_UNCLASSIFIED } from "../src/lib/offerOutcomeCategory";
 import { brandDenom, instanceName } from "../src/lib/agoricInstanceNames";
 import { sumRecvCoinAmountsDedupedFromTxEvents } from "../src/lib/ibcRecvEventAmounts";
 import { addBankCreditsForTx } from "../src/lib/bankCreditsRollup";
@@ -97,8 +99,15 @@ if (!DATABASE_URL) {
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool, { schema });
 
-const { dailyMetrics, hourlyMetrics, participantDay, addressVolumeDay, addressFeeDay, offerParticipantDay } =
-  schema;
+const {
+  dailyMetrics,
+  hourlyMetrics,
+  participantDay,
+  addressVolumeDay,
+  addressFeeDay,
+  offerParticipantDay,
+  offerCategoryParticipantDay,
+} = schema;
 
 /**
  * In-memory set of message typeUrls observed in successfully decoded txs since this
@@ -185,6 +194,7 @@ async function persistIndexedChunk(
   volumeDeltas: Map<string, bigint>,
   feeDeltas: Map<string, bigint>,
   offerParticipantTriples: Set<string>,
+  offerCategoryParticipantTriples: Set<string>,
   lastIndexedHeight: bigint
 ) {
   await db.transaction(async (tx) => {
@@ -220,6 +230,10 @@ async function persistIndexedChunk(
     for (const key of offerParticipantTriples) {
       const [day, address, kind] = key.split(ROLLUP_KEY_DELIM);
       await tx.insert(offerParticipantDay).values({ day, address, kind }).onConflictDoNothing();
+    }
+    for (const key of offerCategoryParticipantTriples) {
+      const [day, address, category] = key.split(ROLLUP_KEY_DELIM);
+      await tx.insert(offerCategoryParticipantDay).values({ day, address, category }).onConflictDoNothing();
     }
     for (const [key, delta] of volumeDeltas) {
       if (delta === BigInt(0)) continue;
@@ -324,22 +338,16 @@ function accumulateWalletAction(
   hour: Date,
   enc: EncodeObject,
   offerParticipantTriples: Set<string>,
+  offerCategoryParticipantTriples: Set<string>,
   hStr: string,
   i: number
 ) {
-  let owner = "";
-  let actionStr = "";
-  try {
-    const body = decodeMsg(enc) as { owner?: Uint8Array; spendAction?: string; action?: string };
-    if (body.owner && body.owner.length > 0) owner = toBech32("agoric", body.owner);
-    actionStr = body.spendAction ?? body.action ?? "";
-  } catch (e) {
-    console.warn(`wallet-action decode failed height ${hStr} idx ${i}:`, e);
+  const decoded = decodeWalletAction(enc);
+  if (!decoded) {
+    console.warn(`wallet-action decode failed height ${hStr} idx ${i}`);
     return;
   }
-
-  const summary = summarizeWalletAction(parseWalletActionString(actionStr));
-  const resolvedInstanceName = instanceName(summary.instanceBoardId);
+  const { owner, summary, instanceName: resolvedInstanceName, category } = decoded;
   for (const d of walletActionRollupDeltas(summary, resolvedInstanceName)) {
     addRollupDelta(daily, hourly, day, hour, d.series, d.dimension, BigInt(1));
   }
@@ -349,6 +357,7 @@ function accumulateWalletAction(
   }
   if (owner) {
     offerParticipantTriples.add([day, owner, summary.kind].join(ROLLUP_KEY_DELIM));
+    offerCategoryParticipantTriples.add([day, owner, category].join(ROLLUP_KEY_DELIM));
   }
 }
 
@@ -391,6 +400,8 @@ function accumulateBlockOutcomes(
       const fact = summarizeOfferStatus(parseCapData(capDataString));
       if (fact) {
         addRollupDelta(daily, hourly, day, hour, SERIES.OFFER_OUTCOME, fact.outcome, BigInt(1));
+        const category = fact.spec ? offerCategoryOf(fact.spec, instanceName(fact.spec.instanceBoardId)) : OUTCOME_CATEGORY_UNCLASSIFIED;
+        addRollupDelta(daily, hourly, day, hour, SERIES.OFFER_OUTCOME_CATEGORY, outcomeCategoryDim(category, fact.outcome), BigInt(1));
         addLegVolumes(daily, hourly, day, hour, SERIES.OFFER_PAYOUT_VOLUME, fact.payouts);
       }
     }
@@ -405,7 +416,8 @@ function accumulateBlock(
   participantTriples: Set<string>,
   volumeDeltas: Map<string, bigint>,
   feeDeltas: Map<string, bigint>,
-  offerParticipantTriples: Set<string>
+  offerParticipantTriples: Set<string>,
+  offerCategoryParticipantTriples: Set<string>
 ) {
   const hStr = block.block.header.height;
   const iso = block.block.header.time;
@@ -506,7 +518,7 @@ function accumulateBlock(
 
       // SwingSet/Zoe smart-wallet offer intent: decode CapData body, count objective dimensions.
       if (WALLET_ACTION_MSG_TYPES.has(typeUrl)) {
-        accumulateWalletAction(daily, hourly, day, hour, enc, offerParticipantTriples, hStr, i);
+        accumulateWalletAction(daily, hourly, day, hour, enc, offerParticipantTriples, offerCategoryParticipantTriples, hStr, i);
       }
 
       if (!TRANSFER_MSG_TYPES.has(typeUrl)) {
@@ -711,6 +723,7 @@ async function loop(startFloorHeight: bigint) {
     const volumeDeltas = new Map<string, bigint>();
     const feeDeltas = new Map<string, bigint>();
     const offerParticipantTriples = new Set<string>();
+    const offerCategoryParticipantTriples = new Set<string>();
     for (const p of pairs) {
       accumulateBlock(
         p.block,
@@ -720,7 +733,8 @@ async function loop(startFloorHeight: bigint) {
         participantTriples,
         volumeDeltas,
         feeDeltas,
-        offerParticipantTriples
+        offerParticipantTriples,
+        offerCategoryParticipantTriples
       );
     }
     const lastH = heights[heights.length - 1]!;
@@ -731,6 +745,7 @@ async function loop(startFloorHeight: bigint) {
       volumeDeltas,
       feeDeltas,
       offerParticipantTriples,
+      offerCategoryParticipantTriples,
       lastH
     );
     cursor = lastH;
@@ -769,6 +784,7 @@ async function priceRefreshLoop(): Promise<void> {
 }
 
 async function main() {
+  await ensureOfferCategoryParticipantDayTable(db);
   if (PRICE_REFRESH_DISABLED) console.log("[prices] refresh disabled (PRICE_REFRESH_DISABLED)");
   else void priceRefreshLoop();
 

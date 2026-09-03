@@ -113,3 +113,20 @@ export const denomPriceDay = pgTable(
   },
   (t) => [primaryKey({ columns: [t.day, t.coingeckoId] })]
 );
+
+/**
+ * Distinct smart-wallet owners per UTC day per functional `offer_category` (offerCategory.ts). Backs
+ * "distinct interactive wallets" for Q2 (organic activity): `offer_participant_day` keys on action
+ * kind, not category, so it cannot tell a vault user from an oracle bot. Written by the indexer
+ * alongside `offer_participant_day`; created idempotently (`ensureOfferCategoryParticipantDayTable`);
+ * backfilled by `scripts/backfillOfferCategories.ts`. Successful txs only.
+ */
+export const offerCategoryParticipantDay = pgTable(
+  "offer_category_participant_day",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    address: varchar("address", { length: 128 }).notNull(),
+    category: varchar("category", { length: 24 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.address, t.category] })]
+);

@@ -60,6 +60,13 @@ Read-time derived indicators for the four headline questions (design doc: "Four 
 
 Everything here is computed from existing rollups — no indexer change and no reindex. Day-grain by design, so at hour granularity the daily series and prior window still refer to UTC calendar days.
 
+Two Q2 support figures need the P2 indexer outputs (forward-only from the deploy height, then backfilled once with **`npm run backfill:offer-categories`** — additive, `SKIP_DELETE`-style, never `reindex:reset`):
+
+- **`offer_category_participant_day`** (day × owner × functional category) → `q2.support.distinctInteractiveWallets` / `distinctAutomatedWallets` (`available: false` until the table exists).
+- **`offer_outcome_category`** series (`<category>|<outcome>`, same terminal `offerStatus` events as `offer_outcome`; category from the `invitationSpec` the smart wallet echoes in the status, verified on mainnet) → `q2.support.satisfactionByCategory` and `offers.outcomes.byCategory`.
+
+Parity for both: `npx tsx scripts/verifyRollupParity.ts --day=YYYY-MM-DD --replay-offer-categories`.
+
 ## Denoms, symbols, and IBC hashes
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.

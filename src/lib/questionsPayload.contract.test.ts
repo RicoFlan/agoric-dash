@@ -21,6 +21,7 @@ function ctx(): DayBucketMap {
       [SERIES.FEE_PAID, new Map([["ubld", BigInt(feeUbld)]])],
       [SERIES.OFFER_CATEGORY, new Map(Object.entries(cats).map(([c, n]) => [c, BigInt(n)]))],
       [SERIES.IBC_TRANSFER_AMOUNT_IN, new Map([["ubld", BigInt(ibcIn)]])],
+      [SERIES.OFFER_OUTCOME_CATEGORY, new Map([["vaults|wants_satisfied", BigInt(3)], ["vaults|errored", BigInt(1)]])],
     ]);
   return new Map([
     [D[0], day(100, 0, 1_000_000, { vaults: 1, oracle: 9 }, 1_000_000)],
@@ -60,6 +61,10 @@ function build() {
       { day: D[3], count: 50 },
     ],
     retention: { current: { active: 40, retained: 10, newAddresses: 20 }, previous: { active: 10, retained: 5, newAddresses: 1 } },
+    categoryParticipants: {
+      current: { distinctInteractiveWallets: 12, distinctAutomatedWallets: 3, byCategory: { vaults: 12, oracle: 3 }, available: true },
+      previous: { distinctInteractiveWallets: 8, distinctAutomatedWallets: 3, byCategory: { vaults: 8, oracle: 3 }, available: true },
+    },
     feeByDay: feeByDay(),
     grossUsdHhi: 0.25,
     top10FeeSharePct: 74.5,
@@ -93,6 +98,14 @@ describe("questions payload (contract)", () => {
     const { q2 } = build();
     expect(q2.headline).toEqual({ current: 50, previous: 10, deltaPts: 40 });
     expect(q2.counts.current).toEqual({ interactive: 10, automated: 10, other: 0, total: 20 });
+    expect(q2.support).toEqual({
+      distinctInteractiveWallets: { current: 12, previous: 8, pctChange: 50 },
+      distinctAutomatedWallets: { current: 3, previous: 3, pctChange: 0 },
+      available: true,
+      satisfactionByCategory: [
+        { category: "vaults", settled: 8, wantsSatisfied: 6, wantsUnsatisfied: 0, errored: 2, satisfactionRatePct: 75 },
+      ],
+    });
   });
 
   it("Q3: net IBC USD, day-priced, with its own pricing meta", () => {
