@@ -3,6 +3,8 @@
  * indicator id. The ⓘ popovers read from here; the contract test guarantees every id has a
  * non-empty, unique definition. Longer narrative lives in METHODOLOGY_SECTIONS (/methodology).
  */
+import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
+
 export const DEFINITIONS = {
   // Q1 — busier
   q1_successful_txs:
@@ -36,7 +38,7 @@ export const DEFINITIONS = {
   q4_retained_addresses:
     "Share of addresses active in this window (signer ∪ fee payer) that were also active in the equal-length prior window.",
   q4_new_addresses:
-    "Share of this window's active addresses with no earlier appearance in indexed history (since 2026-01-01).",
+    `Share of this window's active addresses with no earlier appearance in indexed history (since ${INDEXED_HISTORY_FROM_DAY}).`,
   q4_active_multi_day: "Addresses that appeared on two or more UTC calendar days within the range.",
   q4_top10_fee_share: "Share of day-priced fee USD paid by the ten largest fee payers in range.",
 } as const;
