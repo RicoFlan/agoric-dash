@@ -162,7 +162,7 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
   - **`offerValueUsd`** — from **`enrichOfferValueUsd`** (`src/lib/offerValueUsd.ts`): per-denom + total USD for offer give / want / payouts, day-priced (`{ give, want, payouts, usdPricingMeta }`); gross flow, not additive across the three.
   - **`indexedHistoryFromDay`** — `"2026-01-01"` (constant **`INDEXED_HISTORY_FROM_DAY`**); **`from`** query dates before this are clamped for all metrics.
 
-  Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (gross in-tx basis: transfer_volume + IBC recv). **`series.bankCreditsVolumeSeries`**, **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** feed the Value Flow Map and API rollups — each item is `{ denom, data: [{ bucket, value }] }`.
+  Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (gross in-tx basis: transfer_volume + IBC recv). **`series.bankCreditsVolumeSeries`**, **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** feed the Q3 net-flow chart and API rollups — each item is `{ denom, data: [{ bucket, value }] }`.
 
 ## Project layout
 
@@ -246,7 +246,7 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 | `src/lib/filledDistinctAccountsSeries.test.ts` | Dense daily series for distinct-account **time-series** chart |
 | `src/lib/ibcRecvEventAmounts.test.ts` | **`sumRecvCoinAmountsDedupedFromTxEvents`** (deduped `max` basis), **`sumRecvCoinAmountsFromTxEvents`**, **`diagnoseRecvCoinAmountsByEventType`** (`coin_received` / `transfer` parsing + diagnostics) |
 | `src/lib/valueFlowMapSeries.test.ts` | **`buildValueFlowMiniRows`** bucket alignment and transfer-like derivation |
-| `src/lib/semantics.contract.test.ts` | **`TX_RESULT_ROLLUP_POLICY`** vs metric dictionary; **`INDEXER_SCOPE_CAVEAT_*`** shape; **`METHODOLOGY_SECTIONS`** / **`METHODOLOGY_BLURB`** document Value handled + Value Flow Map UI |
+| `src/lib/semantics.contract.test.ts` | **`TX_RESULT_ROLLUP_POLICY`** vs metric dictionary; **`INDEXER_SCOPE_CAVEAT_*`** shape; **`METHODOLOGY_SECTIONS`** / **`METHODOLOGY_BLURB`** document the four question sections and the Value Flow Map removal |
 | `src/lib/walletOfferSummary.test.ts` / `walletOfferRollup.test.ts` | Decode CapData → offer summary; summary → `(series, dimension)` rollup deltas |
 | `src/lib/offerCategory.test.ts` | Functional `offer_category` classification + automated/interactive grouping |
 | `src/lib/walletOutcomeSummary.test.ts` | vstorage `offerStatus` decode, terminal-outcome counting, payout-leg extraction |
