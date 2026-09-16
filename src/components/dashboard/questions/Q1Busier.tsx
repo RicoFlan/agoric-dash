@@ -6,7 +6,6 @@ import { useMemo } from "react";
 import type { XAxis } from "recharts";
 import { ChartChunkFallback } from "@/components/dashboard/ChartChunkFallback";
 import {
-  fmtInt,
   fmtNum,
   fmtPct,
   Headline,
@@ -18,6 +17,7 @@ import {
 } from "@/components/dashboard/primitives";
 import type { Granularity, MetricsPayload } from "@/components/dashboard/types";
 import { atomicToHumanString } from "@/lib/amountFormat";
+import { fmtCompactInt } from "@/lib/compactNumber";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
@@ -105,6 +105,8 @@ export function Q1Busier({
   const k = data.kpis;
   const bld = (atomic: string) => (/^\d+$/.test(atomic) ? `${atomicToHumanString(atomic, 6)} BLD` : "—");
   const flagged = q?.anomalies ?? [];
+  const txCurrent = fmtCompactInt(q?.headline.current ?? Number(k.txSuccess.current));
+  const txPrevious = fmtCompactInt(q?.headline.previous ?? Number(k.txSuccess.previous));
 
   const verdict = useMemo(
     () => (data.questions ? buildVerdicts(data.questions).find((v) => v.id === "busier") : undefined),
@@ -127,8 +129,10 @@ export function Q1Busier({
       headline={
         <Headline
           label="Successful transactions"
-          value={fmtInt(q?.headline.current ?? Number(k.txSuccess.current))}
-          previous={fmtInt(q?.headline.previous ?? Number(k.txSuccess.previous))}
+          value={txCurrent.text}
+          exact={txCurrent.exact}
+          previous={txPrevious.text}
+          previousExact={txPrevious.exact}
           delta={fmtPct(q?.headline.pctChange ?? k.txSuccess.pctChange)}
           deltaValue={q?.headline.pctChange ?? k.txSuccess.pctChange}
           definition={DEFINITIONS.q1_successful_txs}

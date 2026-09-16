@@ -62,8 +62,8 @@ function build() {
     ],
     retention: { current: { active: 40, retained: 10, newAddresses: 20 }, previous: { active: 10, retained: 5, newAddresses: 1 } },
     categoryParticipants: {
-      current: { distinctInteractiveWallets: 12, distinctAutomatedWallets: 3, byCategory: { vaults: 12, oracle: 3 }, available: true },
-      previous: { distinctInteractiveWallets: 8, distinctAutomatedWallets: 3, byCategory: { vaults: 8, oracle: 3 }, available: true },
+      current: { distinctInteractiveWallets: 12, distinctAutomatedWallets: 3, distinctCategorizedWallets: 16, distinctMixedWallets: 1, byCategory: { vaults: 12, oracle: 3 }, available: true },
+      previous: { distinctInteractiveWallets: 8, distinctAutomatedWallets: 3, distinctCategorizedWallets: 10, distinctMixedWallets: 0, byCategory: { vaults: 8, oracle: 3 }, available: true },
     },
     feeByDay: feeByDay(),
     ymax: {
@@ -121,6 +121,9 @@ describe("questions payload (contract)", () => {
     expect(q2.counts.current.interactiveByCategory).toEqual([{ category: "vaults", count: 10 }]);
     expect(q2.support).toEqual({
       distinctInteractiveWallets: { current: 12, previous: 8, pctChange: 50 },
+      walletWeightedPct: { current: 75, previous: 80, deltaPts: -5 },
+      mixedWallets: 1,
+      categorizedWallets: 16,
       distinctAutomatedWallets: { current: 3, previous: 3, pctChange: 0 },
       available: true,
       satisfactionByCategory: [
@@ -183,8 +186,8 @@ describe("questions payload (contract)", () => {
         distinctUnionPerDay: [],
         retention: { current: { active: 40, retained: 10, newAddresses: 20 }, previous: { active: 0, retained: 0, newAddresses: 0 } },
         categoryParticipants: {
-          current: { distinctInteractiveWallets: 12, distinctAutomatedWallets: 3, byCategory: {}, available: true },
-          previous: { distinctInteractiveWallets: 0, distinctAutomatedWallets: 0, byCategory: {}, available: true },
+          current: { distinctInteractiveWallets: 12, distinctAutomatedWallets: 3, distinctCategorizedWallets: 15, distinctMixedWallets: 0, byCategory: {}, available: true },
+          previous: { distinctInteractiveWallets: 0, distinctAutomatedWallets: 0, distinctCategorizedWallets: 0, distinctMixedWallets: 0, byCategory: {}, available: true },
         },
         feeByDay: feeByDay(),
         ymax: {

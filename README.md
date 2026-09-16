@@ -74,6 +74,13 @@ YMax moves user USDC to yield venues on other chains by orchestration, so its va
 - **Orchestration IBC out**: `ibc_transfer_amount_out_orch` / `ibc_transfer_out_count_orch` from `send_packet` events in `finalize_block_events` (`src/lib/endBlockIbc.ts`) — contracts moving funds from their Agoric accounts in EndBlock, invisible to tx-scoped counts; Q3 net flow subtracts them. Backfill both with **`npm run backfill:endblock`** (`--ibc-orch`, `--ymax`; same `BACKFILL_*` semantics).
 - **Category `ymax`** (interactive): `ymax0`/`ymax1` offers and `evmWalletHandler` invocations; the `planner` stays `orchestration` (automated). Re-run `backfill:offer-categories` in full mode after deploying to reclassify history.
 
+## Backfill boundaries (operational)
+
+Additive backfills double-count if they overlap heights the live indexer already wrote, so each one needs an explicit upper bound recorded at the deploy that changed the indexer's behaviour.
+
+- **`npm run backfill:failed-fees`** — the post-ante fee fix (P7.4) went live on the Railway `indexer` service at **2026-09-16T23:27:09Z**, commit `9d1e448`. Its first processed block after restart ended at cursor **27375041** having processed two blocks, so the last height written by the *old* code was **27375039**. Run the backfill with **`BACKFILL_TO_HEIGHT=27375039`**. The script refuses to start without this value rather than defaulting to the moving cursor.
+- **`npm run backfill:endblock`** — no such boundary: the EndBlock series were new series, not a change in how existing heights were counted.
+
 ## Denoms, symbols, and IBC hashes
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.
@@ -172,6 +179,12 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
   - **`indexedHistoryFromDay`** — `"2026-01-01"` (constant **`INDEXED_HISTORY_FROM_DAY`**); **`from`** query dates before this are clamped for all metrics.
 
   Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (gross in-tx basis: transfer_volume + IBC recv). **`series.bankCreditsVolumeSeries`**, **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** feed the Q3 net-flow chart and API rollups — each item is `{ denom, data: [{ bucket, value }] }`.
+
+- `GET /api/status`
+  Indexer height and its last write time, plus **`lag`** from **`computeIndexerLag`** (`src/lib/indexerLag.ts`): `blocksBehind` against the chain head read live over RPC, `secondsSinceUpdate` from the indexer's own timestamp, and a `level` of `live` / `behind` / `stalled` / `unknown`. No block time is assumed, so a block gap is never presented as a duration. An unreachable RPC yields `chainHeight: null` and `level: "unknown"` rather than a failed request; a head *below* the indexed height means a lagging peer, so the gap is clamped to zero and reported as unknown. Rendered by `src/components/dashboard/IndexerStatusLine.tsx`, which polls on its own 60s interval.
+
+- `GET /api/export?from=YYYY-MM-DD&to=YYYY-MM-DD&granularity=day|hour|week&format=csv|json`
+  The stored metric rows behind the current view, in long form (`bucket`, `series`, `dimension`, `value`). Same validation and indexed-history clamping as `/api/metrics`. Values stay exact strings because chain amounts reach `numeric(78,0)`. A `week` view exports the **day** rows it aggregates, since no week grain is stored; the JSON response names the real grain in **`grain`**. Both formats send `Content-Disposition: attachment`.
 
 ## Project layout
 

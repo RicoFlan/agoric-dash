@@ -6,11 +6,13 @@ import { Q1Busier } from "@/components/dashboard/questions/Q1Busier";
 import { Q2Organic } from "@/components/dashboard/questions/Q2Organic";
 import { Q3ValueFlow } from "@/components/dashboard/questions/Q3ValueFlow";
 import { Q4Base } from "@/components/dashboard/questions/Q4Base";
+import { IndexerStatusLine } from "@/components/dashboard/IndexerStatusLine";
 import { WhatChanged } from "@/components/dashboard/WhatChanged";
 import type { Granularity, MetricsPayload } from "@/components/dashboard/types";
 import { chartTheme } from "@/lib/chartTheme";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
+import { parseViewState, serializeViewState, type DashboardViewState } from "@/lib/urlState";
 
 /**
  * Page shell: range/granularity controls, the metrics fetch, and the four question sections
@@ -29,6 +31,9 @@ function clampDayNotBeforeIndexed(day: string): string {
   const d = day.slice(0, 10);
   return d < INDEXED_HISTORY_FROM_DAY ? INDEXED_HISTORY_FROM_DAY : d;
 }
+
+const EXPORT_LINK =
+  "rounded-md border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1 font-semibold text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--accent)]";
 
 const QUICK_RANGE_BTN =
   "rounded-md border-2 border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--color-bg-secondary)]";
@@ -106,9 +111,18 @@ function MetricsFailureSetupHint() {
 
 export function Dashboard() {
   /** Default load: the last 30 complete UTC days (daily buckets); custom pickers stay hidden until "Custom Range". */
-  const [from, setFrom] = useState(() => clampDayNotBeforeIndexed(utcCalendarDate(-30)));
-  const [to, setTo] = useState(() => lastCompleteUtcDay());
-  const [granularity, setGranularity] = useState<Granularity>("day");
+  const defaults = useMemo<DashboardViewState>(
+    () => ({ from: clampDayNotBeforeIndexed(utcCalendarDate(-30)), to: lastCompleteUtcDay(), granularity: "day" }),
+    []
+  );
+  const [from, setFrom] = useState(defaults.from);
+  const [to, setTo] = useState(defaults.to);
+  const [granularity, setGranularity] = useState<Granularity>(defaults.granularity);
+  /**
+   * The first render must match the server's, so the URL is read after mount rather than in the
+   * initial state. The metrics fetch waits for this pass so a shared link costs one request, not two.
+   */
+  const [viewStateReady, setViewStateReady] = useState(false);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [data, setData] = useState<MetricsPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,12 +201,39 @@ export function Dashboard() {
     [from, to, granularity]
   );
 
+  /** Adopt any range/granularity carried in the query string, once, before the first fetch. */
   useEffect(() => {
+    const v = parseViewState(window.location.search, defaults, INDEXED_HISTORY_FROM_DAY);
+    setFrom(v.from);
+    setTo(v.to);
+    setGranularity(v.granularity);
+    setViewStateReady(true);
+  }, [defaults]);
+
+  /** Keep the URL in step with the controls so the current view can be copied and shared. */
+  useEffect(() => {
+    if (!viewStateReady) return;
+    const q = serializeViewState({ from, to, granularity }, defaults);
+    const next = `${window.location.pathname}${q}${window.location.hash}`;
+    if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [from, to, granularity, defaults, viewStateReady]);
+
+  useEffect(() => {
+    if (!viewStateReady) return;
     void load();
     return () => {
       metricsFlightRef.current?.abort();
     };
-  }, [load]);
+  }, [load, viewStateReady]);
+
+  /** Download link for the current range; the API re-validates and re-clamps these same params. */
+  const exportHref = useCallback(
+    (format: "csv" | "json") =>
+      `/api/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=${granularity}&format=${format}`,
+    [from, to, granularity]
+  );
 
   /** Chart-grain X axis shared by the per-bucket charts. */
   const timeAxis = useMemo(() => {
@@ -218,14 +259,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-12">
-      {data?.indexer?.lastIndexedHeight && (
-        <p className="text-left text-xs font-bold text-[var(--color-text-secondary)]">
-          Last indexed block height: <code className="font-bold text-[var(--accent)]">{data.indexer.lastIndexedHeight}</code>
-          {data.indexer.updatedAt && (
-            <span className="ml-2 font-bold">(indexer updated {new Date(data.indexer.updatedAt).toLocaleString()})</span>
-          )}
-        </p>
-      )}
+      <IndexerStatusLine fallbackHeight={data?.indexer?.lastIndexedHeight} fallbackUpdatedAt={data?.indexer?.updatedAt} />
 
       {data?.granularity === "hour" && data.usedDailyFallbackForHourView && (
         <p
@@ -363,6 +397,19 @@ export function Dashboard() {
             </label>
           </div>
         )}
+        <div className="flex w-full flex-wrap items-center justify-center gap-3 text-xs">
+          <span className="font-semibold text-[var(--color-text-secondary)]">Download this range:</span>
+          <a className={EXPORT_LINK} href={exportHref("csv")} download>
+            CSV
+          </a>
+          <a className={EXPORT_LINK} href={exportHref("json")} download>
+            JSON
+          </a>
+          <span className="text-[var(--muted)]">
+            Stored rows behind the charts (bucket, series, dimension, value), exact to the minimal unit.
+          </span>
+        </div>
+
         <p className="w-full text-center text-xs leading-[1.4] text-[var(--muted)]">
           <span className="font-bold">
             Indexed rollups and participation metrics start <time dateTime={INDEXED_HISTORY_FROM_DAY}>{INDEXED_HISTORY_FROM_DAY}</time>{" "}

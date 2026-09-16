@@ -208,7 +208,22 @@ export function Q2Organic({
           <OfferEmpty />
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SupportFigure
+          label="User-initiated share of wallets"
+          value={walletsAvailable ? fmtPct1(q?.support.walletWeightedPct.current ?? null) : "—"}
+          previous={walletsAvailable ? fmtPct1(q?.support.walletWeightedPct.previous ?? null) : undefined}
+          delta={walletsAvailable ? fmtPts(q?.support.walletWeightedPct.deltaPts ?? null) : undefined}
+          deltaValue={q?.support.walletWeightedPct.deltaPts ?? null}
+          definition={DEFINITIONS.q2_wallet_weighted_organic}
+          note={
+            walletsAvailable
+              ? q?.support.categorizedWallets != null
+                ? `${fmtInt(q.support.distinctInteractiveWallets.current)} of ${fmtInt(q.support.categorizedWallets)} wallets; ${fmtInt(q.support.mixedWallets)} acted in both groups`
+                : undefined
+              : "Available after the offer-category backfill."
+          }
+        />
         <SupportFigure
           label="Distinct interactive wallets"
           value={walletsAvailable ? fmtInt(q?.support.distinctInteractiveWallets.current ?? null) : "—"}

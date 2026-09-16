@@ -117,6 +117,21 @@ export function QuestionBlock({
  * The answer to the question: a large figure, its prior-window comparison, and a one-line
  * definition. `delta` is already formatted (pct or pts); `deltaValue` drives the colour.
  */
+/**
+ * An abbreviated figure that still carries its full value. The exact number goes in `title` (shown
+ * on hover and by screen readers via the accessible description) and the text is marked so a reader
+ * can tell there is more behind it. With no `exact` it renders the text unchanged, so callers can
+ * pass the result of a compact formatter straight through.
+ */
+export function ExactValue({ text, exact }: { text: string; exact?: string | null }) {
+  if (!exact) return <>{text}</>;
+  return (
+    <span title={exact} className="cursor-help underline decoration-dotted decoration-from-font underline-offset-4">
+      {text}
+    </span>
+  );
+}
+
 export function Headline({
   label,
   value,
@@ -127,6 +142,8 @@ export function Headline({
   upIsGood = true,
   definition,
   aside,
+  exact,
+  previousExact,
 }: {
   label: string;
   value: string;
@@ -137,6 +154,10 @@ export function Headline({
   upIsGood?: boolean;
   definition?: string;
   aside?: ReactNode;
+  /** Full-precision value behind an abbreviated `value`; omit when `value` is already exact. */
+  exact?: string | null;
+  /** Full-precision value behind an abbreviated `previous`. */
+  previousExact?: string | null;
 }) {
   return (
     <div className={`${CARD_CLASS} flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between`}>
@@ -146,14 +167,17 @@ export function Headline({
           {definition && <InfoHint text={definition} />}
         </h3>
         <p className="mt-2 font-mono text-4xl leading-none tracking-tight text-[var(--text)]">
-          {value}
+          <ExactValue text={value} exact={exact} />
           {unit && <span className="ml-2 text-base text-[var(--color-text-secondary)]">{unit}</span>}
         </p>
         {(previous !== undefined || delta !== undefined) && (
           <p className="mt-2 text-xs text-[var(--muted)]">
             {previous !== undefined && (
               <>
-                Prior window: <span className="font-mono text-[var(--text)]">{previous}</span>
+                Prior window:{" "}
+                <span className="font-mono text-[var(--text)]">
+                  <ExactValue text={previous} exact={previousExact} />
+                </span>
               </>
             )}
             {previous !== undefined && delta !== undefined && " · "}

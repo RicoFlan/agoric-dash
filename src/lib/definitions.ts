@@ -19,6 +19,8 @@ export const DEFINITIONS = {
   // Q2 — organic
   q2_organic_ratio:
     "Interactive-category wallet actions ÷ all wallet actions in successful txs, from the offer_category rollup (exactly one category per action). Interactive = vaults, PSM, auction, governance, and YMax user actions (portfolio offers, EVM-wallet deposits); automated = the YMax planner and other orchestration, oracle price feeds, fast-USDC settlement.",
+  q2_wallet_weighted_organic:
+    "Distinct wallets with at least one user-initiated action, over distinct wallets with at least one categorized action. The wallet-weighted counterpart to the action-weighted headline: a wallet counts once however many actions it took, so a single busy bot cannot move it. A wallet active in both groups counts as user-initiated, so read this as reach rather than as a split of wallets.",
   q2_distinct_interactive_wallets:
     "Unique smart-wallet owners that submitted at least one interactive-category action in range (offer_category_participant_day). The check against a few bots inflating action counts.",
   q2_distinct_automated_wallets:
