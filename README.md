@@ -74,6 +74,13 @@ YMax moves user USDC to yield venues on other chains by orchestration, so its va
 - **Orchestration IBC out**: `ibc_transfer_amount_out_orch` / `ibc_transfer_out_count_orch` from `send_packet` events in `finalize_block_events` (`src/lib/endBlockIbc.ts`) — contracts moving funds from their Agoric accounts in EndBlock, invisible to tx-scoped counts; Q3 net flow subtracts them. Backfill both with **`npm run backfill:endblock`** (`--ibc-orch`, `--ymax`; same `BACKFILL_*` semantics).
 - **Category `ymax`** (interactive): `ymax0`/`ymax1` offers and `evmWalletHandler` invocations; the `planner` stays `orchestration` (automated). Re-run `backfill:offer-categories` in full mode after deploying to reclassify history.
 
+## Backfill boundaries (operational)
+
+Additive backfills double-count if they overlap heights the live indexer already wrote, so each one needs an explicit upper bound recorded at the deploy that changed the indexer's behaviour.
+
+- **`npm run backfill:failed-fees`** — the post-ante fee fix (P7.4) went live on the Railway `indexer` service at **2026-09-16T23:27:09Z**, commit `9d1e448`. Its first processed block after restart ended at cursor **27375041** having processed two blocks, so the last height written by the *old* code was **27375039**. Run the backfill with **`BACKFILL_TO_HEIGHT=27375039`**. The script refuses to start without this value rather than defaulting to the moving cursor.
+- **`npm run backfill:endblock`** — no such boundary: the EndBlock series were new series, not a change in how existing heights were counted.
+
 ## Denoms, symbols, and IBC hashes
 
 - Display names and decimal scaling for human amounts are in **`src/config/denoms.json`**. The indexer and API work in **on-chain minimal denoms**; the file maps **full** strings (e.g. `ubld`, and full `ibc/...` **hash** denoms) to `displaySymbol` and `decimals`. Entries are kept **sorted by `match`**; contract tests enforce shape and sort order.
