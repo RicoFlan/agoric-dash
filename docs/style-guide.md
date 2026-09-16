@@ -16,7 +16,7 @@ Muted text carries real information at 12px throughout, so it must clear 4.5:1 a
 
 --color-text-primary:   #E6EDF3
 --color-text-secondary: #AAB6C4
---color-text-muted:     #6B7785
+--color-text-muted:     #8b96a3
 
 ### Accent (Primary — Teal)
 

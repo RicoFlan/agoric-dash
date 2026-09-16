@@ -14,7 +14,7 @@ export const DEFINITIONS = {
   q1_failure_rate:
     "Failed ÷ (successful + failed) inclusions. A failure that got past the ante handler still consumed gas and still paid its fee, so those fees are counted.",
   q1_paid_fees:
-    "On-chain paid fees in uBLD from tx result events (what was actually paid, not the signed max), successful txs only, shown as BLD.",
+    "On-chain paid fees in uBLD from tx result events (what was actually paid, not the signed max), shown as BLD. Includes transactions that failed after the ante handler, because their fee was committed; failures rejected by the ante handler emit no fee and contribute nothing.",
 
   // Q2 — organic
   q2_organic_ratio:

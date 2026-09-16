@@ -152,10 +152,12 @@ export function buildVerdicts(q: QuestionsPayload, opts: { symbolOf?: (denom: st
     const h = q.q4.headline;
     const answer =
       h.current === null
-        ? "Not enough priced fee activity to measure concentration."
-        : h.pctChange === null || Math.abs(h.pctChange) < 5
-          ? `Fee funding is concentrated: the equivalent of ${h.current.toFixed(1)} equally-active payers.`
-          : `${h.pctChange > 0 ? "Broadening" : "Narrowing"}: the equivalent of ${h.current.toFixed(1)} equally-active fee payers, ${pctWord(h.pctChange).verb} ${pctWord(h.pctChange).mag}.`;
+        ? "Not enough priced fee activity to measure fee-funding breadth."
+        : h.pctChange === null
+          ? `Fee funding is equivalent to ${h.current.toFixed(1)} equally-active payers; no indexed prior window to compare with.`
+          : Math.abs(h.pctChange) < 5
+            ? `Fee-funding breadth is steady: the equivalent of ${h.current.toFixed(1)} equally-active payers.`
+            : `Fee funding ${h.pctChange > 0 ? "widened" : "narrowed"}: the equivalent of ${h.current.toFixed(1)} equally-active payers, ${pctWord(h.pctChange).verb} ${pctWord(h.pctChange).mag}.`;
     const top10 = q.q4.support.top10FeeSharePct;
     out.push({
       id: "base",
@@ -187,9 +189,11 @@ export function buildWhatChanged(
     if (h.current !== null && (h.current > 0 || (h.previous ?? 0) > 0)) {
       const w = pctWord(h.pctChange);
       const base =
-        w.verb === "held"
-          ? `Successful txs held at ${fmtInt(h.current)} vs ${prior}`
-          : `Successful txs ${w.verb} ${w.mag} vs ${prior} (${fmtInt(h.previous ?? 0)} → ${fmtInt(h.current)})`;
+        h.previous === null
+          ? `Successful txs totalled ${fmtInt(h.current)}; there is no indexed prior window to compare with`
+          : w.verb === "held"
+            ? `Successful txs held at ${fmtInt(h.current)} vs ${prior}`
+            : `Successful txs ${w.verb} ${w.mag} vs ${prior} (${fmtInt(h.previous)} → ${fmtInt(h.current)})`;
       out.push({ id: "busier", text: `${base}${anomalyClause(q.q1.anomalies)}.`, maxZ: topZ(q.q1.anomalies), absDeltaPct: Math.abs(h.pctChange  ?? 0) });
     }
   }
@@ -204,9 +208,11 @@ export function buildWhatChanged(
       );
       const pts = h.deltaPts;
       const share =
-        pts === null || Math.abs(pts) < 0.5
-          ? `Organic share held at ${h.current.toFixed(1)}%`
-          : `Organic share ${pts > 0 ? "rose" : "fell"} ${Math.abs(pts).toFixed(1)} pts to ${h.current.toFixed(1)}%`;
+        h.previous === null
+          ? `User-initiated share was ${h.current.toFixed(1)}% of wallet actions, with no indexed prior window to compare with`
+          : pts === null || Math.abs(pts) < 0.5
+            ? `User-initiated share held at ${h.current.toFixed(1)}%`
+            : `User-initiated share ${pts > 0 ? "rose" : "fell"} ${Math.abs(pts).toFixed(1)} pts to ${h.current.toFixed(1)}%`;
       const actions =
         total.verb === "held" ? `total wallet actions were flat at ${fmtInt(c.current.total)}` : `total wallet actions ${total.verb} ${total.mag} to ${fmtInt(c.current.total)}`;
       const relPct = h.previous !== null && h.previous > 0 ? ((h.current - h.previous) / h.previous) * 100 : null;
@@ -242,9 +248,11 @@ export function buildWhatChanged(
     if (h.current !== null) {
       const w = pctWord(h.pctChange);
       const base =
-        w.verb === "held"
-          ? `The effective number of fee payers held at ${h.current.toFixed(1)}`
-          : `The effective number of fee payers ${w.verb} ${w.mag} to ${h.current.toFixed(1)} (${w.verb === "rose" ? "broader" : "more concentrated"} base)`;
+        h.previous === null
+          ? `Fee funding was equivalent to ${h.current.toFixed(1)} equally-active payers, with no indexed prior window to compare with`
+          : w.verb === "held"
+            ? `The effective number of fee payers held at ${h.current.toFixed(1)}`
+            : `The effective number of fee payers ${w.verb} ${w.mag} to ${h.current.toFixed(1)} (${w.verb === "rose" ? "wider" : "narrower"} fee funding)`;
       const ret =
         r.current.retainedSharePct !== null
           ? `; ${r.current.retainedSharePct.toFixed(0)}% of active addresses were also active in ${prior}`

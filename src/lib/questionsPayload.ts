@@ -244,7 +244,14 @@ function withoutPriorComparisons(q: QuestionsPayload): QuestionsPayload {
     q4: {
       ...q.q4,
       headline: blank(q.q4.headline),
-      retention: { ...q.q4.retention, retainedShareDeltaPts: null },
+      retention: {
+        ...q.q4.retention,
+        // "Retained" and the prior shares are both defined against the prior window, so with no
+        // prior data they are unknown rather than zero.
+        current: { ...q.q4.retention.current, retained: 0, retainedSharePct: null },
+        previous: { ...q.q4.retention.previous, retainedSharePct: null, newSharePct: null },
+        retainedShareDeltaPts: null,
+      },
     },
   };
 }
@@ -299,17 +306,20 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     const u = usdForLeg(denom, priceDay, neg ? atomic.slice(1) : atomic, display, denomToCoinId, orchPricer);
     return u === null ? null : neg ? -u : u;
   };
-  /** Σ USD over {denom, amount} rows at the range-end price; null when nothing could be priced. */
+  /**
+   * Σ USD over {denom, amount} rows at the range-end price. Returns null unless EVERY row priced:
+   * these figures have no coverage field of their own, so a partial subtotal presented as a total
+   * would understate silently, which is the failure this phase exists to remove.
+   */
   const sumUsdByDenom = (rows: { denom: string | null; amount: string }[]): number | null => {
+    if (rows.length === 0) return null;
     let total = 0;
-    let priced = false;
     for (const r of rows) {
       const u = usdAt(r.denom, r.amount);
-      if (u === null) continue;
+      if (u === null) return null;
       total += u;
-      priced = true;
     }
-    return priced ? total : null;
+    return total;
   };
   const byVenue = input.ymax.byVenue
     .map((v) => ({ ...v, principalUsd: usdAt(v.denom, v.principal) }))
@@ -329,7 +339,11 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     value: feeEffectiveN(input.feeByDay, [day], display, denomToCoinId, q4Pricer),
   }));
 
-  const priorWindowHasData = input.prevToDay >= INDEXED_HISTORY_FROM_DAY;
+  /**
+   * The whole prior window must be indexed, not merely its tail. A window that starts before
+   * indexing has days that contribute zero, so an equal-length comparison would overstate growth.
+   */
+  const priorWindowHasData = input.prevFromDay >= INDEXED_HISTORY_FROM_DAY;
   const payload: QuestionsPayload = {
     contextFromDay: input.contextFromDay,
     comparisonWindow: { from: input.prevFromDay, to: input.prevToDay },

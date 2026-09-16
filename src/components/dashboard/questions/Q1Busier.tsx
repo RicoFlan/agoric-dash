@@ -157,7 +157,7 @@ export function Q1Busier({
               <KpiCard title="Gas wanted" subtitle="ABCI gas units requested (successful + failed)." current={k.gasWanted.current} previous={k.gasWanted.previous} pct={k.gasWanted.pctChange} />
               <KpiCardLite title="Gas efficiency" subtitle={`Gas used ÷ gas wanted · prior window: ${formatRatePct(k.gasEfficiencyPct.previous)}`} value={formatRatePct(k.gasEfficiencyPct.current)} />
               <KpiCardLite title="Block-space utilization" subtitle={`Gas used ÷ consensus block gas limit (max_gas) · prior window: ${formatRatePct(k.blockGasUtilizationPct.previous)}`} value={formatRatePct(k.blockGasUtilizationPct.current)} />
-              <KpiCard title="Paid fees (all denoms, raw)" subtitle={`On-chain paid fee totals summed across denoms in minimal units (${FEE_DENOM_UBLB} dominates); successful txs only.`} current={k.feesPaidAllDenoms.current} previous={k.feesPaidAllDenoms.previous} pct={k.feesPaidAllDenoms.pctChange} />
+              <KpiCard title="Paid fees (all denoms, raw)" subtitle={`On-chain paid fee totals summed across denoms in minimal units (${FEE_DENOM_UBLB} dominates), including fees committed by post-ante failures.`} current={k.feesPaidAllDenoms.current} previous={k.feesPaidAllDenoms.previous} pct={k.feesPaidAllDenoms.pctChange} />
               <KpiCard title="Failed txs" subtitle="Included but reverted (ABCI ≠ 0); consume gas, and pay their fee if they got past the ante handler" current={k.txFailed.current} previous={k.txFailed.previous} pct={k.txFailed.pctChange} />
             </div>
           </div>

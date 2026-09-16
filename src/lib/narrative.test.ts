@@ -66,8 +66,9 @@ describe("buildWhatChanged", () => {
     expect(s.map((x) => x.id)).toEqual(["busier", "value-flow", "base"]);
     expect(s[0]!.text).toBe("Successful txs rose 18.0% vs the prior 30 days (41,200 → 48,600), with 2 unusual days between 08/14 and 08/16.");
     expect(s[1]!.text).toBe("Net IBC flow turned negative: −$1.20M vs +$800.0k in the prior 30 days, led by USDC (Noble) outflows of $1.20M.");
-    expect(s[2]!.text).toBe("The effective number of fee payers rose 10.1% to 14.2 (broader base); 41% of active addresses were also active in the prior 30 days.");
-    expect(buildWhatChanged(fixture(), { max: 4 })[3]!.text).toBe("Organic share held at 22.0% while total wallet actions fell 9.1% to 1,000.");
+    // Wording stays inside what fee data can support: breadth of FUNDING, not size of the user base.
+    expect(s[2]!.text).toBe("The effective number of fee payers rose 10.1% to 14.2 (wider fee funding); 41% of active addresses were also active in the prior 30 days.");
+    expect(buildWhatChanged(fixture(), { max: 4 })[3]!.text).toBe("User-initiated share held at 22.0% while total wallet actions fell 9.1% to 1,000.");
   });
 
   it("uses 'held' wording for flat changes and 'narrowed/widened' for same-sign flows", () => {
@@ -133,7 +134,7 @@ describe("buildVerdicts", () => {
     expect(v[1]!.qualifier).toContain("83% of user-initiated actions came from ymax");
     expect(v[2]!.answer).toBe("Net outflow of $1.20M across priced assets.");
     expect(v[2]!.qualifier).toContain("outbound counts when a transfer starts, not when it settles");
-    expect(v[3]!.answer).toContain("equally-active fee payers");
+    expect(v[3]!.answer).toBe("Fee funding widened: the equivalent of 14.2 equally-active payers, rose 10.1%.");
     expect(v[3]!.qualifier).toContain("fee grant");
   });
 

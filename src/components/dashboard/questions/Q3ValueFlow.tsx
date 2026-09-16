@@ -108,10 +108,15 @@ export function Q3ValueFlow({
   const h = q?.headline;
   const o = q?.orchestrated;
   const orchVenues = useMemo(() => (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0)), [o?.byVenue]);
-  /** Share of counted principal in the two largest venues; the figure is highly concentrated in practice. */
+  /**
+   * Share of principal in the two largest venues. Suppressed unless EVERY venue holding principal is
+   * priced: with an unpriced venue in the mix the ratio would describe only the priced subset while
+   * reading as a statement about the whole.
+   */
   const topTwoSharePct = useMemo(() => {
-    const priced = (o?.byVenue ?? []).map((v) => v.principalUsd).filter((u): u is number => u !== null && u > 0);
-    if (priced.length < 3) return null;
+    const holding = (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0));
+    if (holding.length < 3 || holding.some((v) => v.principalUsd === null)) return null;
+    const priced = holding.map((v) => v.principalUsd as number);
     const total = priced.reduce((s, u) => s + u, 0);
     if (total <= 0) return null;
     const topTwo = [...priced].sort((a, b) => b - a).slice(0, 2).reduce((s, u) => s + u, 0);
@@ -312,7 +317,7 @@ export function Q3ValueFlow({
               {orchVenues.length > 5 ? `, top 5 of ${orchVenues.length}` : ""}
               {topTwoSharePct !== null && (
                 <>
-                  . <span className="font-semibold text-[var(--color-text-secondary)]">{topTwoSharePct.toFixed(1)}% sits in the two largest venues.</span>
+                  . <span className="font-semibold text-[var(--color-text-secondary)]">{topTwoSharePct.toFixed(1)}% of priced principal sits in the two largest venues.</span>
                 </>
               )}
             </p>
@@ -352,6 +357,17 @@ export function Q3ValueFlow({
               </summary>
               <div className="mt-2 min-w-0 max-w-full overflow-x-auto">
                 <table className={TABLE_CLASS}>
+                  <thead>
+                    <tr className={TABLE_HEAD_ROW_CLASS}>
+                      <th className="py-2 pr-4 font-semibold">Venue</th>
+                      <th className="py-2 pr-4 font-semibold">Chain</th>
+                      <th className="py-2 pr-4 font-semibold">Contract</th>
+                      <th className="py-2 pr-4 text-right font-semibold">Portfolios</th>
+                      <th className="py-2 pr-4 text-right font-semibold">Principal</th>
+                      <th className="py-2 pr-4 text-right font-semibold">USD</th>
+                      <th className="py-2 text-right font-semibold">Newest height</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {orchVenues.slice(5).map((v) => (
                       <tr key={`${v.contract}|${v.protocol}|${v.chain}|${v.denom}`} className={TABLE_ROW_CLASS}>
@@ -359,6 +375,9 @@ export function Q3ValueFlow({
                         <td className="py-1.5 pr-4 text-[var(--text)]">{v.chain ?? "—"}</td>
                         <td className="py-1.5 pr-4 font-mono text-[var(--muted)]">{v.contract}</td>
                         <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--muted)]">{v.portfolios}</td>
+                        <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--text)]">
+                          {fmtNative(humanSigned(v.principal, v.denom ? disp?.metas[v.denom]?.decimals : undefined))} {v.denom ? sym(v.denom) : ""}
+                        </td>
                         <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--text)]">{fmtUsd(v.principalUsd)}</td>
                         <td className="py-1.5 text-right font-mono tabular-nums text-[var(--muted)]">{v.latestHeight}</td>
                       </tr>

@@ -24,6 +24,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "../src/db/schema";
 import { ensureBackfillCheckpointTable } from "../src/db/ensureAdditiveTables";
+import { requirePositiveInt } from "../src/lib/envNumbers";
 import { pairedTxCount } from "../src/lib/blockTxResultsPairing";
 import { extractFeePayerFromEvents, extractPaidFeesFromEvents } from "../src/lib/cosmos";
 import { rpcCallWithFallback, type RpcBlockResponse, type RpcBlockResultsResponse } from "../src/lib/rpc";
@@ -34,9 +35,17 @@ const JOB = "failed_tx_fees";
 const DATABASE_URL = process.env.DATABASE_URL;
 const RPC_URLS: readonly string[] = [process.env.RPC_URL ?? "https://main-a.rpc.agoric.net", process.env.RPC_URL_FALLBACK ?? ""];
 const START_DATE_MS = new Date(process.env.INDEXER_START_DATE ?? "2026-01-01T00:00:00Z").getTime();
-const BATCH = Math.max(1, Number(process.env.BACKFILL_BATCH ?? "1000"));
-const CONCURRENCY = Math.max(1, Math.min(64, Number(process.env.BACKFILL_CONCURRENCY ?? "16")));
-const RPC_RETRIES = Math.max(1, Number(process.env.INDEXER_RPC_RETRIES ?? "8"));
+let BATCH = 1000;
+let CONCURRENCY = 16;
+let RPC_RETRIES = 8;
+try {
+  BATCH = requirePositiveInt("BACKFILL_BATCH", process.env.BACKFILL_BATCH, 1000, { max: 100_000 });
+  CONCURRENCY = requirePositiveInt("BACKFILL_CONCURRENCY", process.env.BACKFILL_CONCURRENCY, 16, { max: 64 });
+  RPC_RETRIES = requirePositiveInt("INDEXER_RPC_RETRIES", process.env.INDEXER_RPC_RETRIES, 8, { max: 100 });
+} catch (e) {
+  console.error(`${TAG} ${e instanceof Error ? e.message : e}`);
+  process.exit(1);
+}
 const ROLLUP_KEY_DELIM = "\0";
 
 if (!DATABASE_URL) {
@@ -59,13 +68,33 @@ async function blockTimeMs(h: bigint): Promise<number> {
   if (!Number.isFinite(ms)) throw new Error(`Invalid block time at ${h}`);
   return ms;
 }
+/**
+ * True when the height is served, false only when the node reports it as unavailable or pruned.
+ * A transient error must NOT read as "pruned": the binary search would discard every lower height
+ * and the job would checkpoint past a range it never filled.
+ */
+async function heightIsAvailable(h: bigint): Promise<boolean> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= RPC_RETRIES; attempt++) {
+    try {
+      await blockTimeMs(h);
+      return true;
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message.toLowerCase() : String(e).toLowerCase();
+      if (/pruned|not available|height .*is not available|lowest height|must be less than or equal/.test(msg)) return false;
+      if (attempt < RPC_RETRIES) await sleep(Math.min(30_000, 400 * 2 ** (attempt - 1)));
+    }
+  }
+  throw new Error(`could not determine availability of height ${h}: ${lastErr instanceof Error ? lastErr.message : lastErr}`);
+}
+
 async function findStartHeight(targetMs: number, tip: bigint): Promise<bigint> {
   let lo = BigInt(1);
   let hi = tip;
   while (lo < hi) {
     const mid = (lo + hi) / BigInt(2);
-    const ok = await blockTimeMs(mid).then(() => true, () => false);
-    if (ok) hi = mid;
+    if (await heightIsAvailable(mid)) hi = mid;
     else lo = mid + BigInt(1);
   }
   let a = lo;
@@ -156,8 +185,23 @@ async function main() {
   }
   const cp = await db.select().from(backfillCheckpoint).where(eq(backfillCheckpoint.job, JOB)).limit(1);
   const committed = cp[0]?.lastHeight ?? null;
+  /**
+   * The live indexer ALSO writes failed-tx fees from the P7.4 deploy onward, and these upserts are
+   * additive, so an overlap double-counts. The cutoff therefore cannot default to the live cursor
+   * (which moves): the operator must pass the cursor height recorded at the moment of that deploy.
+   */
+  if (!process.env.BACKFILL_TO_HEIGHT) {
+    console.error(
+      `${TAG} BACKFILL_TO_HEIGHT is required: set it to the indexer cursor recorded when the post-ante fee fix deployed. The live indexer already writes these fees above that height, and these upserts are additive, so defaulting to the current cursor (${cursor}) would double-count.`
+    );
+    process.exit(1);
+  }
+  const toH = BigInt(process.env.BACKFILL_TO_HEIGHT);
+  if (toH > cursor) {
+    console.error(`${TAG} BACKFILL_TO_HEIGHT ${toH} is above the indexer cursor ${cursor}; those heights are not indexed yet.`);
+    process.exit(1);
+  }
   const fromH = process.env.BACKFILL_FROM_HEIGHT ? BigInt(process.env.BACKFILL_FROM_HEIGHT) : await findStartHeight(START_DATE_MS, tip);
-  const toH = process.env.BACKFILL_TO_HEIGHT ? BigInt(process.env.BACKFILL_TO_HEIGHT) : cursor;
   if (committed !== null && fromH <= committed) {
     console.error(
       `${TAG} heights up to ${committed} were already written and these deltas are additive, so replaying them would double-count. Start above it: BACKFILL_FROM_HEIGHT=${(committed + BigInt(1)).toString()}.`
@@ -196,6 +240,12 @@ async function main() {
         const hourIso = hourDate.toISOString();
         const txsB64 = block.block.data?.txs ?? [];
         const trs = results.txs_results ?? [];
+        // pairedTxCount tolerates a mismatch by taking min(N, M). The indexer can afford that, but
+        // here the writes are additive and the checkpoint would move past the skipped txs, which no
+        // rerun could recover. So a mismatch aborts instead.
+        if (txsB64.length !== trs.length) {
+          throw new Error(`block ${ht}: ${txsB64.length} txs but ${trs.length} results; refusing to checkpoint past an unmatched block`);
+        }
         const n = pairedTxCount(txsB64.length, trs.length);
         for (let i = 0; i < n; i++) {
           const tr = trs[i]!;

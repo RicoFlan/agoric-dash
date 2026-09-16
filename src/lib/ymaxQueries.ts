@@ -119,7 +119,7 @@ export async function queryYmaxSnapshot(fromDay: string, toDay: string): Promise
         `SELECT denom, SUM(total_in - total_out)::text AS amount, COUNT(*)::text AS n
          FROM ymax_position
          WHERE total_in >= total_out
-           AND updated_height < (SELECT MAX(updated_height) - $1::bigint FROM ymax_position)
+           AND updated_height < (SELECT MAX(updated_height) - $1::bigint FROM ymax_position WHERE total_in >= total_out)
          GROUP BY denom`,
         [YMAX_STALE_THRESHOLD_BLOCKS]
       ),
