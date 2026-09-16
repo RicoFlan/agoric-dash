@@ -264,7 +264,7 @@ export function Dashboard() {
             <button
               type="button"
               className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "24h" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
-              title="UTC: current calendar day only (24 hourly buckets, 00:00–23:00 UTC)."
+              title="UTC: the current calendar day so far, in hourly buckets. Not a rolling 24-hour window."
               onClick={() => {
                 setCustomRangeOpen(false);
                 const today = clampDayNotBeforeIndexed(utcCalendarDate(0));
@@ -273,7 +273,7 @@ export function Dashboard() {
                 setGranularity("hour");
               }}
             >
-              Last 24 hours
+              Today (UTC)
             </button>
             <button
               type="button"
@@ -317,7 +317,7 @@ export function Dashboard() {
             <button
               type="button"
               className={`${QUICK_RANGE_BTN} ${!customRangeOpen && activeQuickPreset(from, to, granularity) === "all" ? QUICK_RANGE_BTN_ACTIVE : ""}`}
-              title={`UTC: everything since indexed history began (${INDEXED_HISTORY_FROM_DAY}) through the last complete day, weekly buckets — for stock-style figures and historical inflows.`}
+              title={`UTC: everything since indexing began (${INDEXED_HISTORY_FROM_DAY}) through the last complete day, weekly buckets. There is no earlier data, so prior-window comparisons are omitted for this preset.`}
               onClick={() => {
                 setCustomRangeOpen(false);
                 setFrom(INDEXED_HISTORY_FROM_DAY);
@@ -325,7 +325,7 @@ export function Dashboard() {
                 setGranularity("week");
               }}
             >
-              All history
+              Indexed history
             </button>
             <button
               type="button"

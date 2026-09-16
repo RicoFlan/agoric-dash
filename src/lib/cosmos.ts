@@ -85,3 +85,24 @@ export function classifyModuleFamily(typeUrl: string): string {
   if (typeUrl.includes("agoric")) return "agoric";
   return "other";
 }
+
+/**
+ * Fee payer recorded on the `tx` event that carries the fee, when present.
+ *
+ * The ante handler emits `fee` and `fee_payer` together, so this works for FAILED transactions too,
+ * where the message body may not decode but the fee was still committed. Prefer it over decoding
+ * AuthInfo when attributing a fee that the chain actually took.
+ */
+export function extractFeePayerFromEvents(events: readonly EventKV[]): string | null {
+  for (const ev of events) {
+    if (ev.type !== "tx") continue;
+    let hasFee = false;
+    let payer: string | null = null;
+    for (const a of ev.attributes) {
+      if (a.key === "fee") hasFee = true;
+      if (a.key === "fee_payer" && a.value) payer = a.value;
+    }
+    if (hasFee && payer) return payer;
+  }
+  return null;
+}

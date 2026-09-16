@@ -18,6 +18,8 @@ export interface OrganicCounts {
   automated: number;
   other: number;
   total: number;
+  /** Interactive actions per category, largest first. Lets a reader see when one product is the whole story. */
+  interactiveByCategory: { category: string; count: number }[];
 }
 
 export interface OrganicActivity {
@@ -31,7 +33,7 @@ export interface OrganicActivity {
 }
 
 function emptyCounts(): OrganicCounts {
-  return { interactive: 0, automated: 0, other: 0, total: 0 };
+  return { interactive: 0, automated: 0, other: 0, total: 0, interactiveByCategory: [] };
 }
 
 function countsForDay(sm: Map<string, Map<string, bigint>> | undefined): OrganicCounts {
@@ -41,20 +43,30 @@ function countsForDay(sm: Map<string, Map<string, bigint>> | undefined): Organic
   for (const [cat, v] of dm) {
     const n = Number(v);
     const cls = categoryAutomation(cat as OfferCategory);
-    if (cls === "interactive") c.interactive += n;
-    else if (cls === "automated") c.automated += n;
+    if (cls === "interactive") {
+      c.interactive += n;
+      c.interactiveByCategory.push({ category: cat, count: n });
+    } else if (cls === "automated") c.automated += n;
     else c.other += n;
     c.total += n;
   }
+  c.interactiveByCategory.sort((a, b) => b.count - a.count);
   return c;
 }
 
 function add(a: OrganicCounts, b: OrganicCounts): OrganicCounts {
+  const merged = new Map<string, number>();
+  for (const r of [...a.interactiveByCategory, ...b.interactiveByCategory]) {
+    merged.set(r.category, (merged.get(r.category) ?? 0) + r.count);
+  }
   return {
     interactive: a.interactive + b.interactive,
     automated: a.automated + b.automated,
     other: a.other + b.other,
     total: a.total + b.total,
+    interactiveByCategory: [...merged.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((x, y) => y.count - x.count),
   };
 }
 

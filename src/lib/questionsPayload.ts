@@ -23,7 +23,7 @@ import { outcomesByCategory, type OutcomeByCategory } from "@/lib/offerOutcomeCa
 import type { RetentionCounts } from "@/lib/participationQueries";
 import { buildRetention, type Retention } from "@/lib/retention";
 import type { YmaxSnapshot } from "@/lib/ymaxQueries";
-import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
+import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, SERIES } from "@/lib/semantics";
 
 export interface Delta {
   current: number | null;
@@ -36,6 +36,12 @@ export interface QuestionsPayload {
   /** First day of the day-grain context (prior window and anomaly lookback both fit inside). */
   contextFromDay: string;
   comparisonWindow: { from: string; to: string };
+  /**
+   * False when the prior window lies entirely before indexed history. Comparisons would then show a
+   * real current value against a zero prior, which reads as growth from nothing, so the UI omits
+   * them rather than printing a misleading delta.
+   */
+  priorWindowHasData: boolean;
   anomalyRule: { windowDays: number; minPoints: number; threshold: number };
   q1: {
     id: "busier";
@@ -105,6 +111,10 @@ export interface QuestionsPayload {
       /** Max / min observed position heights — the aggregate mixes positions published at different heights. */
       latestHeight: string | null;
       oldestHeight: string | null;
+      /** Positions excluded because total_out exceeded total_in, so the quantity is not a balance there. */
+      quarantined: { positions: number; usd: number | null };
+      /** Share of the counted figure resting on positions not republished recently. */
+      freshness: { staleThresholdBlocks: number; stalePositions: number; staleUsd: number | null };
       usdPricingMeta: UsdPricingMeta;
     };
   };
@@ -203,6 +213,49 @@ function feeEffectiveN(
   return effectiveNumberFromHhi(herfindahlFromWeights([...byAddr.values()]));
 }
 
+/**
+ * Blank every prior-window comparison. Used when the prior window lies entirely before indexed
+ * history: a real current value against a zero prior reads as growth from nothing, so we show no
+ * comparison at all rather than a misleading one.
+ */
+function withoutPriorComparisons(q: QuestionsPayload): QuestionsPayload {
+  const blank = (d: Delta): Delta => ({ current: d.current, previous: null, pctChange: null });
+  return {
+    ...q,
+    q1: {
+      ...q.q1,
+      headline: blank(q.q1.headline),
+      support: {
+        distinctAccountsPerDayAvg: blank(q.q1.support.distinctAccountsPerDayAvg),
+        failureRatePct: { current: q.q1.support.failureRatePct.current, previous: null },
+        feePaidBld: blank(q.q1.support.feePaidBld),
+      },
+    },
+    q2: {
+      ...q.q2,
+      headline: { current: q.q2.headline.current, previous: null, deltaPts: null },
+      support: {
+        ...q.q2.support,
+        distinctInteractiveWallets: blank(q.q2.support.distinctInteractiveWallets),
+        distinctAutomatedWallets: blank(q.q2.support.distinctAutomatedWallets),
+      },
+    },
+    q3: { ...q.q3, headline: { ...q.q3.headline, previousNetUsd: null, deltaUsd: null } },
+    q4: {
+      ...q.q4,
+      headline: blank(q.q4.headline),
+      retention: {
+        ...q.q4.retention,
+        // "Retained" and the prior shares are both defined against the prior window, so with no
+        // prior data they are unknown rather than zero.
+        current: { ...q.q4.retention.current, retained: 0, retainedSharePct: null },
+        previous: { ...q.q4.retention.previous, retainedSharePct: null, newSharePct: null },
+        retainedShareDeltaPts: null,
+      },
+    },
+  };
+}
+
 export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
   const { dailyContext, display, denomToCoinId, table } = input;
   const days = utcDaysInclusive(input.fromDay, input.toDay);
@@ -253,6 +306,21 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     const u = usdForLeg(denom, priceDay, neg ? atomic.slice(1) : atomic, display, denomToCoinId, orchPricer);
     return u === null ? null : neg ? -u : u;
   };
+  /**
+   * Σ USD over {denom, amount} rows at the range-end price. Returns null unless EVERY row priced:
+   * these figures have no coverage field of their own, so a partial subtotal presented as a total
+   * would understate silently, which is the failure this phase exists to remove.
+   */
+  const sumUsdByDenom = (rows: { denom: string | null; amount: string }[]): number | null => {
+    if (rows.length === 0) return null;
+    let total = 0;
+    for (const r of rows) {
+      const u = usdAt(r.denom, r.amount);
+      if (u === null) return null;
+      total += u;
+    }
+    return total;
+  };
   const byVenue = input.ymax.byVenue
     .map((v) => ({ ...v, principalUsd: usdAt(v.denom, v.principal) }))
     .sort((a, b) => (b.principalUsd ?? -Infinity) - (a.principalUsd ?? -Infinity));
@@ -271,9 +339,15 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     value: feeEffectiveN(input.feeByDay, [day], display, denomToCoinId, q4Pricer),
   }));
 
-  return {
+  /**
+   * The whole prior window must be indexed, not merely its tail. A window that starts before
+   * indexing has days that contribute zero, so an equal-length comparison would overstate growth.
+   */
+  const priorWindowHasData = input.prevFromDay >= INDEXED_HISTORY_FROM_DAY;
+  const payload: QuestionsPayload = {
     contextFromDay: input.contextFromDay,
     comparisonWindow: { from: input.prevFromDay, to: input.prevToDay },
+    priorWindowHasData,
     anomalyRule: {
       windowDays: anomalyOpts.windowDays ?? DEFAULT_ANOMALY_OPTIONS.windowDays,
       minPoints: anomalyOpts.minPoints ?? DEFAULT_ANOMALY_OPTIONS.minPoints,
@@ -327,6 +401,15 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
         portfoliosTotal: input.ymax.portfoliosTotal,
         flowsInRange,
         netDepositsUsd: anyPricedFlow ? dep - wd : null,
+        quarantined: {
+          positions: input.ymax.quarantined.positions,
+          usd: sumUsdByDenom(input.ymax.quarantined.byDenom),
+        },
+        freshness: {
+          staleThresholdBlocks: input.ymax.freshness.staleThresholdBlocks,
+          stalePositions: input.ymax.freshness.stalePositions,
+          staleUsd: sumUsdByDenom(input.ymax.freshness.staleByDenom),
+        },
         latestHeight: input.ymax.latestHeight,
         oldestHeight: input.ymax.oldestHeight,
         usdPricingMeta: orchPricer.meta(),
@@ -343,4 +426,5 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
       usdPricingMeta: q4Pricer.meta(),
     },
   };
+  return priorWindowHasData ? payload : withoutPriorComparisons(payload);
 }

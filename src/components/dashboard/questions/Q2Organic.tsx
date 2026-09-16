@@ -26,6 +26,7 @@ import type { MetricsPayload } from "@/components/dashboard/types";
 import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { atomicToHumanString } from "@/lib/amountFormat";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import { buildOffersActivityRows } from "@/lib/offersActivitySeries";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
@@ -84,11 +85,17 @@ export function Q2Organic({
   const sat = q?.support.satisfactionByCategory ?? [];
   const walletsAvailable = q?.support.available ?? false;
 
+  const verdict = useMemo(
+    () => (data.questions ? buildVerdicts(data.questions).find((v) => v.id === "organic") : undefined),
+    [data.questions]
+  );
+
   return (
     <QuestionBlock
       id={dashboardSectionIds.organic}
       eyebrow="Q2"
       title="Is usage becoming more organic?"
+      verdict={verdict}
       intro={
         <>
           Most Agoric activity is smart-wallet intent (Zoe offers and invocations), and a few automation wallets submit most
@@ -99,7 +106,7 @@ export function Q2Organic({
       }
       headline={
         <Headline
-          label="Organic activity ratio"
+          label="User-initiated share of wallet actions"
           value={fmtPct1(ratio?.current)}
           previous={fmtPct1(ratio?.previous)}
           delta={fmtPts(ratio?.deltaPts ?? null)}
@@ -221,10 +228,10 @@ export function Q2Organic({
           note={walletsAvailable ? undefined : "Available after the offer-category backfill."}
         />
         <SupportFigure
-          label="Satisfaction rate (all offers)"
+          label="Declared-wants fulfillment"
           value={fmtPct1(offers?.outcomes.satisfactionRatePct)}
           definition={DEFINITIONS.q2_satisfaction_rate}
-          note={offers ? `${fmtInt(Number(offers.outcomes.settled.current))} settled in range` : undefined}
+          note={offers ? `${fmtInt(Number(offers.outcomes.wantsSatisfied.current))} of ${fmtInt(Number(offers.outcomes.settled.current))} settled offers` : undefined}
         />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

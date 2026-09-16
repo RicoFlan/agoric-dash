@@ -13,7 +13,7 @@
   --color-border: #232c38;
   --color-text-primary: #e6edf3;
   --color-text-secondary: #aab6c4;
-  --color-text-muted: #6b7785;
+  --color-text-muted: #8b96a3; /* was #6b7785 (3.72:1 on surface); AA needs 4.5:1 for 12px text */
   --color-accent: #2ed3b7;
   --color-accent-hover: #26bfa5;
   --color-accent-active: #1fa38c;

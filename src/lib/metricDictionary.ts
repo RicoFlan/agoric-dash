@@ -58,9 +58,9 @@ export const METRIC_DICTIONARY: readonly MetricDefinition[] = [
     seriesKey: SERIES.FEE_PAID,
     storage: "daily_metrics_hourly_metrics",
     grain: "transaction",
-    successScope: "successful_tx_only",
+    successScope: "every_indexed_tx",
     inclusionRule:
-      "Per successful aligned tx index: paid fees from tx_result events (`extractPaidFeesFromEvents`), summed by denom (same min(N,M) pairing as other tx metrics).",
+      "Per aligned tx index, successful OR failed: paid fees from tx_result events (`extractPaidFeesFromEvents`), summed by denom (same min(N,M) pairing as other tx metrics). A Cosmos fee is committed by the ante handler and survives a later message-execution failure, so post-ante failures really did pay; ante failures emit no `fee` attribute and contribute nothing without special-casing. Failed-tx fees are attributed to the event's own `fee_payer` (the body may not decode) in address_fee_day.",
   },
   {
     id: SERIES.GAS_USED,

@@ -25,8 +25,10 @@ import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { chartTheme } from "@/lib/chartTheme";
 import { effectiveNumberFromHhi } from "@/lib/concentrationMath";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
+import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 
 const EffectiveNLineChart = dynamic(() => import("@/components/dashboard/charts/EffectiveNLineChart"), {
@@ -85,17 +87,25 @@ export function Q4Base({
   const p = data.participation;
   const c = data.concentration;
 
+  const verdict = useMemo(
+    () => (data.questions ? buildVerdicts(data.questions).find((v) => v.id === "base") : undefined),
+    [data.questions]
+  );
+
   return (
     <QuestionBlock
       id={dashboardSectionIds.base}
       eyebrow="Q4"
       title="Is the economic base broadening or concentrating?"
+      verdict={verdict}
       intro={
         <>
-          Concentration on the basis that is hardest to fake: paid fees. The effective number of fee payers is how many
-          equally-active addresses would produce the observed concentration (1 ÷ HHI of day-priced fee USD). Retention
-          asks whether this window&apos;s addresses were also here last window. Module accounts are excluded; addresses
-          are not people.
+          Two different questions, kept apart. <strong className="font-medium text-[var(--color-text-primary)]">Participation</strong> is
+          who showed up. <strong className="font-medium text-[var(--color-text-primary)]">Fee funding</strong> is who paid, measured on
+          the basis hardest to fake, and it is what the headline reports: the effective number of fee payers is how many
+          equally-active payers would produce the observed concentration (1 ÷ HHI of day-priced fee USD). A broad user
+          base funded by one sponsor reads as concentrated here, so read it as fee concentration and not as the size of
+          the economic base. Module accounts are excluded; addresses are not people.
         </>
       }
       headline={
@@ -166,7 +176,10 @@ export function Q4Base({
           <EmptyNote>No priced fee or transfer activity in range to compute concentration.</EmptyNote>
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Participation</h3>
+        <p className="mb-3 text-xs leading-snug text-[var(--muted)]">Who showed up, independent of who paid for it.</p>
+        <div className="grid gap-4 sm:grid-cols-3">
         <SupportFigure
           label="Retained addresses"
           value={fmtPct1(r?.current.retainedSharePct)}
@@ -177,7 +190,7 @@ export function Q4Base({
           note={r ? `${fmtInt(r.current.retained)} of ${fmtInt(r.current.active)} active` : undefined}
         />
         <SupportFigure
-          label="New addresses"
+          label={`First seen since ${INDEXED_HISTORY_FROM_DAY}`}
           value={fmtPct1(r?.current.newSharePct)}
           previous={r ? fmtPct1(r.previous.newSharePct) : undefined}
           definition={DEFINITIONS.q4_new_addresses}
@@ -188,12 +201,33 @@ export function Q4Base({
           value={fmtInt(q?.support.multiDayInRange ?? (p ? Number(p.multiDayInRange) : null))}
           definition={DEFINITIONS.q4_active_multi_day}
         />
-        <SupportFigure
-          label="Top-10 fee share"
-          value={fmtPct1(q?.support.top10FeeSharePct)}
-          definition={DEFINITIONS.q4_top10_fee_share}
-          upIsGood={false}
-        />
+        </div>
+      </div>
+      <div>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Fee funding</h3>
+        <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+          Who paid for that activity. This is not the same population: a fee grant makes one granter pay for many users,
+          which reads here as concentration even when participation is broad.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SupportFigure
+            label="Distinct fee payers"
+            value={fmtInt(p ? Number(p.distinctFeePayers) : null)}
+            definition={DEFINITIONS.q4_distinct_fee_payers}
+          />
+          <SupportFigure
+            label="Effective fee payers"
+            value={fmtNum(q?.headline.current ?? null, 1)}
+            definition={DEFINITIONS.q4_effective_fee_payers}
+            note="1 ÷ HHI of day-priced fee USD"
+          />
+          <SupportFigure
+            label="Top-10 fee share"
+            value={fmtPct1(q?.support.top10FeeSharePct)}
+            definition={DEFINITIONS.q4_top10_fee_share}
+            upIsGood={false}
+          />
+        </div>
       </div>
     </QuestionBlock>
   );

@@ -19,6 +19,31 @@ export const CHAIN_ID = "agoric-3";
  */
 export const INDEXED_HISTORY_FROM_DAY = "2026-01-01";
 
+/**
+ * Dates on which a counting rule changed, so a step in a series can be attributed to the definition
+ * rather than to behaviour. The narrative must say so when a range spans one of these; presenting a
+ * reclassification as growth is exactly the overclaiming this project is trying to avoid.
+ */
+export const METHODOLOGY_CHANGES: readonly { day: string; affects: string; note: string }[] = [
+  {
+    day: "2026-09-03",
+    affects: "offer_category",
+    note:
+      "YMax user actions (ymax0/ymax1 offers and evmWalletHandler invocations) were reclassified from automated to interactive. Any step in the user-initiated share across this date is definitional, not behavioural, until history is rebuilt.",
+  },
+  {
+    day: "2026-09-16",
+    affects: "fee_paid",
+    note:
+      "Fees committed by transactions that failed after the ante handler are now counted. This slightly raises paid fees and can move fee-payer concentration.",
+  },
+];
+
+/** Methodology changes that fall inside [fromDay, toDay]. */
+export function methodologyChangesInRange(fromDay: string, toDay: string) {
+  return METHODOLOGY_CHANGES.filter((c) => c.day >= fromDay.slice(0, 10) && c.day <= toDay.slice(0, 10));
+}
+
 /** Default fee / staking token minimal denom on agoric-3 (for human “BLD” line items). */
 export const FEE_DENOM_UBLB = "ubld";
 
@@ -51,8 +76,12 @@ export const TX_RESULT_ROLLUP_POLICY = {
   txOutcome: "partition_every_matched_pair",
   /** Sum ABCI `gas_used` for every matched pair (includes failed executions). */
   gasUsed: "includes_failed_and_successful",
-  /** Parse `fee_paid` from tx events only when code === 0 (failed txs contribute no fee_paid delta). */
-  feePaid: "successful_only",
+  /**
+   * Parse `fee_paid` from tx events for EVERY matched pair. A Cosmos fee is committed by the ante
+   * handler even when message execution later fails, so a post-ante failure really did pay; an ante
+   * failure emits no `fee` attribute and so contributes nothing without special-casing.
+   */
+  feePaid: "includes_failed_and_successful",
 } as const;
 
 /**
@@ -83,7 +112,7 @@ export const SERIES = {
   GAS_WANTED: "gas_wanted",
   /** Per-block consensus max_gas summed over blocks in the bucket; denominator for block-space utilization. */
   BLOCK_GAS_LIMIT: "block_gas_limit",
-  /** Paid fees from tx_result events; successful txs only (see TX_RESULT_ROLLUP_POLICY). */
+  /** Paid fees from tx_result events, including post-ante failures (see TX_RESULT_ROLLUP_POLICY). */
   FEE_PAID: "fee_paid",
   /** Transfer-like movements from decoded messages, per denom */
   TRANSFER_VOLUME: "transfer_volume",
