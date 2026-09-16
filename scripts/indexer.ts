@@ -20,7 +20,7 @@ import type { EncodeObject } from "@cosmjs/proto-signing";
 import { fromBase64 } from "@cosmjs/encoding";
 import pg from "pg";
 import * as schema from "../src/db/schema";
-import { decodeMsg, decodeTxRawTx, extractPaidFeesFromEvents } from "../src/lib/cosmos";
+import { decodeMsg, decodeTxRawTx, extractFeePayerFromEvents, extractPaidFeesFromEvents } from "../src/lib/cosmos";
 import { attributedTransferLegsFromDecodedMsg } from "../src/lib/transferVolumeAttribution";
 import { PARTICIPANT_ROLES } from "../src/lib/participantRollupPolicy";
 import {
@@ -469,12 +469,25 @@ function accumulateBlock(
     const gasWanted = BigInt(tr.gas_wanted ?? "0");
     addRollupDelta(daily, hourly, day, hour, SERIES.GAS_WANTED, "", gasWanted);
 
-    if (!ok) continue;
-
-    // fee_paid: tx_result events (`tx.fee`), not AuthInfo.max fees — see SERIES_ROLLUP_SOURCE.
+    /**
+     * fee_paid: tx_result events (`tx.fee`), not AuthInfo.max fees — see SERIES_ROLLUP_SOURCE.
+     * Counted for FAILED txs too. A Cosmos fee is deducted by the ante handler and committed even
+     * when message execution later fails, and the events reflect that: an ante failure emits no
+     * `fee` attribute at all, while a post-ante failure emits the fee that was actually taken. So
+     * this needs no special-casing; ante failures naturally contribute nothing.
+     */
     const fees = extractPaidFeesFromEvents(eventsPerTx[i] ?? []);
     for (const [denom, amt] of fees) {
       addRollupDelta(daily, hourly, day, hour, SERIES.FEE_PAID, denom, amt);
+    }
+    if (!ok) {
+      // Attribute a failed tx's committed fee from the event's own `fee_payer`; the body may not
+      // decode, and we skip the decoded-body rollups below for failures anyway.
+      const failedPayer = fees.size > 0 ? extractFeePayerFromEvents(eventsPerTx[i] ?? []) : null;
+      if (failedPayer) {
+        for (const [denom, amt] of fees) bumpAddrDenom(feeDeltas, day, failedPayer, denom, amt);
+      }
+      continue;
     }
 
     // bank_credits_volume: shared helper used by indexer + backfillBankCreditsVolume.ts.

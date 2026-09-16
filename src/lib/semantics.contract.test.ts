@@ -12,12 +12,14 @@ import {
 describe("TX_RESULT_ROLLUP_POLICY", () => {
   it("matches metric dictionary success scopes for gas and fees", () => {
     expect(TX_RESULT_ROLLUP_POLICY.gasUsed).toBe("includes_failed_and_successful");
-    expect(TX_RESULT_ROLLUP_POLICY.feePaid).toBe("successful_only");
+    // A fee committed by a successful ante handler survives a failed message execution, so fee_paid
+    // spans both outcomes; ante failures emit no fee attribute and so contribute nothing.
+    expect(TX_RESULT_ROLLUP_POLICY.feePaid).toBe("includes_failed_and_successful");
 
     const gas = METRIC_DICTIONARY.find((d) => d.seriesKey === SERIES.GAS_USED);
     const fee = METRIC_DICTIONARY.find((d) => d.seriesKey === SERIES.FEE_PAID);
     expect(gas?.successScope).toBe("every_indexed_tx");
-    expect(fee?.successScope).toBe("successful_tx_only");
+    expect(fee?.successScope).toBe("every_indexed_tx");
   });
 });
 

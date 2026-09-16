@@ -51,8 +51,12 @@ export const TX_RESULT_ROLLUP_POLICY = {
   txOutcome: "partition_every_matched_pair",
   /** Sum ABCI `gas_used` for every matched pair (includes failed executions). */
   gasUsed: "includes_failed_and_successful",
-  /** Parse `fee_paid` from tx events only when code === 0 (failed txs contribute no fee_paid delta). */
-  feePaid: "successful_only",
+  /**
+   * Parse `fee_paid` from tx events for EVERY matched pair. A Cosmos fee is committed by the ante
+   * handler even when message execution later fails, so a post-ante failure really did pay; an ante
+   * failure emits no `fee` attribute and so contributes nothing without special-casing.
+   */
+  feePaid: "includes_failed_and_successful",
 } as const;
 
 /**
@@ -83,7 +87,7 @@ export const SERIES = {
   GAS_WANTED: "gas_wanted",
   /** Per-block consensus max_gas summed over blocks in the bucket; denominator for block-space utilization. */
   BLOCK_GAS_LIMIT: "block_gas_limit",
-  /** Paid fees from tx_result events; successful txs only (see TX_RESULT_ROLLUP_POLICY). */
+  /** Paid fees from tx_result events, including post-ante failures (see TX_RESULT_ROLLUP_POLICY). */
   FEE_PAID: "fee_paid",
   /** Transfer-like movements from decoded messages, per denom */
   TRANSFER_VOLUME: "transfer_volume",

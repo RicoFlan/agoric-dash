@@ -422,7 +422,7 @@ export async function buildMetricsPayload(
         previous: txSuccessPrev.toString(),
         pctChange: pctChange(txSuccessCur, txSuccessPrev),
       },
-      /** Failed inclusions (ABCI code ≠ 0); consume gas but contribute no fee_paid. */
+      /** Failed inclusions (ABCI code ≠ 0); consume gas, and pay fees when they failed after the ante handler. */
       txFailed: {
         current: txFailedCur.toString(),
         previous: txFailedPrev.toString(),

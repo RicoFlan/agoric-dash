@@ -11,7 +11,8 @@ export const DEFINITIONS = {
     "Count of transactions included with ABCI result code 0 in the selected range, from block_results.txs_results. Compared with an equal-length window ending just before From.",
   q1_distinct_accounts_per_day:
     "Average over the range of unique addresses per UTC day that signed or paid fees on a successful tx (each address once per day). Not users: bots and vaults inflate.",
-  q1_failure_rate: "Failed ÷ (successful + failed) inclusions. Failed txs consume gas but pay no fee_paid.",
+  q1_failure_rate:
+    "Failed ÷ (successful + failed) inclusions. A failure that got past the ante handler still consumed gas and still paid its fee, so those fees are counted.",
   q1_paid_fees:
     "On-chain paid fees in uBLD from tx result events (what was actually paid, not the signed max), successful txs only, shown as BLD.",
 
