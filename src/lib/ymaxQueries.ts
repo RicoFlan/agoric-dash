@@ -53,9 +53,9 @@ export interface YmaxSnapshot {
   byVenue: YmaxPositionAgg[];
   /** Flows first seen in [fromDay, toDay]. */
   flowsInRange: YmaxFlowAgg[];
-  /** Maximum observed position height (constituent positions may be older — see per-venue latestHeight). */
+  /** Newest height among counted positions (quarantined rows excluded, as everywhere else — see per-venue latestHeight). */
   latestHeight: string | null;
-  /** Minimum observed position height: the staleness floor of the aggregate. */
+  /** Oldest height among counted positions: the staleness floor of the aggregate. */
   oldestHeight: string | null;
   /**
    * Positions where total_out exceeds total_in. Excluded from `byVenue` and from the headline,
@@ -107,7 +107,7 @@ export async function queryYmaxSnapshot(fromDay: string, toDay: string): Promise
     }));
     let latest: string | null = null;
     for (const v of byVenue) if (latest === null || BigInt(v.latestHeight) > BigInt(latest)) latest = v.latestHeight;
-    const oldestRow = await pool.query<{ oldest: string | null }>(`SELECT MIN(updated_height)::text AS oldest FROM ymax_position`);
+    const oldestRow = await pool.query<{ oldest: string | null }>(`SELECT MIN(updated_height)::text AS oldest FROM ymax_position WHERE total_in >= total_out`);
     const oldestHeight = oldestRow.rows[0]?.oldest ?? null;
 
     const [quarantineRows, staleRows] = await Promise.all([
