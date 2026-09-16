@@ -107,6 +107,15 @@ export function Q3ValueFlow({
   const h = q?.headline;
   const o = q?.orchestrated;
   const orchVenues = useMemo(() => (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0)), [o?.byVenue]);
+  /** Share of counted principal in the two largest venues; the figure is highly concentrated in practice. */
+  const topTwoSharePct = useMemo(() => {
+    const priced = (o?.byVenue ?? []).map((v) => v.principalUsd).filter((u): u is number => u !== null && u > 0);
+    if (priced.length < 3) return null;
+    const total = priced.reduce((s, u) => s + u, 0);
+    if (total <= 0) return null;
+    const topTwo = [...priced].sort((a, b) => b - a).slice(0, 2).reduce((s, u) => s + u, 0);
+    return (topTwo / total) * 100;
+  }, [o?.byVenue]);
   const flowLine = useMemo(() => {
     if (!o) return null;
     const by = (t: string) => o.flowsInRange.filter((f) => f.flowType === t).reduce((s, f) => s + f.count, 0);
@@ -252,13 +261,13 @@ export function Q3ValueFlow({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-              Value deployed via orchestration (YMax)
+              Net capital deployed via orchestration, at cost (YMax)
               <span className="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[var(--border)] align-middle text-[10px] font-semibold normal-case tracking-normal" title={DEFINITIONS.q3_deployed_principal} aria-label={DEFINITIONS.q3_deployed_principal} tabIndex={0}>i</span>
             </h3>
             <p className="mt-2 font-mono text-4xl leading-none tracking-tight text-[var(--text)]">{o?.available ? fmtUsd(o.principalUsd) : "—"}</p>
             <p className="mt-2 text-xs text-[var(--muted)]">
               {o?.available
-                ? `Principal deployed at yield venues on other chains: each position at its latest published state (heights ${o.oldestHeight ?? "—"}–${o.latestHeight ?? "—"}) — a balance, not a range flow; not marked to yield.`
+                ? `Capital sent to yield venues on other chains and not yet returned, at cost. It excludes yield or loss accrued at the venue, so it is not those positions' current value. Each position is at its latest published state, spanning heights ${o.oldestHeight ?? "—"} to ${o.latestHeight ?? "—"}.`
                 : "Available after the YMax snapshot seed (npm run seed:ymax)."}
             </p>
           </div>
@@ -267,12 +276,40 @@ export function Q3ValueFlow({
               {o.portfoliosActive} active portfolios of {o.portfoliosTotal} created · net deposits in range {fmtUsd(o.netDepositsUsd, true)}
               <br />
               {flowLine}
+              {o.quarantined.positions > 0 && (
+                <>
+                  <br />
+                  <span className="font-semibold text-[var(--color-warning)]">
+                    {o.quarantined.positions} positions excluded
+                  </span>{" "}
+                  because their outflow exceeds their inflow{o.quarantined.usd === null ? "" : ` (${fmtUsd(o.quarantined.usd)})`}, so the
+                  figure is not behaving as a balance there.
+                </>
+              )}
+              {o.freshness.stalePositions > 0 && (
+                <>
+                  <br />
+                  {o.freshness.stalePositions} counted positions last published more than{" "}
+                  {o.freshness.staleThresholdBlocks.toLocaleString("en-US")} blocks ago
+                  {o.freshness.staleUsd === null ? "" : `, holding ${fmtUsd(o.freshness.staleUsd)}`}.
+                </>
+              )}
               <UsdBasisNote meta={o.usdPricingMeta} />
             </div>
           )}
         </div>
         {orchVenues.length > 0 && (
-          <div className="mt-4 min-w-0 max-w-full overflow-x-auto">
+          <div className="mt-4">
+            <p className="mb-2 text-xs text-[var(--muted)]">
+              By venue, largest first
+              {orchVenues.length > 5 ? `, top 5 of ${orchVenues.length}` : ""}
+              {topTwoSharePct !== null && (
+                <>
+                  . <span className="font-semibold text-[var(--color-text-secondary)]">{topTwoSharePct.toFixed(1)}% sits in the two largest venues.</span>
+                </>
+              )}
+            </p>
+          <div className="min-w-0 max-w-full overflow-x-auto">
             <table className={TABLE_CLASS}>
               <thead>
                 <tr className={TABLE_HEAD_ROW_CLASS}>
@@ -286,7 +323,7 @@ export function Q3ValueFlow({
                 </tr>
               </thead>
               <tbody>
-                {orchVenues.map((v) => (
+                {orchVenues.slice(0, 5).map((v) => (
                   <tr key={`${v.contract}|${v.protocol}|${v.chain}|${v.denom}`} className={TABLE_ROW_CLASS}>
                     <td className="py-1.5 pr-4 font-mono text-[var(--text)]">{v.protocol ?? "—"}</td>
                     <td className="py-1.5 pr-4 text-[var(--text)]">{v.chain ?? "—"}</td>
@@ -299,6 +336,31 @@ export function Q3ValueFlow({
                 ))}
               </tbody>
             </table>
+          </div>
+          {orchVenues.length > 5 && (
+            <details className="group mt-2">
+              <summary className="cursor-pointer select-none text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:text-[var(--text)] [&::-webkit-details-marker]:hidden">
+                <span className="mr-2 inline-block transition-transform group-open:rotate-90">▸</span>
+                Remaining {orchVenues.length - 5} venues
+              </summary>
+              <div className="mt-2 min-w-0 max-w-full overflow-x-auto">
+                <table className={TABLE_CLASS}>
+                  <tbody>
+                    {orchVenues.slice(5).map((v) => (
+                      <tr key={`${v.contract}|${v.protocol}|${v.chain}|${v.denom}`} className={TABLE_ROW_CLASS}>
+                        <td className="py-1.5 pr-4 font-mono text-[var(--text)]">{v.protocol ?? "—"}</td>
+                        <td className="py-1.5 pr-4 text-[var(--text)]">{v.chain ?? "—"}</td>
+                        <td className="py-1.5 pr-4 font-mono text-[var(--muted)]">{v.contract}</td>
+                        <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--muted)]">{v.portfolios}</td>
+                        <td className="py-1.5 pr-4 text-right font-mono tabular-nums text-[var(--text)]">{fmtUsd(v.principalUsd)}</td>
+                        <td className="py-1.5 text-right font-mono tabular-nums text-[var(--muted)]">{v.latestHeight}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
           </div>
         )}
       </div>

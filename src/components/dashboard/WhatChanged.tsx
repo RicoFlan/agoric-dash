@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { MetricsPayload } from "@/components/dashboard/types";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
-import { buildWhatChanged, type NarrativeSentence } from "@/lib/narrative";
+import { buildWhatChanged, methodologyNotices, type NarrativeSentence } from "@/lib/narrative";
 
 const ANCHOR: Record<NarrativeSentence["id"], string> = {
   busier: dashboardSectionIds.busier,
@@ -24,7 +24,11 @@ export function WhatChanged({ data }: { data: MetricsPayload }) {
     const metas = data.display?.metas ?? {};
     return buildWhatChanged(q, { symbolOf: (d) => metas[d]?.displaySymbol || d, max: 3 });
   }, [q, data.display]);
-  if (!q || sentences.length === 0) return null;
+  const notices = useMemo(
+    () => (data.range ? methodologyNotices(data.range.from, data.range.to) : []),
+    [data.range]
+  );
+  if (!q || (sentences.length === 0 && notices.length === 0)) return null;
   return (
     <section
       aria-label="What changed this period"
@@ -33,6 +37,16 @@ export function WhatChanged({ data }: { data: MetricsPayload }) {
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-accent)]">
         What changed this period
       </p>
+      {notices.length > 0 && (
+        <ul className="mb-3 space-y-1.5 text-sm leading-snug">
+          {notices.map((n) => (
+            <li key={n} className="flex gap-2 text-[var(--color-warning)]">
+              <span aria-hidden className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-warning)]" />
+              <span>{n}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <ol className="space-y-1.5 text-sm leading-snug text-[var(--color-text-primary)]">
         {sentences.map((s) => (
           <li key={s.id} className="flex gap-2">

@@ -35,13 +35,15 @@ export const DEFINITIONS = {
   q3_orch_outflow:
     "Of the outflow, IBC sends executed by orchestration in EndBlock (a contract moving funds from its own Agoric account) — invisible to transaction-scoped counts. Found via YMax.",
   q3_deployed_principal:
-    "Σ over YMax portfolios and positions of (totalIn − totalOut), each position at its latest published state (positions publish at different heights; the venue table shows each venue's newest). Principal currently deployed at yield venues on other chains, priced at the range end — a balance, not a range flow; principal, not marked to yield.",
+    "Σ over YMax positions of (totalIn − totalOut), each at its latest published state. This is capital SENT to venues at cost, not those positions' current value: it excludes any yield or loss accrued there. Positions publish at different heights, so the figure mixes ages; positions whose outflow exceeds inflow are excluded and reported separately.",
   q3_active_portfolios: "YMax portfolios whose positions sum to positive principal, out of all portfolios ever created.",
   q3_net_deposits: "YMax deposit flows minus withdraw flows first seen in the range (from portfolio status updates), priced at the range end day.",
 
   // Q4 — base
   q4_effective_fee_payers:
-    "1 ÷ Σ(shareᵢ²) over each fee payer's share of day-priced fee USD in range. Equals N when N addresses pay equal fees; falls toward 1 as one address dominates.",
+    "1 ÷ Σ(shareᵢ²) over each fee payer's share of day-priced fee USD in range. Equals N when N addresses pay equal fees; falls toward 1 as one address dominates. It measures who FUNDS activity, not how many people are active: the fee payer is the fee grant's granter when one is set, so a sponsor paying for many users reads as concentration.",
+  q4_distinct_fee_payers:
+    "Unique resolved fee payers in range (the fee grant's granter when set, otherwise the first signer). Counted per role, not merged with signers.",
   q4_retained_addresses:
     "Share of addresses active in this window (signer ∪ fee payer) that were also active in the equal-length prior window.",
   q4_new_addresses:

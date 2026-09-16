@@ -19,6 +19,31 @@ export const CHAIN_ID = "agoric-3";
  */
 export const INDEXED_HISTORY_FROM_DAY = "2026-01-01";
 
+/**
+ * Dates on which a counting rule changed, so a step in a series can be attributed to the definition
+ * rather than to behaviour. The narrative must say so when a range spans one of these; presenting a
+ * reclassification as growth is exactly the overclaiming this project is trying to avoid.
+ */
+export const METHODOLOGY_CHANGES: readonly { day: string; affects: string; note: string }[] = [
+  {
+    day: "2026-09-03",
+    affects: "offer_category",
+    note:
+      "YMax user actions (ymax0/ymax1 offers and evmWalletHandler invocations) were reclassified from automated to interactive. Any step in the user-initiated share across this date is definitional, not behavioural, until history is rebuilt.",
+  },
+  {
+    day: "2026-09-16",
+    affects: "fee_paid",
+    note:
+      "Fees committed by transactions that failed after the ante handler are now counted. This slightly raises paid fees and can move fee-payer concentration.",
+  },
+];
+
+/** Methodology changes that fall inside [fromDay, toDay]. */
+export function methodologyChangesInRange(fromDay: string, toDay: string) {
+  return METHODOLOGY_CHANGES.filter((c) => c.day >= fromDay.slice(0, 10) && c.day <= toDay.slice(0, 10));
+}
+
 /** Default fee / staking token minimal denom on agoric-3 (for human “BLD” line items). */
 export const FEE_DENOM_UBLB = "ubld";
 

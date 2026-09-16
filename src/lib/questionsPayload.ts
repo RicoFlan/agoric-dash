@@ -111,6 +111,10 @@ export interface QuestionsPayload {
       /** Max / min observed position heights — the aggregate mixes positions published at different heights. */
       latestHeight: string | null;
       oldestHeight: string | null;
+      /** Positions excluded because total_out exceeded total_in, so the quantity is not a balance there. */
+      quarantined: { positions: number; usd: number | null };
+      /** Share of the counted figure resting on positions not republished recently. */
+      freshness: { staleThresholdBlocks: number; stalePositions: number; staleUsd: number | null };
       usdPricingMeta: UsdPricingMeta;
     };
   };
@@ -295,6 +299,18 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     const u = usdForLeg(denom, priceDay, neg ? atomic.slice(1) : atomic, display, denomToCoinId, orchPricer);
     return u === null ? null : neg ? -u : u;
   };
+  /** Σ USD over {denom, amount} rows at the range-end price; null when nothing could be priced. */
+  const sumUsdByDenom = (rows: { denom: string | null; amount: string }[]): number | null => {
+    let total = 0;
+    let priced = false;
+    for (const r of rows) {
+      const u = usdAt(r.denom, r.amount);
+      if (u === null) continue;
+      total += u;
+      priced = true;
+    }
+    return priced ? total : null;
+  };
   const byVenue = input.ymax.byVenue
     .map((v) => ({ ...v, principalUsd: usdAt(v.denom, v.principal) }))
     .sort((a, b) => (b.principalUsd ?? -Infinity) - (a.principalUsd ?? -Infinity));
@@ -371,6 +387,15 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
         portfoliosTotal: input.ymax.portfoliosTotal,
         flowsInRange,
         netDepositsUsd: anyPricedFlow ? dep - wd : null,
+        quarantined: {
+          positions: input.ymax.quarantined.positions,
+          usd: sumUsdByDenom(input.ymax.quarantined.byDenom),
+        },
+        freshness: {
+          staleThresholdBlocks: input.ymax.freshness.staleThresholdBlocks,
+          stalePositions: input.ymax.freshness.stalePositions,
+          staleUsd: sumUsdByDenom(input.ymax.freshness.staleByDenom),
+        },
         latestHeight: input.ymax.latestHeight,
         oldestHeight: input.ymax.oldestHeight,
         usdPricingMeta: orchPricer.meta(),

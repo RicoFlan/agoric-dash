@@ -5,6 +5,7 @@
  * data in either window produces nothing rather than a sentence about nothing.
  */
 import type { QuestionsPayload } from "@/lib/questionsPayload";
+import { methodologyChangesInRange } from "@/lib/semantics";
 
 export interface NarrativeSentence {
   id: "busier" | "organic" | "value-flow" | "base";
@@ -46,6 +47,16 @@ function anomalyClause(anoms: { day: string; direction: "high" | "low" }[]): str
 
 function topZ(anoms: { z: number }[]): number {
   return anoms.reduce((m, a) => Math.max(m, Math.abs(a.z)), 0);
+}
+
+/**
+ * Sentences naming a counting-rule change inside the range. They lead the strip because a reader who
+ * does not know a definition moved will read the step as behaviour.
+ */
+export function methodologyNotices(fromDay: string, toDay: string): string[] {
+  return methodologyChangesInRange(fromDay, toDay).map(
+    (c) => `Counting rule changed on ${c.day} (${c.affects}): ${c.note}`
+  );
 }
 
 export function buildWhatChanged(

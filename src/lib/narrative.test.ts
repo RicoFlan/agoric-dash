@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildWhatChanged } from "@/lib/narrative";
+import { buildWhatChanged, methodologyNotices } from "@/lib/narrative";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 
 const meta = { source: "coingecko" as const, basis: "daily-close" as const, pricedDays: 1, spotFallbackDays: 0, unpricedDays: 0, spotFetchedAt: null, partialOrStale: false };
@@ -37,7 +37,7 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
       daily: [],
       anomalies: [],
       usdPricingMeta: meta,
-      orchestrated: { available: false, principalUsd: null, byVenue: [], portfoliosActive: 0, portfoliosWithPositions: 0, portfoliosTotal: 0, flowsInRange: [], netDepositsUsd: null, latestHeight: null, oldestHeight: null, usdPricingMeta: meta },
+      orchestrated: { available: false, principalUsd: null, byVenue: [], portfoliosActive: 0, portfoliosWithPositions: 0, portfoliosTotal: 0, flowsInRange: [], netDepositsUsd: null, quarantined: { positions: 0, usd: null }, freshness: { staleThresholdBlocks: 250_000, stalePositions: 0, staleUsd: null }, latestHeight: null, oldestHeight: null, usdPricingMeta: meta },
     },
     q4: {
       id: "base",
@@ -104,5 +104,18 @@ describe("buildWhatChanged", () => {
       { max: 4 }
     );
     expect(s.map((x) => x.id)).toEqual(["base"]);
+  });
+});
+
+describe("methodologyNotices", () => {
+  it("names a counting-rule change that falls inside the range", () => {
+    const notices = methodologyNotices("2026-09-01", "2026-09-30");
+    expect(notices.length).toBeGreaterThanOrEqual(1);
+    expect(notices.join(" ")).toContain("offer_category");
+    expect(notices.join(" ")).toMatch(/definitional, not behavioural/);
+  });
+
+  it("says nothing for a range with no rule change", () => {
+    expect(methodologyNotices("2026-07-01", "2026-07-31")).toEqual([]);
   });
 });

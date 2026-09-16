@@ -82,6 +82,8 @@ function build() {
       ],
       latestHeight: "100",
       oldestHeight: "90",
+      quarantined: { positions: 2, byDenom: [{ denom: "ubld", amount: "3000000" }] },
+      freshness: { staleThresholdBlocks: 250_000, stalePositions: 1, staleByDenom: [{ denom: "ubld", amount: "1000000" }] },
     },
     grossUsdHhi: 0.25,
     top10FeeSharePct: 74.5,
@@ -144,6 +146,9 @@ describe("questions payload (contract)", () => {
     expect(o.portfoliosActive).toBe(2);
     expect(o.latestHeight).toBe("100");
     expect(o.oldestHeight).toBe("90");
+    // Negative positions are quarantined out of the headline and reported on their own.
+    expect(o.quarantined).toEqual({ positions: 2, usd: 3 });
+    expect(o.freshness).toMatchObject({ stalePositions: 1, staleUsd: 1 });
   });
 
   it("Q4: effective number of fee payers, gross effective-N, retention, support", () => {
@@ -181,7 +186,18 @@ describe("questions payload (contract)", () => {
           previous: { distinctInteractiveWallets: 0, distinctAutomatedWallets: 0, byCategory: {}, available: true },
         },
         feeByDay: feeByDay(),
-        ymax: { available: false, portfoliosWithPositions: 0, portfoliosActive: 0, portfoliosTotal: 0, byVenue: [], flowsInRange: [], latestHeight: null, oldestHeight: null },
+        ymax: {
+          available: false,
+          portfoliosWithPositions: 0,
+          portfoliosActive: 0,
+          portfoliosTotal: 0,
+          byVenue: [],
+          flowsInRange: [],
+          latestHeight: null,
+          oldestHeight: null,
+          quarantined: { positions: 0, byDenom: [] },
+          freshness: { staleThresholdBlocks: 250_000, stalePositions: 0, staleByDenom: [] },
+        },
         grossUsdHhi: null,
         top10FeeSharePct: null,
         multiDayInRange: 0,

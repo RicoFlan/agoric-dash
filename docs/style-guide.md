@@ -12,6 +12,8 @@
 
 ### Text
 
+Muted text carries real information at 12px throughout, so it must clear 4.5:1 against every background it sits on. `src/lib/contrast.contract.test.ts` pins this; do not darken these tokens without re-running it.
+
 --color-text-primary:   #E6EDF3
 --color-text-secondary: #AAB6C4
 --color-text-muted:     #6B7785
