@@ -117,7 +117,8 @@ describe("questions payload (contract)", () => {
   it("Q2: organic ratio in percentage points with counts", () => {
     const { q2 } = build();
     expect(q2.headline).toEqual({ current: 50, previous: 10, deltaPts: 40 });
-    expect(q2.counts.current).toEqual({ interactive: 10, automated: 10, other: 0, total: 20 });
+    expect(q2.counts.current).toMatchObject({ interactive: 10, automated: 10, other: 0, total: 20 });
+    expect(q2.counts.current.interactiveByCategory).toEqual([{ category: "vaults", count: 10 }]);
     expect(q2.support).toEqual({
       distinctInteractiveWallets: { current: 12, previous: 8, pctChange: 50 },
       distinctAutomatedWallets: { current: 3, previous: 3, pctChange: 0 },
