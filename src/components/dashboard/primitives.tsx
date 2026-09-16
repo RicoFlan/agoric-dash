@@ -75,6 +75,7 @@ export function QuestionBlock({
   id,
   eyebrow,
   title,
+  verdict,
   intro,
   headline,
   children,
@@ -84,6 +85,8 @@ export function QuestionBlock({
   id: string;
   eyebrow: string;
   title: string;
+  /** The explicit answer, with the qualifier that keeps a reader who stops here from being misled. */
+  verdict?: { answer: string; qualifier: string | null };
   intro?: ReactNode;
   headline: ReactNode;
   children?: ReactNode;
@@ -96,6 +99,12 @@ export function QuestionBlock({
         <p className="mb-1 pl-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)]">{eyebrow}</p>
         <h2 className={SECTION_HEADING_CLASS}>{title}</h2>
       </div>
+      {verdict && (
+        <div className="rounded-lg border-l-2 border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_6%,var(--surface))] px-4 py-3">
+          <p className="text-base font-semibold leading-snug text-[var(--color-text-primary)]">{verdict.answer}</p>
+          {verdict.qualifier && <p className="mt-1 text-xs leading-snug text-[var(--color-text-secondary)]">{verdict.qualifier}</p>}
+        </div>
+      )}
       {intro && <p className={SECTION_INTRO_CLASS}>{intro}</p>}
       {headline}
       {children}

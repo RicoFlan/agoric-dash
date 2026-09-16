@@ -21,6 +21,7 @@ import type { MetricsPayload } from "@/components/dashboard/types";
 import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { atomicToFloat } from "@/lib/amountFormat";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 import { INDEXER_SCOPE_CAVEAT_SUBTITLE } from "@/lib/semantics";
@@ -122,11 +123,17 @@ export function Q3ValueFlow({
     return `${by("deposit")} deposits · ${by("withdraw")} withdrawals · ${by("rebalance")} rebalances in range`;
   }, [o]);
 
+  const verdict = useMemo(
+    () => (data.questions ? buildVerdicts(data.questions).find((v) => v.id === "value-flow") : undefined),
+    [data.questions]
+  );
+
   return (
     <QuestionBlock
       id={dashboardSectionIds.valueFlow}
       eyebrow="Q3"
       title="Is value flowing in or out?"
+      verdict={verdict}
       intro={
         <>
           Net IBC flow is what arrived on agoric-3 over IBC minus what left, per asset, each day&apos;s amount priced at

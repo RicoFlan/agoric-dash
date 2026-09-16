@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildWhatChanged, methodologyNotices } from "@/lib/narrative";
+import { buildVerdicts, buildWhatChanged, methodologyNotices } from "@/lib/narrative";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 
 const meta = { source: "coingecko" as const, basis: "daily-close" as const, pricedDays: 1, spotFallbackDays: 0, unpricedDays: 0, spotFetchedAt: null, partialOrStale: false };
@@ -23,7 +23,10 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
     q2: {
       id: "organic",
       headline: { current: 22.0, previous: 21.9, deltaPts: 0.1 },
-      counts: { current: { interactive: 220, automated: 780, other: 0, total: 1000 }, previous: { interactive: 241, automated: 859, other: 0, total: 1100 } },
+      counts: {
+        current: { interactive: 220, automated: 780, other: 0, total: 1000, interactiveByCategory: [{ category: "ymax", count: 183 }, { category: "psm", count: 37 }] },
+        previous: { interactive: 241, automated: 859, other: 0, total: 1100, interactiveByCategory: [] },
+      },
       daily: [],
       dailyCounts: [],
       anomalies: [],
@@ -117,5 +120,40 @@ describe("methodologyNotices", () => {
 
   it("says nothing for a range with no rule change", () => {
     expect(methodologyNotices("2026-07-01", "2026-07-31")).toEqual([]);
+  });
+});
+
+describe("buildVerdicts", () => {
+  it("answers each question in one sentence and qualifies it", () => {
+    const v = buildVerdicts(fixture());
+    expect(v.map((x) => x.id)).toEqual(["busier", "organic", "value-flow", "base"]);
+    expect(v[0]!.answer).toBe("Busier: successful transactions rose 18.0%.");
+    expect(v[0]!.qualifier).toContain("2 unusual days");
+    // One product dominating user-initiated actions must be stated, not left for the reader to find.
+    expect(v[1]!.qualifier).toContain("83% of user-initiated actions came from ymax");
+    expect(v[2]!.answer).toBe("Net outflow of $1.20M across priced assets.");
+    expect(v[2]!.qualifier).toContain("outbound counts when a transfer starts, not when it settles");
+    expect(v[3]!.answer).toContain("equally-active fee payers");
+    expect(v[3]!.qualifier).toContain("fee grant");
+  });
+
+  it("says plainly when there is nothing to answer with", () => {
+    const v = buildVerdicts(
+      fixture({
+        q1: { headline: { current: 0, previous: 0, pctChange: 0 }, anomalies: [] },
+        q2: { headline: { current: null, previous: null, deltaPts: null } },
+        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null, outOrchUsd: null, activeAssets: 0, pricedAssets: 0, unpricedAssets: [] }, byAsset: [], daily: [] },
+      })
+    );
+    expect(v[0]!.answer).toBe("No indexed transaction activity in this range.");
+    expect(v[1]!.answer).toBe("No smart-wallet actions in this range.");
+    expect(v[2]!.answer).toBe("No priced IBC transfer traffic in this range.");
+  });
+
+  it("names an unpriced-asset exclusion in the value-flow qualifier", () => {
+    const v = buildVerdicts(
+      fixture({ q3: { headline: { netUsd: 100, previousNetUsd: 50, deltaUsd: 50, inUsd: 100, outUsd: 0, outOrchUsd: null, activeAssets: 4, pricedAssets: 3, unpricedAssets: [{ denom: "ibc/X", in: "1", out: "0", net: "1" }] } } })
+    );
+    expect(v[2]!.qualifier).toContain("1 asset could not be priced");
   });
 });

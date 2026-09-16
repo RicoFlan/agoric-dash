@@ -59,6 +59,118 @@ export function methodologyNotices(fromDay: string, toDay: string): string[] {
   );
 }
 
+export interface Verdict {
+  id: NarrativeSentence["id"];
+  /** The answer to the question, in one sentence. */
+  answer: string;
+  /** The thing that would mislead a reader who stopped at the answer. */
+  qualifier: string | null;
+}
+
+/** Largest share of a total held by one member, as a percentage; null when there is nothing to divide. */
+function topSharePct(parts: number[]): number | null {
+  const total = parts.reduce((s, n) => s + Math.abs(n), 0);
+  if (total <= 0 || parts.length === 0) return null;
+  return (Math.max(...parts.map(Math.abs)) / total) * 100;
+}
+
+/**
+ * One explicit answer per question, with the qualifier that keeps it honest. Written here rather
+ * than in the components so the wording and the arithmetic stay together, and so a reader who stops
+ * at the verdict is not misled by it.
+ */
+export function buildVerdicts(q: QuestionsPayload, opts: { symbolOf?: (denom: string) => string } = {}): Verdict[] {
+  const symbolOf = opts.symbolOf ?? ((d: string) => d);
+  const out: Verdict[] = [];
+
+  // Q1
+  {
+    const h = q.q1.headline;
+    const pct = h.pctChange;
+    const answer =
+      h.current === null || h.current === 0
+        ? "No indexed transaction activity in this range."
+        : pct === null
+          ? `${fmtInt(h.current)} successful transactions; no comparable prior window.`
+          : Math.abs(pct) < 5
+            ? `Broadly flat: ${fmtInt(h.current)} successful transactions, ${pctWord(pct).verb === "held" ? "level" : `${pctWord(pct).mag}`} against the prior window.`
+            : `${pct > 0 ? "Busier" : "Quieter"}: successful transactions ${pctWord(pct).verb} ${pctWord(pct).mag}.`;
+    const flagged = q.q1.anomalies.length;
+    out.push({
+      id: "busier",
+      answer,
+      qualifier:
+        flagged > 0
+          ? `${flagged} unusual day${flagged === 1 ? "" : "s"} contributed, so the change is not evenly spread. Transaction count is not users.`
+          : "Transaction count is not users, and it does not measure contract workload, which runs outside transactions.",
+    });
+  }
+
+  // Q2
+  {
+    const h = q.q2.headline;
+    const cur = q.q2.counts.current;
+    const answer =
+      h.current === null
+        ? "No smart-wallet actions in this range."
+        : h.deltaPts === null
+          ? `${h.current.toFixed(1)}% of wallet actions were user-initiated.`
+          : Math.abs(h.deltaPts) < 0.5
+            ? `Steady: ${h.current.toFixed(1)}% of wallet actions were user-initiated.`
+            : `${h.deltaPts > 0 ? "More" : "Less"} user-initiated: ${h.current.toFixed(1)}% of wallet actions, ${Math.abs(h.deltaPts).toFixed(1)} points ${h.deltaPts > 0 ? "up" : "down"}.`;
+    const top = cur.interactiveByCategory[0];
+    const share = top && cur.interactive > 0 ? (top.count / cur.interactive) * 100 : null;
+    out.push({
+      id: "organic",
+      answer,
+      qualifier:
+        share !== null && share >= 50
+          ? `${share.toFixed(0)}% of user-initiated actions came from ${top!.category} alone, so this is that product's adoption rather than broad growth.`
+          : "Action-weighted, so a few busy wallets can move it; compare with distinct interactive wallets.",
+    });
+  }
+
+  // Q3
+  {
+    const h = q.q3.headline;
+    const answer =
+      h.netUsd === null
+        ? "No priced IBC transfer traffic in this range."
+        : `${h.netUsd >= 0 ? "Net inflow" : "Net outflow"} of ${fmtUsd(Math.abs(h.netUsd), false)} across priced assets.`;
+    const dayShare = topSharePct(q.q3.daily.map((d) => d.value ?? 0));
+    const bits: string[] = [];
+    if (h.pricedAssets < h.activeAssets) {
+      bits.push(`${h.activeAssets - h.pricedAssets} asset${h.activeAssets - h.pricedAssets === 1 ? "" : "s"} could not be priced and ${h.activeAssets - h.pricedAssets === 1 ? "is" : "are"} excluded`);
+    }
+    if (dayShare !== null && dayShare >= 40) bits.push(`one day accounts for ${dayShare.toFixed(0)}% of the movement`);
+    bits.push("outbound counts when a transfer starts, not when it settles");
+    out.push({ id: "value-flow", answer, qualifier: bits.join("; ") + "." });
+  }
+
+  // Q4
+  {
+    const h = q.q4.headline;
+    const answer =
+      h.current === null
+        ? "Not enough priced fee activity to measure concentration."
+        : h.pctChange === null || Math.abs(h.pctChange) < 5
+          ? `Fee funding is concentrated: the equivalent of ${h.current.toFixed(1)} equally-active payers.`
+          : `${h.pctChange > 0 ? "Broadening" : "Narrowing"}: the equivalent of ${h.current.toFixed(1)} equally-active fee payers, ${pctWord(h.pctChange).verb} ${pctWord(h.pctChange).mag}.`;
+    const top10 = q.q4.support.top10FeeSharePct;
+    out.push({
+      id: "base",
+      answer,
+      qualifier:
+        top10 !== null
+          ? `The top ten payers cover ${top10.toFixed(0)}% of fees, and a fee grant makes one sponsor look like one payer, so this measures funding and not the size of the user base.`
+          : "This measures who funds activity, not how many people are active.",
+    });
+    void symbolOf;
+  }
+
+  return out;
+}
+
 export function buildWhatChanged(
   q: QuestionsPayload,
   opts: { symbolOf?: (denom: string) => string; max?: number } = {}

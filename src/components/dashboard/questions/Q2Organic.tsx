@@ -26,6 +26,7 @@ import type { MetricsPayload } from "@/components/dashboard/types";
 import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { atomicToHumanString } from "@/lib/amountFormat";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import { buildOffersActivityRows } from "@/lib/offersActivitySeries";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
@@ -84,11 +85,17 @@ export function Q2Organic({
   const sat = q?.support.satisfactionByCategory ?? [];
   const walletsAvailable = q?.support.available ?? false;
 
+  const verdict = useMemo(
+    () => (data.questions ? buildVerdicts(data.questions).find((v) => v.id === "organic") : undefined),
+    [data.questions]
+  );
+
   return (
     <QuestionBlock
       id={dashboardSectionIds.organic}
       eyebrow="Q2"
       title="Is usage becoming more organic?"
+      verdict={verdict}
       intro={
         <>
           Most Agoric activity is smart-wallet intent (Zoe offers and invocations), and a few automation wallets submit most

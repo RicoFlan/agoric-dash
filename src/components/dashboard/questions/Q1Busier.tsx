@@ -19,6 +19,7 @@ import {
 import type { Granularity, MetricsPayload } from "@/components/dashboard/types";
 import { atomicToHumanString } from "@/lib/amountFormat";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import { buildGasUtilizationRows } from "@/lib/gasUtilizationSeries";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
@@ -105,11 +106,17 @@ export function Q1Busier({
   const bld = (atomic: string) => (/^\d+$/.test(atomic) ? `${atomicToHumanString(atomic, 6)} BLD` : "—");
   const flagged = q?.anomalies ?? [];
 
+  const verdict = useMemo(
+    () => (data.questions ? buildVerdicts(data.questions).find((v) => v.id === "busier") : undefined),
+    [data.questions]
+  );
+
   return (
     <QuestionBlock
       id={dashboardSectionIds.busier}
       eyebrow="Q1"
       title="Is the chain busier?"
+      verdict={verdict}
       intro={
         <>
           Successful transactions on agoric-3 (whole txs with ABCI code 0), compared with an equal-length window ending just

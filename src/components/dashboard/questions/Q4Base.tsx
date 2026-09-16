@@ -25,6 +25,7 @@ import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { chartTheme } from "@/lib/chartTheme";
 import { effectiveNumberFromHhi } from "@/lib/concentrationMath";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
 import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
@@ -86,11 +87,17 @@ export function Q4Base({
   const p = data.participation;
   const c = data.concentration;
 
+  const verdict = useMemo(
+    () => (data.questions ? buildVerdicts(data.questions).find((v) => v.id === "base") : undefined),
+    [data.questions]
+  );
+
   return (
     <QuestionBlock
       id={dashboardSectionIds.base}
       eyebrow="Q4"
       title="Is the economic base broadening or concentrating?"
+      verdict={verdict}
       intro={
         <>
           Two different questions, kept apart. <strong className="font-medium text-[var(--color-text-primary)]">Participation</strong> is

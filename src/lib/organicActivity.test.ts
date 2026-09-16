@@ -18,8 +18,14 @@ describe("buildOrganicActivity", () => {
       "2026-08-03": { governance: 1, fast_usdc: 9 }, // range
     });
     const r = buildOrganicActivity(d, ["2026-08-02", "2026-08-03"], ["2026-08-01"], ["2026-08-01", "2026-08-02", "2026-08-03"]);
-    expect(r.counts.current).toEqual({ interactive: 5, automated: 15, other: 0, total: 20 });
-    expect(r.counts.previous).toEqual({ interactive: 4, automated: 12, other: 4, total: 20 });
+    expect(r.counts.current).toMatchObject({ interactive: 5, automated: 15, other: 0, total: 20 });
+    expect(r.counts.previous).toMatchObject({ interactive: 4, automated: 12, other: 4, total: 20 });
+    // Which products the interactive actions came from, so one product cannot masquerade as breadth.
+    expect(r.counts.current.interactiveByCategory).toEqual([
+      { category: "vaults", count: 2 },
+      { category: "auction", count: 2 },
+      { category: "governance", count: 1 },
+    ]);
     expect(r.ratioPct.current).toBe(25);
     expect(r.ratioPct.previous).toBe(20);
     expect(r.ratioPct.deltaPts).toBe(5);
@@ -34,6 +40,6 @@ describe("buildOrganicActivity", () => {
     const r = buildOrganicActivity(ctx({}), ["2026-08-02"], ["2026-08-01"], ["2026-08-01", "2026-08-02"]);
     expect(r.ratioPct).toEqual({ current: null, previous: null, deltaPts: null });
     expect(r.dailyRatioPct.every((p) => p.value === null)).toBe(true);
-    expect(organicRatioPct({ interactive: 0, automated: 0, other: 0, total: 0 })).toBeNull();
+    expect(organicRatioPct({ interactive: 0, automated: 0, other: 0, total: 0, interactiveByCategory: [] })).toBeNull();
   });
 });
