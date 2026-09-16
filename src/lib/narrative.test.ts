@@ -30,7 +30,7 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
       daily: [],
       dailyCounts: [],
       anomalies: [],
-      support: { distinctInteractiveWallets: { current: 1, previous: 1, pctChange: 0 }, distinctAutomatedWallets: { current: 1, previous: 1, pctChange: 0 }, available: true, satisfactionByCategory: [] },
+      support: { distinctInteractiveWallets: { current: 1, previous: 1, pctChange: 0 }, distinctAutomatedWallets: { current: 1, previous: 1, pctChange: 0 }, walletWeightedPct: { current: 50, previous: 50, deltaPts: 0 }, mixedWallets: 0, categorizedWallets: 2, available: true, satisfactionByCategory: [] },
     },
     q3: {
       id: "value-flow",

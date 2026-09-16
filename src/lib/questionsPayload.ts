@@ -65,6 +65,16 @@ export interface QuestionsPayload {
       /** Distinct wallets with ≥1 interactive-category action (offer_category_participant_day); the anti-overcounting signal for Q2. */
       distinctInteractiveWallets: Delta;
       distinctAutomatedWallets: Delta;
+      /**
+       * Wallet-weighted counterpart to the action-weighted headline: distinct wallets with ≥1
+       * user-initiated action ÷ distinct wallets with ≥1 categorized action. A wallet that did both
+       * counts as user-initiated, so this reads as reach, not as a partition of wallets.
+       */
+      walletWeightedPct: { current: number | null; previous: number | null; deltaPts: number | null };
+      /** Distinct wallets in the current window that acted in both groups — the overlap the share absorbs. */
+      mixedWallets: number | null;
+      /** Denominator of `walletWeightedPct` for the current window. */
+      categorizedWallets: number | null;
       /** False until the P2 indexer + backfill have populated the table; counts are 0 then, not "none". */
       available: boolean;
       /** Settled-offer satisfaction per functional category over the range (offer_outcome_category); empty before the P2 backfill. */
@@ -168,6 +178,24 @@ export function pctChangeNum(current: number | null, previous: number | null): n
   return ((current - previous) / previous) * 100;
 }
 
+/**
+ * Wallet-weighted organic share: distinct wallets with ≥1 user-initiated action ÷ distinct wallets
+ * with ≥1 categorized action. Returns nulls while `offer_category_participant_day` is unavailable,
+ * and for a window with no categorized wallets, so the card shows "—" rather than 0%.
+ */
+export function walletWeightedOrganic(
+  current: OfferCategoryParticipantStats,
+  previous: OfferCategoryParticipantStats
+): { current: number | null; previous: number | null; deltaPts: number | null } {
+  const pct = (s: OfferCategoryParticipantStats) =>
+    s.available && s.distinctCategorizedWallets > 0
+      ? (s.distinctInteractiveWallets / s.distinctCategorizedWallets) * 100
+      : null;
+  const cur = pct(current);
+  const prev = pct(previous);
+  return { current: cur, previous: prev, deltaPts: cur !== null && prev !== null ? cur - prev : null };
+}
+
 export function delta(current: number | null, previous: number | null): Delta {
   return { current, previous, pctChange: pctChangeNum(current, previous) };
 }
@@ -238,6 +266,7 @@ function withoutPriorComparisons(q: QuestionsPayload): QuestionsPayload {
         ...q.q2.support,
         distinctInteractiveWallets: blank(q.q2.support.distinctInteractiveWallets),
         distinctAutomatedWallets: blank(q.q2.support.distinctAutomatedWallets),
+        walletWeightedPct: { current: q.q2.support.walletWeightedPct.current, previous: null, deltaPts: null },
       },
     },
     q3: { ...q.q3, headline: { ...q.q3.headline, previousNetUsd: null, deltaUsd: null } },
@@ -380,6 +409,13 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
           input.categoryParticipants.current.distinctAutomatedWallets,
           input.categoryParticipants.previous.distinctAutomatedWallets
         ),
+        walletWeightedPct: walletWeightedOrganic(input.categoryParticipants.current, input.categoryParticipants.previous),
+        mixedWallets: input.categoryParticipants.current.available
+          ? input.categoryParticipants.current.distinctMixedWallets
+          : null,
+        categorizedWallets: input.categoryParticipants.current.available
+          ? input.categoryParticipants.current.distinctCategorizedWallets
+          : null,
         available: input.categoryParticipants.current.available && input.categoryParticipants.previous.available,
         satisfactionByCategory: outcomesByCategory(dimTotalsOverDays(dailyContext, days, SERIES.OFFER_OUTCOME_CATEGORY)),
       },

@@ -173,6 +173,12 @@ In **Docker** or behind a reverse proxy, set **`PORT`** if the platform expects 
 
   Core shape is in `src/lib/metricsQuery.ts` and `src/lib/metricsDisplayTypes.ts`. **`series.transferVolumeSeries`** is per denom with non-zero transfer-like volume **or** IBC recv in range; each point is **transfer_volume + ibc_transfer_amount_in** for that denom (gross in-tx basis: transfer_volume + IBC recv). **`series.bankCreditsVolumeSeries`**, **`series.ibcAmountInSeries`**, and **`series.ibcAmountOutSeries`** feed the Q3 net-flow chart and API rollups — each item is `{ denom, data: [{ bucket, value }] }`.
 
+- `GET /api/status`
+  Indexer height and its last write time, plus **`lag`** from **`computeIndexerLag`** (`src/lib/indexerLag.ts`): `blocksBehind` against the chain head read live over RPC, `secondsSinceUpdate` from the indexer's own timestamp, and a `level` of `live` / `behind` / `stalled` / `unknown`. No block time is assumed, so a block gap is never presented as a duration. An unreachable RPC yields `chainHeight: null` and `level: "unknown"` rather than a failed request; a head *below* the indexed height means a lagging peer, so the gap is clamped to zero and reported as unknown. Rendered by `src/components/dashboard/IndexerStatusLine.tsx`, which polls on its own 60s interval.
+
+- `GET /api/export?from=YYYY-MM-DD&to=YYYY-MM-DD&granularity=day|hour|week&format=csv|json`
+  The stored metric rows behind the current view, in long form (`bucket`, `series`, `dimension`, `value`). Same validation and indexed-history clamping as `/api/metrics`. Values stay exact strings because chain amounts reach `numeric(78,0)`. A `week` view exports the **day** rows it aggregates, since no week grain is stored; the JSON response names the real grain in **`grain`**. Both formats send `Content-Disposition: attachment`.
+
 ## Project layout
 
 | Path | Purpose |

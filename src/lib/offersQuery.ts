@@ -56,6 +56,13 @@ export interface OfferCategoryParticipantStats {
   distinctInteractiveWallets: number;
   /** Distinct wallets that submitted at least one action in an automated category (orchestration, oracle, fast-USDC). */
   distinctAutomatedWallets: number;
+  /** Distinct wallets with ≥1 action in ANY category — the denominator for the wallet-weighted share. */
+  distinctCategorizedWallets: number;
+  /**
+   * Distinct wallets that acted in BOTH an interactive and an automated category. Such a wallet is
+   * counted in the interactive numerator, so this is the size of the overlap the share absorbs.
+   */
+  distinctMixedWallets: number;
   /** Distinct wallets per category. */
   byCategory: Record<string, number>;
   /** False when `offer_category_participant_day` does not exist yet (pre-deploy / pre-backfill) — counts are then 0, not "none". */
@@ -76,12 +83,21 @@ export async function queryOfferCategoryParticipantsRange(
   const automated = OFFER_CATEGORIES.filter((c) => categoryAutomation(c) === "automated");
   try {
     const [split, per] = await Promise.all([
-      pool.query<{ inter: string; auto: string }>(
-        `SELECT
-           COUNT(DISTINCT address) FILTER (WHERE category = ANY($3::text[]))::text AS inter,
-           COUNT(DISTINCT address) FILTER (WHERE category = ANY($4::text[]))::text AS auto
-         FROM offer_category_participant_day
-         WHERE day >= $1::date AND day <= $2::date`,
+      pool.query<{ inter: string; auto: string; any_w: string; mixed: string }>(
+        `WITH w AS (
+           SELECT address,
+                  bool_or(category = ANY($3::text[])) AS has_interactive,
+                  bool_or(category = ANY($4::text[])) AS has_automated
+           FROM offer_category_participant_day
+           WHERE day >= $1::date AND day <= $2::date
+           GROUP BY address
+         )
+         SELECT
+           COUNT(*) FILTER (WHERE has_interactive)::text AS inter,
+           COUNT(*) FILTER (WHERE has_automated)::text AS auto,
+           COUNT(*)::text AS any_w,
+           COUNT(*) FILTER (WHERE has_interactive AND has_automated)::text AS mixed
+         FROM w`,
         [fromDay, toDay, interactive, automated]
       ),
       pool.query<{ category: string; c: string }>(
@@ -97,12 +113,21 @@ export async function queryOfferCategoryParticipantsRange(
     return {
       distinctInteractiveWallets: Number(split.rows[0]?.inter ?? 0),
       distinctAutomatedWallets: Number(split.rows[0]?.auto ?? 0),
+      distinctCategorizedWallets: Number(split.rows[0]?.any_w ?? 0),
+      distinctMixedWallets: Number(split.rows[0]?.mixed ?? 0),
       byCategory,
       available: true,
     };
   } catch (e) {
     if ((e as { code?: string } | null)?.code === "42P01") {
-      return { distinctInteractiveWallets: 0, distinctAutomatedWallets: 0, byCategory: {}, available: false };
+      return {
+        distinctInteractiveWallets: 0,
+        distinctAutomatedWallets: 0,
+        distinctCategorizedWallets: 0,
+        distinctMixedWallets: 0,
+        byCategory: {},
+        available: false,
+      };
     }
     throw e;
   }

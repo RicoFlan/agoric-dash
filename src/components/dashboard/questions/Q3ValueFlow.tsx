@@ -20,6 +20,7 @@ import {
 import type { MetricsPayload } from "@/components/dashboard/types";
 import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { atomicToFloat } from "@/lib/amountFormat";
+import { fmtCompactUsd } from "@/lib/compactNumber";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
@@ -106,6 +107,8 @@ export function Q3ValueFlow({
   }, [data.bankCreditsVolumeByDenom, data.bankCreditsVolumeUsdByDenom, disp]);
 
   const h = q?.headline;
+  const netUsd = fmtCompactUsd(h?.netUsd ?? null, true);
+  const prevNetUsd = fmtCompactUsd(h?.previousNetUsd ?? null, true);
   const o = q?.orchestrated;
   const orchVenues = useMemo(() => (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0)), [o?.byVenue]);
   /**
@@ -149,8 +152,10 @@ export function Q3ValueFlow({
       headline={
         <Headline
           label="Net IBC flow, priced assets (USD)"
-          value={fmtUsd(h?.netUsd ?? null, true)}
-          previous={fmtUsd(h?.previousNetUsd ?? null, true)}
+          value={netUsd.text}
+          exact={netUsd.exact}
+          previous={prevNetUsd.text}
+          previousExact={prevNetUsd.exact}
           delta={h?.deltaUsd === null || h?.deltaUsd === undefined ? "n/a" : `${fmtUsd(h.deltaUsd, true)} vs prior`}
           deltaValue={h?.deltaUsd ?? null}
           definition={DEFINITIONS.q3_net_ibc_flow}
