@@ -64,7 +64,12 @@ describe("buildNetIbcFlow", () => {
 
     // priced assets first by |netUsd| (IST 5, BLD 0), unpriced last
     expect(r.byAsset.map((a) => a.denom)).toEqual(["uist", "ubld", "ibc/UNMAPPED"]);
-    expect(r.headline).toEqual({ netUsd: 5, previousNetUsd: 10, deltaUsd: -5, inUsd: 45, outUsd: 40, outOrchUsd: null });
+    expect(r.headline).toMatchObject({ netUsd: 5, previousNetUsd: 10, deltaUsd: -5, inUsd: 45, outUsd: 40, outOrchUsd: null });
+    // Coverage: the unmapped asset contributes nothing to netUsd, so the headline must disclose it.
+    // usdPricingMeta cannot: its unpricedDays counter only ever sees denoms that HAVE a coin id.
+    expect(r.headline.activeAssets).toBe(3);
+    expect(r.headline.pricedAssets).toBe(2);
+    expect(r.headline.unpricedAssets).toEqual([{ denom: "ibc/UNMAPPED", in: "7", out: "0", net: "7" }]);
 
     expect(r.dailyNetUsd).toEqual([
       { day: D[0], value: 10 },
@@ -90,6 +95,7 @@ describe("buildNetIbcFlow", () => {
       topN: 1,
     });
     expect(r.headline.netUsd).toBeNull();
+    expect(r.headline).toMatchObject({ activeAssets: 2, pricedAssets: 0 });
     expect(r.perBucket).toEqual([{ denom: "ubld", data: [{ bucket: "2026-07-27", in: "3", out: "1", net: "2" }] }]);
     expect(r.dailyNetUsd).toEqual([
       { day: D[0], value: 0 },

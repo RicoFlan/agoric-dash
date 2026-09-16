@@ -45,6 +45,15 @@ export interface NetIbcFlow {
     outUsd: number | null;
     /** Of outUsd, orchestration-originated. */
     outOrchUsd: number | null;
+    /**
+     * Coverage of the USD figures. An asset with no CoinGecko mapping contributes NOTHING to the
+     * totals above and cannot be counted in `usdPricingMeta.unpricedDays` (that counter only sees
+     * mapped denoms), so the headline must disclose it separately or it silently understates flow.
+     */
+    activeAssets: number;
+    pricedAssets: number;
+    /** Assets with movement but no USD valuation, largest absolute native net first. */
+    unpricedAssets: { denom: string; in: string; out: string; net: string }[];
   };
   /** Priced assets first by |netUsd| desc, then unpriced by max(in, out) native desc. */
   byAsset: NetIbcAsset[];
@@ -201,6 +210,14 @@ export function buildNetIbcFlow(input: {
   const outOrchUsd = sumNullable([...usd.values()].map((u) => u.outOrchUsd));
   const netUsd = sumNullable(byAsset.map((a) => a.netUsd));
   const previousNetUsd = sumNullable([...prevUsd.values()].map(netUsdOf));
+  const unpricedAssets = byAsset
+    .filter((a) => a.netUsd === null)
+    .map((a) => ({ denom: a.denom, in: a.in, out: a.out, net: a.net }))
+    .sort((x, y) => {
+      const ax = BigInt(x.net) < BigInt(0) ? -BigInt(x.net) : BigInt(x.net);
+      const ay = BigInt(y.net) < BigInt(0) ? -BigInt(y.net) : BigInt(y.net);
+      return ay > ax ? 1 : ay < ax ? -1 : 0;
+    });
 
   return {
     headline: {
@@ -210,6 +227,9 @@ export function buildNetIbcFlow(input: {
       inUsd,
       outUsd,
       outOrchUsd,
+      activeAssets: byAsset.length,
+      pricedAssets: byAsset.length - unpricedAssets.length,
+      unpricedAssets,
     },
     byAsset,
     perBucket,

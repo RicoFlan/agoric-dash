@@ -127,7 +127,7 @@ export function Q3ValueFlow({
       }
       headline={
         <Headline
-          label="Net IBC flow (USD)"
+          label="Net IBC flow, priced assets (USD)"
           value={fmtUsd(h?.netUsd ?? null, true)}
           previous={fmtUsd(h?.previousNetUsd ?? null, true)}
           delta={h?.deltaUsd === null || h?.deltaUsd === undefined ? "n/a" : `${fmtUsd(h.deltaUsd, true)} vs prior`}
@@ -139,6 +139,27 @@ export function Q3ValueFlow({
                 In {fmtUsd(h?.inUsd ?? null)} · Out {fmtUsd(h?.outUsd ?? null)}
                 {h?.outOrchUsd !== null && h?.outOrchUsd !== undefined && h.outOrchUsd > 0 && (
                   <> (of which orchestrated {fmtUsd(h.outOrchUsd)})</>
+                )}
+                {h && (
+                  <>
+                    <br />
+                    <span className={h.pricedAssets < h.activeAssets ? "font-semibold text-[var(--color-warning)]" : undefined}>
+                      {h.pricedAssets} of {h.activeAssets} active assets priced.
+                    </span>
+                    {h.unpricedAssets.length > 0 && (
+                      <>
+                        {" "}
+                        Excluded, no price available:{" "}
+                        {h.unpricedAssets.slice(0, 3).map((a, i) => (
+                          <span key={a.denom}>
+                            {i > 0 ? ", " : ""}
+                            {sym(a.denom)} {fmtNative(humanSigned(a.net, disp?.metas[a.denom]?.decimals))} net
+                          </span>
+                        ))}
+                        {h.unpricedAssets.length > 3 ? `, and ${h.unpricedAssets.length - 3} more` : ""}.
+                      </>
+                    )}
+                  </>
                 )}
                 <UsdBasisNote meta={q.usdPricingMeta} />
               </>

@@ -23,7 +23,7 @@ import { outcomesByCategory, type OutcomeByCategory } from "@/lib/offerOutcomeCa
 import type { RetentionCounts } from "@/lib/participationQueries";
 import { buildRetention, type Retention } from "@/lib/retention";
 import type { YmaxSnapshot } from "@/lib/ymaxQueries";
-import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
+import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, SERIES } from "@/lib/semantics";
 
 export interface Delta {
   current: number | null;
@@ -36,6 +36,12 @@ export interface QuestionsPayload {
   /** First day of the day-grain context (prior window and anomaly lookback both fit inside). */
   contextFromDay: string;
   comparisonWindow: { from: string; to: string };
+  /**
+   * False when the prior window lies entirely before indexed history. Comparisons would then show a
+   * real current value against a zero prior, which reads as growth from nothing, so the UI omits
+   * them rather than printing a misleading delta.
+   */
+  priorWindowHasData: boolean;
   anomalyRule: { windowDays: number; minPoints: number; threshold: number };
   q1: {
     id: "busier";
@@ -203,6 +209,42 @@ function feeEffectiveN(
   return effectiveNumberFromHhi(herfindahlFromWeights([...byAddr.values()]));
 }
 
+/**
+ * Blank every prior-window comparison. Used when the prior window lies entirely before indexed
+ * history: a real current value against a zero prior reads as growth from nothing, so we show no
+ * comparison at all rather than a misleading one.
+ */
+function withoutPriorComparisons(q: QuestionsPayload): QuestionsPayload {
+  const blank = (d: Delta): Delta => ({ current: d.current, previous: null, pctChange: null });
+  return {
+    ...q,
+    q1: {
+      ...q.q1,
+      headline: blank(q.q1.headline),
+      support: {
+        distinctAccountsPerDayAvg: blank(q.q1.support.distinctAccountsPerDayAvg),
+        failureRatePct: { current: q.q1.support.failureRatePct.current, previous: null },
+        feePaidBld: blank(q.q1.support.feePaidBld),
+      },
+    },
+    q2: {
+      ...q.q2,
+      headline: { current: q.q2.headline.current, previous: null, deltaPts: null },
+      support: {
+        ...q.q2.support,
+        distinctInteractiveWallets: blank(q.q2.support.distinctInteractiveWallets),
+        distinctAutomatedWallets: blank(q.q2.support.distinctAutomatedWallets),
+      },
+    },
+    q3: { ...q.q3, headline: { ...q.q3.headline, previousNetUsd: null, deltaUsd: null } },
+    q4: {
+      ...q.q4,
+      headline: blank(q.q4.headline),
+      retention: { ...q.q4.retention, retainedShareDeltaPts: null },
+    },
+  };
+}
+
 export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
   const { dailyContext, display, denomToCoinId, table } = input;
   const days = utcDaysInclusive(input.fromDay, input.toDay);
@@ -271,9 +313,11 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     value: feeEffectiveN(input.feeByDay, [day], display, denomToCoinId, q4Pricer),
   }));
 
-  return {
+  const priorWindowHasData = input.prevToDay >= INDEXED_HISTORY_FROM_DAY;
+  const payload: QuestionsPayload = {
     contextFromDay: input.contextFromDay,
     comparisonWindow: { from: input.prevFromDay, to: input.prevToDay },
+    priorWindowHasData,
     anomalyRule: {
       windowDays: anomalyOpts.windowDays ?? DEFAULT_ANOMALY_OPTIONS.windowDays,
       minPoints: anomalyOpts.minPoints ?? DEFAULT_ANOMALY_OPTIONS.minPoints,
@@ -343,4 +387,5 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
       usdPricingMeta: q4Pricer.meta(),
     },
   };
+  return priorWindowHasData ? payload : withoutPriorComparisons(payload);
 }

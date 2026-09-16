@@ -8,6 +8,7 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
   const base: QuestionsPayload = {
     contextFromDay: "2026-07-01",
     comparisonWindow: { from: "2026-07-02", to: "2026-07-31" },
+    priorWindowHasData: true,
     anomalyRule: { windowDays: 30, minPoints: 7, threshold: 2.5 },
     q1: {
       id: "busier",
@@ -30,7 +31,7 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
     },
     q3: {
       id: "value-flow",
-      headline: { netUsd: -1_200_000, previousNetUsd: 800_000, deltaUsd: -2_000_000, inUsd: 1e6, outUsd: 2.2e6, outOrchUsd: null },
+      headline: { netUsd: -1_200_000, previousNetUsd: 800_000, deltaUsd: -2_000_000, inUsd: 1e6, outUsd: 2.2e6, outOrchUsd: null, activeAssets: 1, pricedAssets: 1, unpricedAssets: []  },
       byAsset: [{ denom: "ibc/USDC", in: "1", out: "2", outOrch: "0", net: "-1", inUsd: 1e6, outUsd: 2.2e6, netUsd: -1_200_000 }],
       perBucket: [],
       daily: [],
@@ -70,7 +71,7 @@ describe("buildWhatChanged", () => {
     const s = buildWhatChanged(
       fixture({
         q1: { headline: { current: 100, previous: 100, pctChange: 0 }, anomalies: [] },
-        q3: { headline: { netUsd: 500_000, previousNetUsd: 900_000, deltaUsd: -400_000, inUsd: 1, outUsd: 1, outOrchUsd: null }, byAsset: [] },
+        q3: { headline: { netUsd: 500_000, previousNetUsd: 900_000, deltaUsd: -400_000, inUsd: 1, outUsd: 1, outOrchUsd: null, activeAssets: 1, pricedAssets: 1, unpricedAssets: []  }, byAsset: [] },
       }),
       { max: 4 }
     );
@@ -84,7 +85,7 @@ describe("buildWhatChanged", () => {
       fixture({
         q1: { headline: { current: 112, previous: 100, pctChange: 12 }, anomalies: [] },
         q2: { headline: { current: 4, previous: 2, deltaPts: 2 } },
-        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null, outOrchUsd: null }, byAsset: [] },
+        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null, outOrchUsd: null, activeAssets: 1, pricedAssets: 1, unpricedAssets: []  }, byAsset: [] },
         q4: { headline: { current: 10, previous: 10, pctChange: 0 } },
       }),
       { max: 4 }
@@ -98,7 +99,7 @@ describe("buildWhatChanged", () => {
       fixture({
         q1: { headline: { current: 0, previous: 0, pctChange: 0 }, anomalies: [] },
         q2: { headline: { current: null, previous: null, deltaPts: null } },
-        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null, outOrchUsd: null }, byAsset: [] },
+        q3: { headline: { netUsd: null, previousNetUsd: null, deltaUsd: null, inUsd: null, outUsd: null, outOrchUsd: null, activeAssets: 1, pricedAssets: 1, unpricedAssets: []  }, byAsset: [] },
       }),
       { max: 4 }
     );

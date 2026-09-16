@@ -23,11 +23,11 @@ export const DEFINITIONS = {
   q2_distinct_automated_wallets:
     "Unique smart-wallet owners with at least one orchestration, oracle, or fast-USDC action in range.",
   q2_satisfaction_rate:
-    "Share of settled Zoe offers with numWantsSatisfied ≥ 1, counted once per offer at its terminal payout. Self-indexed from vstorage offerStatus updates.",
+    "Share of settled Zoe offers whose terminal payout satisfied at least one DECLARED want (numWantsSatisfied ≥ 1), counted once per offer. It is an execution property, not user or product satisfaction, and it excludes invocations and unsettled offers.",
 
   // Q3 — value flow
   q3_net_ibc_flow:
-    "Σ over priced assets of (IBC amount in − IBC amount out), each (asset, day) leg × that day's CoinGecko price. Positive = net inflow to Agoric. Gross flow, not TVL.",
+    "Σ over PRICED assets of (IBC amount in − IBC amount out), each (asset, day) leg × that day's CoinGecko price. Assets with no price are excluded entirely and listed beside the figure. Outbound is counted when a transfer is initiated, not when it settles, so a timed-out and refunded transfer still reads as outflow. Observed traffic, not settled capital flow.",
   q3_ibc_in_usd: "IBC amounts received on agoric-3 (deduped recv_packet basis), day-priced and summed across assets.",
   q3_value_received_usd:
     "Bank credits to non-module receivers in successful txs, day-priced; broader than IBC (includes bank sends and contract/vbank flows). See Detail.",

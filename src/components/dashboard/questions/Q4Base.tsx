@@ -27,6 +27,7 @@ import { effectiveNumberFromHhi } from "@/lib/concentrationMath";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { DEFINITIONS } from "@/lib/definitions";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
+import { INDEXED_HISTORY_FROM_DAY } from "@/lib/semantics";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 
 const EffectiveNLineChart = dynamic(() => import("@/components/dashboard/charts/EffectiveNLineChart"), {
@@ -177,7 +178,7 @@ export function Q4Base({
           note={r ? `${fmtInt(r.current.retained)} of ${fmtInt(r.current.active)} active` : undefined}
         />
         <SupportFigure
-          label="New addresses"
+          label={`First seen since ${INDEXED_HISTORY_FROM_DAY}`}
           value={fmtPct1(r?.current.newSharePct)}
           previous={r ? fmtPct1(r.previous.newSharePct) : undefined}
           definition={DEFINITIONS.q4_new_addresses}

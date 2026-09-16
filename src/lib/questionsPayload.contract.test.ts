@@ -94,6 +94,7 @@ describe("questions payload (contract)", () => {
     const q = build();
     expect(q.contextFromDay).toBe(D[0]);
     expect(q.comparisonWindow).toEqual({ from: D[0], to: D[1] });
+    expect(q.priorWindowHasData).toBe(true);
     expect(q.anomalyRule).toEqual({ windowDays: 30, minPoints: 7, threshold: 2.5 });
     expect([q.q1.id, q.q2.id, q.q3.id, q.q4.id]).toEqual(["busier", "organic", "value-flow", "base"]);
     for (const block of [q.q1, q.q2, q.q3, q.q4]) {
@@ -155,6 +156,44 @@ describe("questions payload (contract)", () => {
     expect(q4.retention.retainedShareDeltaPts).toBe(-25);
     expect(q4.support).toEqual({ top10FeeSharePct: 74.5, multiDayInRange: 7 });
     expect(q4.daily.map((p) => p.value)).toEqual([2, 2, 4, 4]);
+  });
+
+  it("omits every prior comparison when the prior window predates indexed history", () => {
+    // INDEXED_HISTORY_FROM_DAY is 2026-01-01; a prior window ending before it has no data at all.
+    const table = new DailyPriceTable(new Map([["agoric", new Map(D.map((d) => [d, 1]))]]), D[0], D[3], D[3]);
+    const dailyContext = ctx();
+    const q = buildQuestions({
+      ...({
+        fromDay: D[2],
+        toDay: D[3],
+        prevFromDay: "2025-12-30",
+        prevToDay: "2025-12-31",
+        contextFromDay: D[0],
+        dailyContext,
+        curBuckets: dailyContext,
+        display,
+        denomToCoinId,
+        table,
+        distinctUnionPerDay: [],
+        retention: { current: { active: 40, retained: 10, newAddresses: 20 }, previous: { active: 0, retained: 0, newAddresses: 0 } },
+        categoryParticipants: {
+          current: { distinctInteractiveWallets: 12, distinctAutomatedWallets: 3, byCategory: {}, available: true },
+          previous: { distinctInteractiveWallets: 0, distinctAutomatedWallets: 0, byCategory: {}, available: true },
+        },
+        feeByDay: feeByDay(),
+        ymax: { available: false, portfoliosWithPositions: 0, portfoliosActive: 0, portfoliosTotal: 0, byVenue: [], flowsInRange: [], latestHeight: null, oldestHeight: null },
+        grossUsdHhi: null,
+        top10FeeSharePct: null,
+        multiDayInRange: 0,
+      } as Parameters<typeof buildQuestions>[0]),
+    });
+    expect(q.priorWindowHasData).toBe(false);
+    expect(q.q1.headline).toMatchObject({ previous: null, pctChange: null });
+    expect(q.q1.headline.current).toBe(300); // the current value is still real
+    expect(q.q2.headline).toMatchObject({ previous: null, deltaPts: null });
+    expect(q.q3.headline).toMatchObject({ previousNetUsd: null, deltaUsd: null });
+    expect(q.q4.headline).toMatchObject({ previous: null, pctChange: null });
+    expect(q.q4.retention.retainedShareDeltaPts).toBeNull();
   });
 
   it("delta(): 0 for 0→0, null when previous is 0 or a side is missing", () => {

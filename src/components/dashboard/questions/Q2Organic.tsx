@@ -99,7 +99,7 @@ export function Q2Organic({
       }
       headline={
         <Headline
-          label="Organic activity ratio"
+          label="User-initiated share of wallet actions"
           value={fmtPct1(ratio?.current)}
           previous={fmtPct1(ratio?.previous)}
           delta={fmtPts(ratio?.deltaPts ?? null)}
@@ -221,10 +221,10 @@ export function Q2Organic({
           note={walletsAvailable ? undefined : "Available after the offer-category backfill."}
         />
         <SupportFigure
-          label="Satisfaction rate (all offers)"
+          label="Declared-wants fulfillment"
           value={fmtPct1(offers?.outcomes.satisfactionRatePct)}
           definition={DEFINITIONS.q2_satisfaction_rate}
-          note={offers ? `${fmtInt(Number(offers.outcomes.settled.current))} settled in range` : undefined}
+          note={offers ? `${fmtInt(Number(offers.outcomes.wantsSatisfied.current))} of ${fmtInt(Number(offers.outcomes.settled.current))} settled offers` : undefined}
         />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
