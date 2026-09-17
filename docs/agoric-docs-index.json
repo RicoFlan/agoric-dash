@@ -1,0 +1,1058 @@
+[
+ {
+  "route": "/e2e-testing",
+  "title": "End-to-End Testing",
+  "desc": "Developing Decentralized Applications (DApps) on the Cosmos network often involves integrating with the Keplr wallet. Testing is key for ensuring\u2026",
+  "lines": 269,
+  "insidebar": true,
+  "aat": "studio (hosted demo tests)"
+ },
+ {
+  "route": "/glossary/",
+  "title": "Glossary",
+  "desc": "This page lists words, expressions, or concepts used by the Agoric technology stack.",
+  "lines": 685,
+  "insidebar": true,
+  "aat": "skills (terminology) \u00b7 plain-docs"
+ },
+ {
+  "route": "/guides/UIComponentLibrary/assets/asset",
+  "title": "/guides/UIComponentLibrary/assets/asset",
+  "desc": "Asset placeholder (no content).",
+  "lines": 0,
+  "insidebar": false,
+  "aat": "\u2014"
+ },
+ {
+  "route": "/guides/UIComponentLibrary/",
+  "title": "UI Component Library",
+  "desc": "You'll find a collection of ready-to-use or pre-coded user interface elements that help accelerate your Agoric Dapp-building. These pre-designed\u2026",
+  "lines": 123,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/agoric-cli/agd-query-tx",
+  "title": "Using agd to make queries and transactions",
+  "desc": "agd is the Agoric Cosmos App, analagous to simd in the Cosmos SDK simapp or gaiad in the Cosmos hub. Most of the simd query commands and\u2026",
+  "lines": 260,
+  "insidebar": true,
+  "aat": "doctor \u00b7 vstorage toolkit \u00b7 deploy"
+ },
+ {
+  "route": "/guides/agoric-cli/",
+  "title": "Agoric CLI",
+  "desc": "Displays the Agoric CLI commands and arguments with brief descriptions.",
+  "lines": 310,
+  "insidebar": true,
+  "aat": "doctor \u00b7 deploy"
+ },
+ {
+  "route": "/guides/assets/",
+  "title": "/guides/assets/",
+  "desc": "Image storage folder for the guides (no content).",
+  "lines": 1,
+  "insidebar": false,
+  "aat": "\u2014"
+ },
+ {
+  "route": "/guides/chainlink-integration",
+  "title": "/guides/chainlink-integration",
+  "desc": "How Chainlink oracle nodes feed price data to Agoric contracts via the oracle contract.",
+  "lines": 5,
+  "insidebar": false,
+  "aat": "\u2014 (oracle)"
+ },
+ {
+  "route": "/guides/coreeval/",
+  "title": "Permissioned Contract Deployment",
+  "desc": "Until mainnet enters the Mainnet-3 phase of the multi-phase mainnet rollout, permissionless contract installation with Zoe is limited to\u2026",
+  "lines": 14,
+  "insidebar": true,
+  "aat": "deploy \u00b7 plain-docs"
+ },
+ {
+  "route": "/guides/coreeval/local-testnet",
+  "title": "Submit Transactions",
+  "desc": "Step-by-step: bundle, fund, install-bundle, submit a swingset-core-eval proposal and vote on a local chain, with agd transcripts.",
+  "lines": 221,
+  "insidebar": true,
+  "aat": "deploy \u00b7 STALE (IST install fee, --gas auto)"
+ },
+ {
+  "route": "/guides/coreeval/permissions",
+  "title": "Declare Required Capabilities",
+  "desc": "Most contract deployments don't need everything in BootstrapPowers. Verifying by inspection that they don't use any more than they need is\u2026",
+  "lines": 65,
+  "insidebar": true,
+  "aat": "manifest (required capabilities) \u00b7 preflight (capability report) \u00b7 skills (POLA)"
+ },
+ {
+  "route": "/guides/coreeval/proposal",
+  "title": "Write Code to Deploy a Contract",
+  "desc": "When a core eval script is evaluated, the completion value is expected to be a function. The function is invoked with a _BootstrapPowers_ object\u2026",
+  "lines": 154,
+  "insidebar": true,
+  "aat": "deploy \u00b7 eval task 13 \u00b7 snippets"
+ },
+ {
+  "route": "/guides/dapps/dapp-templates",
+  "title": "/guides/dapps/dapp-templates",
+  "desc": "When creating a new dapp using agoric init, you have the option of starting from a number of templates. To use a template other than the default,\u2026",
+  "lines": 42,
+  "insidebar": false,
+  "aat": "STALE (archived dapps)"
+ },
+ {
+  "route": "/guides/dapps/",
+  "title": "Agoric Dapps",
+  "desc": "Index of dapp guides: templates, starting multiuser dapps, deployment.",
+  "lines": 7,
+  "insidebar": false,
+  "aat": "plain-docs"
+ },
+ {
+  "route": "/guides/dapps/starting-multiuser-dapps",
+  "title": "Starting Multiuser Dapps",
+  "desc": "When developing a dapp, you may need to test how it behaves with multiple users before deploying it publicly. These users could have different\u2026",
+  "lines": 143,
+  "insidebar": false,
+  "aat": "studio (two-party demos)"
+ },
+ {
+  "route": "/guides/ertp/amount-math",
+  "title": "AmountMath",
+  "desc": "Depositing and withdrawing assets from a purse and manipulating payment amounts all require adding and subtracting digital assets. ERTP uses the\u2026",
+  "lines": 92,
+  "insidebar": true,
+  "aat": "skills (ERTP) \u00b7 manifest"
+ },
+ {
+  "route": "/guides/ertp/amounts",
+  "title": "Amounts, Values, and Brands",
+  "desc": "An amount describes digital assets. There are no amount API methods, but AmountMath methods take amounts as arguments to get information about and\u2026",
+  "lines": 108,
+  "insidebar": true,
+  "aat": "skills (ERTP) \u00b7 manifest"
+ },
+ {
+  "route": "/guides/ertp/",
+  "title": "ERTP",
+  "desc": "ERTP (_Electronic Rights Transfer Protocol_) is Agoric's token standard for transferring tokens and other digital assets in JavaScript. Using the\u2026",
+  "lines": 332,
+  "insidebar": true,
+  "aat": "skills (ERTP) \u00b7 manifest"
+ },
+ {
+  "route": "/guides/ertp/issuers-and-mints",
+  "title": "Issuers and  Mints",
+  "desc": "Behind the scenes, an issuer maps minted digital assets to their location in a purse or payment. An issuer verifies, moves, and manipulates\u2026",
+  "lines": 127,
+  "insidebar": true,
+  "aat": "skills (ERTP) \u00b7 manifest"
+ },
+ {
+  "route": "/guides/ertp/purses-and-payments",
+  "title": "Purses and Payments",
+  "desc": "Purses hold assets long-term; payments move them. Deposit facets, deposit/withdraw semantics, and the issuer as source of truth.",
+  "lines": 202,
+  "insidebar": true,
+  "aat": "skills (ERTP) \u00b7 manifest"
+ },
+ {
+  "route": "/guides/getting-started/contract-rpc",
+  "title": "Building Client Dapps",
+  "desc": "The Agoric Platform consists of smart contracts and services such as Zoe running in a Hardened JavaScript VM running on top of a Cosmos SDK\u2026",
+  "lines": 465,
+  "insidebar": true,
+  "aat": "offer-lab \u00b7 vstorage toolkit \u00b7 studio"
+ },
+ {
+  "route": "/guides/getting-started/deploying",
+  "title": "Deploying Smart Contracts",
+  "desc": "The agoric deploy command in the Agoric command line tool supports deploying contracts and off-chain web applications that talk to those\u2026",
+  "lines": 100,
+  "insidebar": false,
+  "aat": "deploy"
+ },
+ {
+  "route": "/guides/getting-started/explainer-deploying-a-smart-contact",
+  "title": "Deploying a Smart Contact",
+  "desc": "In the dapp-offer-up tutorial you just went through you saw how quick and easy it was to deploy a contact on Agoric using the yarn start:contract\u2026",
+  "lines": 61,
+  "insidebar": false,
+  "aat": "plain-docs \u00b7 deploy"
+ },
+ {
+  "route": "/guides/getting-started/explainer-how-to-make-an-offer",
+  "title": "Making an Offer",
+  "desc": "As you saw in the dapp-offer-up tutorial you could use the dapp UI to make an offer on up to three items.",
+  "lines": 10,
+  "insidebar": false,
+  "aat": "plain-docs \u00b7 offer-lab"
+ },
+ {
+  "route": "/guides/getting-started/explainer-how-to-start-a-local-chain",
+  "title": "Starting a Local Chain",
+  "desc": "Video-backed explainer for starting a local Agoric chain in Docker (yarn start:docker) and watching blocks.",
+  "lines": 35,
+  "insidebar": false,
+  "aat": "doctor \u00b7 deploy"
+ },
+ {
+  "route": "/guides/getting-started/",
+  "title": "Getting Started",
+  "desc": "Prerequisites and first run: Node, Yarn, Docker, cloning dapp-offer-up, starting the chain, deploying, opening the UI.",
+  "lines": 413,
+  "insidebar": true,
+  "aat": "doctor \u00b7 plain-docs"
+ },
+ {
+  "route": "/guides/getting-started/sell-concert-tickets-contract-explainer",
+  "title": "Sell Concert Tickets Smart Contract",
+  "desc": "This smart contract is designed to mint and sell event tickets as non-fungible tokens (NFTs) in the form of a semi-fungible asset. In this example\u2026",
+  "lines": 154,
+  "insidebar": false,
+  "aat": "gallery (non-DeFi) \u00b7 snippets"
+ },
+ {
+  "route": "/guides/getting-started/start-a-project",
+  "title": "/guides/getting-started/start-a-project",
+  "desc": "Redirect stub to Getting Started (yarn create @agoric/dapp).",
+  "lines": 1,
+  "insidebar": false,
+  "aat": "doctor"
+ },
+ {
+  "route": "/guides/getting-started/swaparoo-how-to-swap-assets-explainer",
+  "title": "Swaparoo Contract",
+  "desc": "This smart contract is designed to allow two parties to swap assets between themselves, with a fee charged to one of the parties. The contract is\u2026",
+  "lines": 123,
+  "insidebar": false,
+  "aat": "gallery"
+ },
+ {
+  "route": "/guides/getting-started/swaparoo-making-a-payment-explainer",
+  "title": "Sending Invitation Payments using an Address",
+  "desc": "In this document, we'll explain how to send a payment to someone using their agoric1... address from an Agoric smart contract using a deposit facet.",
+  "lines": 53,
+  "insidebar": false,
+  "aat": "gallery"
+ },
+ {
+  "route": "/guides/getting-started/syncing-up",
+  "title": "Syncing Up on Mainnet",
+  "desc": "Tune in to Network Upgrades Governance in the Agoric Community Forum for changes to mainnet node operations, including deployment of new\u2026",
+  "lines": 13,
+  "insidebar": false,
+  "aat": "doctor"
+ },
+ {
+  "route": "/guides/getting-started/tutorial-dapp-agoric-basics",
+  "title": "dapp-agoric-basics",
+  "desc": "In this tutorial you will install the dapp-agoric-basics dapp. This dapp is a collection of basic use cases for Agoric smart contracts.",
+  "lines": 83,
+  "insidebar": true,
+  "aat": "snippets \u00b7 gallery (tickets, postal service)"
+ },
+ {
+  "route": "/guides/getting-started/tutorial/",
+  "title": "Tutorial: Dapp with Agoric",
+  "desc": "Index of dapp tutorials (dapp-agoric-basics, UI tutorial).",
+  "lines": 15,
+  "insidebar": true,
+  "aat": "snippets"
+ },
+ {
+  "route": "/guides/getting-started/ui-tutorial/agoric-provider",
+  "title": "2. Agoric Provider",
+  "desc": "The AgoricProvider provides a few things in the context of your app, accessible through hooks and components:",
+  "lines": 91,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/getting-started/ui-tutorial/conclusion",
+  "title": "6. Conclusion",
+  "desc": "Throughout this tutorial, you've accomplished all the basics of building an Agoric Dapp UI:",
+  "lines": 20,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/getting-started/ui-tutorial/connect-wallet",
+  "title": "3. Connect Wallet",
+  "desc": "At this point you should have an app rendering with a single \"Connect Wallet\" button. Try clicking on it and you should see a modal pop up with\u2026",
+  "lines": 135,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/getting-started/ui-tutorial/",
+  "title": "UI Tutorial",
+  "desc": "In this tutorial you will build your own UI from scratch. Along the way, you'll learn how to connect to a wallet, query the blockchain and smart\u2026",
+  "lines": 8,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/getting-started/ui-tutorial/making-an-offer",
+  "title": "5. Making an Offer",
+  "desc": "If you've made it this far, you've created a React app that connects to the wallet, renders the IST purse balance of the user, and reads the chain\u2026",
+  "lines": 284,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/getting-started/ui-tutorial/querying-vstorage",
+  "title": "4. Querying Vstorage",
+  "desc": "A fundamental part of building a Dapp UI is interacting with smart contracts. How can a UI read data from a smart contract on the Agoric\u2026",
+  "lines": 139,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/getting-started/ui-tutorial/starting",
+  "title": "1. Starting",
+  "desc": "There are a few libraries that make building Agoric UIs more convenient, all included in the ui-kit repo:",
+  "lines": 64,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/governance/",
+  "title": "Contract Governance",
+  "desc": "To help build systems with a good balance of decentralization and executive control, the Agoric platform includes, in addition to chain-wide\u2026",
+  "lines": 273,
+  "insidebar": true,
+  "aat": "studio (recipe 1) \u00b7 governance autopilot"
+ },
+ {
+  "route": "/guides/",
+  "title": "/guides/",
+  "desc": "This is the non-API section of the Agoric documentation.",
+  "lines": 1,
+  "insidebar": false,
+  "aat": "?"
+ },
+ {
+  "route": "/guides/integration/chain-integration",
+  "title": "Integrating with Agoric Network",
+  "desc": "The Agoric network builds a blockchain for smart contracts in JavaScript using the cosmos-sdk. Cosmos-sdk is software that provides the\u2026",
+  "lines": 65,
+  "insidebar": true,
+  "aat": "probe \u00b7 sentinel"
+ },
+ {
+  "route": "/guides/integration/name-services",
+  "title": "Name Services: agoricNames, namesByAddress, board",
+  "desc": "agoricNames/agoricNamesAdmin (well-known names), namesByAddress and depositFacet (per-account namespace), and the board (arbitrary names).",
+  "lines": 110,
+  "insidebar": true,
+  "aat": "vstorage toolkit (board resolution) \u00b7 skills"
+ },
+ {
+  "route": "/guides/js-programming/eventual-send",
+  "title": "Eventual Send with E()",
+  "desc": "E(obj).method() sends a message to a possibly remote object and returns a promise; contrasts with fetch, explains pipelining and errors.",
+  "lines": 145,
+  "insidebar": false,
+  "aat": "skills (E())"
+ },
+ {
+  "route": "/guides/js-programming/far",
+  "title": "Far(), Remotable, and Marshaling",
+  "desc": "Far() marks objects pass-by-reference across vats; how marshaling copies data and passes remotables.",
+  "lines": 124,
+  "insidebar": false,
+  "aat": "skills (Far/exo)"
+ },
+ {
+  "route": "/guides/js-programming/hardened-js",
+  "title": "Hardened JavaScript",
+  "desc": "Hardened JavaScript (SES): object capabilities, harden(), POLA, Compartments, defensive correctness; includes a video lecture.",
+  "lines": 434,
+  "insidebar": false,
+  "aat": "skills (Hardened JS) \u00b7 preflight"
+ },
+ {
+  "route": "/guides/js-programming/",
+  "title": "JavaScript Framework",
+  "desc": "The Agoric smart contract platform starts with a JavaScript framework for secure distributed computing.",
+  "lines": 58,
+  "insidebar": true,
+  "aat": "skills \u00b7 plain-docs"
+ },
+ {
+  "route": "/guides/js-programming/notifiers",
+  "title": "Notifiers and Subscriptions",
+  "desc": "Notifiers and subscriptions for distributed async iteration: NotifierKit, SubscriptionKit, use in Zoe and vstorage publishing.",
+  "lines": 332,
+  "insidebar": false,
+  "aat": "vstorage toolkit \u00b7 event relay"
+ },
+ {
+  "route": "/guides/orchestration/contract-walkthroughs/cross-chain-unbond",
+  "title": "Cross-Chain Unbond Example",
+  "desc": "This walkthrough outlines the functionality of the Unbond Contract that enables unbonding of assets from a Cosmos-based chain and transferring\u2026",
+  "lines": 118,
+  "insidebar": true,
+  "aat": "snippets \u00b7 trace"
+ },
+ {
+  "route": "/guides/orchestration/contract-walkthroughs/",
+  "title": "Contract Walkthroughs",
+  "desc": "This section is designed to provide detailed explanations and insights into example Orchestration smart contracts.",
+  "lines": 31,
+  "insidebar": true,
+  "aat": "snippets"
+ },
+ {
+  "route": "/guides/orchestration/contract-walkthroughs/send-anywhere",
+  "title": "Send Anywhere Example",
+  "desc": "The \"Send Anywhere\" contract is designed to facilitate the transfer of assets from one chain to another using Agoric's Orchestration library. The\u2026",
+  "lines": 213,
+  "insidebar": true,
+  "aat": "snippets \u00b7 manifest (send-anywhere subject) \u00b7 trace (event kinds)"
+ },
+ {
+  "route": "/guides/orchestration/how-orch-works",
+  "title": "How Orchestration Works",
+  "desc": "Orchestration relies on protocols and mechanisms that allow blockchains to communicate and transact with each other securely and efficiently. The\u2026",
+  "lines": 137,
+  "insidebar": true,
+  "aat": "skills (orchestration primer) \u00b7 probe"
+ },
+ {
+  "route": "/guides/orchestration/",
+  "title": "What is Agoric Orchestration?",
+  "desc": "Agoric's Orchestration SDK allows developers to easily build cross-chain interactions into existing applications or to create novel\u2026",
+  "lines": 104,
+  "insidebar": true,
+  "aat": "skills \u00b7 plain-docs"
+ },
+ {
+  "route": "/guides/orchestration/key-concepts",
+  "title": "Key Concepts and APIs",
+  "desc": "This document provides an overview of the fundamental concepts involved in building Orchestration smart contracts, focusing on Orchestrator\u2026",
+  "lines": 129,
+  "insidebar": true,
+  "aat": "skills \u00b7 manifest (account/chain surfaces)"
+ },
+ {
+  "route": "/guides/orchestration/orchestration-basics/contract",
+  "title": "Orca Contract walkthrough",
+  "desc": "This section provides a walkthrough of the Orca contract code, explaining its structure, key components, and functionality. The Orca contract is\u2026",
+  "lines": 206,
+  "insidebar": true,
+  "aat": "\u2014 (stale APIs)"
+ },
+ {
+  "route": "/guides/orchestration/orchestration-basics/",
+  "title": "Example Orchestration DApp",
+  "desc": "Walkthrough of dapp-orchestration-basics (orca contract, UI, deployment) as an Orchestration starter.",
+  "lines": 11,
+  "insidebar": true,
+  "aat": "\u2014 (stale dapp; layout only)"
+ },
+ {
+  "route": "/guides/orchestration/orchestration-basics/installation",
+  "title": "Installation and Deployment",
+  "desc": "The dApp implements a smart contract that can be installed and deployed on any Agoric testnet. Since, the contract interacts with the remote\u2026",
+  "lines": 5,
+  "insidebar": true,
+  "aat": "deploy (multichain env) \u00b7 eval harness"
+ },
+ {
+  "route": "/guides/orchestration/orchestration-basics/ui",
+  "title": "UI Walkthrough",
+  "desc": "The React components of the Orchestration dApp UI: wallet connection, account creation, offers.",
+  "lines": 44,
+  "insidebar": true,
+  "aat": "studio (console)"
+ },
+ {
+  "route": "/guides/orchestration/txvsportfolio",
+  "title": "Transactional vs Portfolio",
+  "desc": "Agoric Orchestration supports both **transactional contracts** for single interactions and **portfolio contracts** for rich, persistent user\u2026",
+  "lines": 167,
+  "insidebar": true,
+  "aat": "studio (recipe design) \u00b7 skills"
+ },
+ {
+  "route": "/guides/platform/",
+  "title": "Agoric Platform",
+  "desc": "This document focuses on the layers beneath Zoe and ERTP, what we call the Agoric Platform. This includes \"SwingSet\", which can be thought of as\u2026",
+  "lines": 67,
+  "insidebar": true,
+  "aat": "plain-docs"
+ },
+ {
+  "route": "/guides/subquery-indexing",
+  "title": "SubQuery Indexing",
+  "desc": "This document explains how to index Agoric blockchain data with SubQuery's open source data indexer.",
+  "lines": 38,
+  "insidebar": true,
+  "aat": "sentinel \u00b7 event relay"
+ },
+ {
+  "route": "/guides/wallet/",
+  "title": "Agoric Wallet",
+  "desc": "This page documents the _Agoric Wallet_, including its use of _petnames_ and its place in the Agoric Platform architecture. See also tour of the\u2026",
+  "lines": 117,
+  "insidebar": false,
+  "aat": "\u2014 (legacy wallet)"
+ },
+ {
+  "route": "/guides/wallet/ui",
+  "title": "Wallet UI",
+  "desc": "Legacy wallet UI opened via agoric open; dashboard, dapps, purses, contacts, issuers.",
+  "lines": 59,
+  "insidebar": false,
+  "aat": "\u2014 (legacy wallet)"
+ },
+ {
+  "route": "/guides/zoe/actual-contracts/PSM",
+  "title": "PSM Contract",
+  "desc": "The Parity Stability Module (PSM) contract allows users to convert Inter Stable Tokens (ISTs) to external stable tokens at a specified fixed\u2026",
+  "lines": 109,
+  "insidebar": true,
+  "aat": "\u2014 (Inter Protocol, sunset)"
+ },
+ {
+  "route": "/guides/zoe/actual-contracts/",
+  "title": "Deployed Zoe Contracts",
+  "desc": "In the mainnet-1B release of agoric-sdk, the chain is configured to automatically deploy the following Zoe contracts. A community post on Inter\u2026",
+  "lines": 37,
+  "insidebar": true,
+  "aat": "\u2014 (Inter Protocol, sunset)"
+ },
+ {
+  "route": "/guides/zoe/contract-access-control",
+  "title": "Access Control Smart Contract",
+  "desc": "In our third smart contract, we will demostrate how to control access to different functions of a smart contract. So far, we have only used\u2026",
+  "lines": 28,
+  "insidebar": true,
+  "aat": "snippets (tut-03) \u00b7 skills (POLA)"
+ },
+ {
+  "route": "/guides/zoe/contract-basics",
+  "title": "Smart Contract Basics",
+  "desc": "This guide is designed to help developers understand how to write smart contracts efficiently and securely. Here, you will find detailed examples\u2026",
+  "lines": 27,
+  "insidebar": true,
+  "aat": "skills \u00b7 snippets"
+ },
+ {
+  "route": "/guides/zoe/contract-details",
+  "title": "Durable Contract Details",
+  "desc": "Zoe allows you to write smart contracts that manage interactions between cooperative, but possibly untrusting, parties. Some contracts perform a\u2026",
+  "lines": 121,
+  "insidebar": true,
+  "aat": "skills (durability) \u00b7 manifest"
+ },
+ {
+  "route": "/guides/zoe/contract-hello",
+  "title": "Hello World Smart Contract",
+  "desc": "Before we look at how to make a contract such as the one in the basic dapp in the previous section, let's cover some basics by writing a simple\u2026",
+  "lines": 55,
+  "insidebar": true,
+  "aat": "snippets (tut-01)"
+ },
+ {
+  "route": "/guides/zoe/contract-requirements",
+  "title": "Contract Requirements",
+  "desc": "When writing a smart contract to run on Zoe, you need to know the proper format and other expectations.",
+  "lines": 179,
+  "insidebar": false,
+  "aat": "preflight (library compatibility) \u00b7 skills"
+ },
+ {
+  "route": "/guides/zoe/contract-state",
+  "title": "State Smart Contract",
+  "desc": "In our first hello-world smart contract, we created a greet function and exposed it using publicFacet so that it can be remotely called. However,\u2026",
+  "lines": 35,
+  "insidebar": true,
+  "aat": "snippets (tut-02) \u00b7 skills"
+ },
+ {
+  "route": "/guides/zoe/contract-upgrade",
+  "title": "Contract Upgrade",
+  "desc": "The return value when starting a contract includes a capability to upgrade the contract instance. A call to E(zoe).startInstance(...) returns a\u2026",
+  "lines": 270,
+  "insidebar": true,
+  "aat": "skills (durability) \u00b7 eval task 11 \u00b7 preflight"
+ },
+ {
+  "route": "/guides/zoe/contract-walkthru",
+  "title": "Complete Contract Walk-Through",
+  "desc": "Line-by-line walk through of the dapp-offer-up contract: terms, mint, proposal shape, handler, invitation, public facet.",
+  "lines": 276,
+  "insidebar": true,
+  "aat": "snippets \u00b7 manifest (offer-up subject)"
+ },
+ {
+  "route": "/guides/zoe/contracts/atomic-swap",
+  "title": "Atomic Swap Contract",
+  "desc": "If I want to trade one kind of asset for another kind, I could send you the asset and ask you to send the other kind back. But, you could behave\u2026",
+  "lines": 151,
+  "insidebar": true,
+  "aat": "gallery \u00b7 skills (two-party pattern)"
+ },
+ {
+  "route": "/guides/zoe/contracts/automatic-refund",
+  "title": "Automatic Refund Contract",
+  "desc": "This is a very trivial contract to explain and test Zoe. AutomaticRefund just gives you back what you put in. AutomaticRefund tells Zoe to exit\u2026",
+  "lines": 17,
+  "insidebar": true,
+  "aat": "snippets (minimal contract)"
+ },
+ {
+  "route": "/guides/zoe/contracts/barter-exchange",
+  "title": "Barter Exchange Contract",
+  "desc": "Barter Exchange takes offers for trading arbitrary goods for one another.",
+  "lines": 27,
+  "insidebar": true,
+  "aat": "gallery"
+ },
+ {
+  "route": "/guides/zoe/contracts/constantProductAMM",
+  "title": "ConstantProduct AMM Contract",
+  "desc": "The Constant Product AMM is an automated market maker (AMM) that supports multiple liquidity pools and direct exchanges across pools. It's called\u2026",
+  "lines": 206,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/covered-call",
+  "title": "Covered Call Contract",
+  "desc": "The owner of an asset can use a covered call to give someone else the right to buy the asset at a certain price, called the strike price. That\u2026",
+  "lines": 241,
+  "insidebar": true,
+  "aat": "gallery \u00b7 skills (timer exit)"
+ },
+ {
+  "route": "/guides/zoe/contracts/escrow-to-vote",
+  "title": "Escrow To Vote Contract",
+  "desc": "This contract implements coin voting. There are two roles: the Secretary, who can determine the question (a string), make voting invitations, and\u2026",
+  "lines": 16,
+  "insidebar": true,
+  "aat": "gallery (non-DeFi) \u00b7 studio"
+ },
+ {
+  "route": "/guides/zoe/contracts/fundedCallSpread",
+  "title": "Funded Call Spread Contract",
+  "desc": "This contract implements a fully collateralized call spread. You can use a call spread as a financial building block to create futures, puts,\u2026",
+  "lines": 99,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/",
+  "title": "Example Zoe Contracts",
+  "desc": "While Zoe provides the means to build custom smart contracts, there is a good chance you will want to use one that follows a commonly-used\u2026",
+  "lines": 65,
+  "insidebar": true,
+  "aat": "gallery (check currency per contract)"
+ },
+ {
+  "route": "/guides/zoe/contracts/loan",
+  "title": "Loan Contract",
+  "desc": "The basic loan contract has two parties, a _lender_ and a _borrower_. It lets the borrower add collateral of a particular brand and get a loan of\u2026",
+  "lines": 143,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/mint-and-sell-nfts",
+  "title": "Mint and Sell NFTs Contract",
+  "desc": "This contract mints non-fungible tokens and creates a selling contract instance to sell the tokens in exchange for some sort of money.",
+  "lines": 28,
+  "insidebar": true,
+  "aat": "gallery (non-DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/mint-payments",
+  "title": "Mint Payments Contract",
+  "desc": "This very simple contract shows how to create a new issuer kit and mint payments from it. The contract pays out new tokens to anyone who has an\u2026",
+  "lines": 19,
+  "insidebar": true,
+  "aat": "gallery (non-DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/oracle",
+  "title": "Oracle Query Contract",
+  "desc": "This contract lets other contracts or users make single free or fee-based queries to a generic oracle node (a single instance). This provides a\u2026",
+  "lines": 69,
+  "insidebar": true,
+  "aat": "\u2014 (oracle)"
+ },
+ {
+  "route": "/guides/zoe/contracts/otc-desk",
+  "title": "OTC Desk Contract",
+  "desc": "This is the OTC Desk contract from the \"Building a Composable DeFi Contract\" episode of Cosmos Code With Us workshop.",
+  "lines": 37,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/pricedCallSpread",
+  "title": "Priced Call Spread Contract",
+  "desc": "This contract implements a fully collateralized call spread. You can use a call spread as a financial building block to create futures, puts,\u2026",
+  "lines": 99,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/second-price-auction",
+  "title": "Second-Price Auction Contract",
+  "desc": "In a second-price auction, the winner is the participant with the highest bid, but the winner only pays the price corresponding to the second\u2026",
+  "lines": 146,
+  "insidebar": true,
+  "aat": "gallery (non-DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/sell-items",
+  "title": "Sell Items Contract",
+  "desc": "Sell items in exchange for money. Items may be fungible or non-fungible and multiple items may be bought at once. Money must be fungible.",
+  "lines": 26,
+  "insidebar": true,
+  "aat": "gallery (non-DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/simple-exchange",
+  "title": "Simple Exchange Contract",
+  "desc": "The \"simple exchange\" is a very basic, un-optimized exchange. It has an order book for one asset, priced in a second asset. The order book is\u2026",
+  "lines": 153,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/use-obj-example",
+  "title": "Use Object Contract",
+  "desc": "This contract is an example of associating a particular ability with ownership of a non-fungible token (NFT). In this case, ownership of a\u2026",
+  "lines": 13,
+  "insidebar": true,
+  "aat": "gallery (non-DeFi)"
+ },
+ {
+  "route": "/guides/zoe/contracts/vault",
+  "title": "Vault Contract",
+  "desc": "The Vault is the primary mechanism for making IST (the Agoric stable-value currency) available to participants in the economy. It does this by\u2026",
+  "lines": 112,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/",
+  "title": "Zoe Smart Contract Framework",
+  "desc": "The Zoe service and smart contract API support credibly trading assets with reduced risk.",
+  "lines": 66,
+  "insidebar": true,
+  "aat": "skills \u00b7 plain-docs"
+ },
+ {
+  "route": "/guides/zoe/offer-enforcement",
+  "title": "Zoe: Offer-Safety Enforcement",
+  "desc": "How Zoe enforces offer safety and payout liveness: escrow, seats, reallocation, with a swap example.",
+  "lines": 230,
+  "insidebar": false,
+  "aat": "skills (offer safety) \u00b7 eval task 9"
+ },
+ {
+  "route": "/guides/zoe/offer-safety",
+  "title": "Offer Safety",
+  "desc": "For Zoe to enforce offer safety, the user must give Zoe a proposal. This is a description of both what they want and what they are offering, and\u2026",
+  "lines": 74,
+  "insidebar": false,
+  "aat": "skills (offer safety) \u00b7 eval task 9"
+ },
+ {
+  "route": "/guides/zoe/price-authority",
+  "title": "Price Authority",
+  "desc": "A priceAuthority can be used in contracts (usually specified in the terms of a contract) to provide a price feed, on-demand quotes, and wakeups\u2026",
+  "lines": 59,
+  "insidebar": false,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/guides/zoe/proposal",
+  "title": "The Structure of Offers",
+  "desc": "E(zoe).offer(invitation, proposal, payments, offerArgs): proposal structure (give/want/exit), exit rules, offer results.",
+  "lines": 94,
+  "insidebar": false,
+  "aat": "skills \u00b7 offer-lab"
+ },
+ {
+  "route": "/guides/zoe/pub-to-storage",
+  "title": "Publishing to chainStorage",
+  "desc": "Contracts can use notifiers and subscriptions to publish to clients. To publish data visible to vstorage queries, contracts should connect a\u2026",
+  "lines": 159,
+  "insidebar": false,
+  "aat": "vstorage toolkit \u00b7 manifest (published)"
+ },
+ {
+  "route": "/",
+  "title": "/",
+  "desc": "",
+  "lines": 0,
+  "insidebar": false,
+  "aat": "?"
+ },
+ {
+  "route": "/reference/assets/",
+  "title": "/reference/assets/",
+  "desc": "Image storage folder for the reference (no content).",
+  "lines": 1,
+  "insidebar": false,
+  "aat": "\u2014"
+ },
+ {
+  "route": "/reference/ertp-api/amount-math",
+  "title": "AmountMath Object",
+  "desc": "AmountMath functions: make, add, subtract, isEmpty, isGTE, isEqual, coerce, min, max, over NAT, SET and COPY_BAG asset kinds.",
+  "lines": 296,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/ertp-api/brand",
+  "title": "Brand Object",
+  "desc": "A **Brand** identifies the asset type of the **Issuer** and **Mint** associated with the **Brand**. A given **Brand** has a one-to-one\u2026",
+  "lines": 85,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/ertp-api/ertp-data-types",
+  "title": "ERTP Data Types",
+  "desc": "ERTP data types: Amount, AmountValue, AssetKind, DisplayInfo, IssuerKit, and related records.",
+  "lines": 90,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/ertp-api/",
+  "title": "ERTP API",
+  "desc": "ERTP API index: Issuer, Mint, Brand, Purse, Payment, AmountMath and data types.",
+  "lines": 27,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab"
+ },
+ {
+  "route": "/reference/ertp-api/issuer",
+  "title": "Issuer Object",
+  "desc": "An **Issuer** is the authority on what holds digital assets of its kind. While it cannot create new value by creating digital assets like a\u2026",
+  "lines": 348,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/ertp-api/mint",
+  "title": "Mint Object",
+  "desc": "Mint object: mintPayment, getIssuer; the sole creator of assets of a brand.",
+  "lines": 51,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/ertp-api/payment",
+  "title": "Payment Object",
+  "desc": "A **Payment** holds digital assets that are in transit or expected to soon be in transit. It can be deposited in **Purses**, split into or\u2026",
+  "lines": 79,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/ertp-api/purse",
+  "title": "Purse Object",
+  "desc": "Purse object: getCurrentAmount, deposit, withdraw, getDepositFacet, getAllegedBrand.",
+  "lines": 199,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/repl/board",
+  "title": "/reference/repl/board",
+  "desc": "Stub pointing at the Board name service section of name-services.",
+  "lines": 1,
+  "insidebar": false,
+  "aat": "\u2014 (REPL era)"
+ },
+ {
+  "route": "/reference/repl/",
+  "title": "Agoric REPL",
+  "desc": "Index of REPL-era reference pages (board, networking, priceAuthority, scratch, timerServices).",
+  "lines": 4,
+  "insidebar": false,
+  "aat": "\u2014 (REPL era)"
+ },
+ {
+  "route": "/reference/repl/networking",
+  "title": "Network API",
+  "desc": "Suitably-empowered code inside a vat can access a \"network API\" that works vaguely like the BSD socket API. This code can:",
+  "lines": 164,
+  "insidebar": false,
+  "aat": "\u2014 (REPL era)"
+ },
+ {
+  "route": "/reference/repl/priceAuthority",
+  "title": "/reference/repl/priceAuthority",
+  "desc": "Stub pointing at the Price Authority guide and API.",
+  "lines": 1,
+  "insidebar": false,
+  "aat": "\u2014 (REPL era)"
+ },
+ {
+  "route": "/reference/repl/scratch",
+  "title": "Scratch",
+  "desc": "You use scratch to save key-value pairs for later. It is only on the ag-solo and is not accessible from the chain, making it private to the\u2026",
+  "lines": 44,
+  "insidebar": false,
+  "aat": "\u2014 (REPL era)"
+ },
+ {
+  "route": "/reference/repl/timerServices",
+  "title": "Timer Services",
+  "desc": "chainTimerService and manual timers: getCurrentTimestamp, setWakeup, makeRepeater, delay, TimeMath; block-time semantics.",
+  "lines": 19,
+  "insidebar": false,
+  "aat": "skills (timer)"
+ },
+ {
+  "route": "/reference/vstorage-ref",
+  "title": "VStorage Reference",
+  "desc": "Full vstorage key layout: top-level keys, published.*, agoricNames hubs, well-known contracts and assets, boardAux, provisionPool, wallet paths.",
+  "lines": 373,
+  "insidebar": false,
+  "aat": "vstorage toolkit (schemas) \u00b7 manifest (published) \u00b7 sentinel"
+ },
+ {
+  "route": "/reference/wallet-api/",
+  "title": "Wallet API",
+  "desc": "You can interact with a Wallet via the JavaScript _REPL_ (_Read-Eval-Print Loop_), which is visible at the bottom of the Wallet UI display. In the\u2026",
+  "lines": 23,
+  "insidebar": false,
+  "aat": "\u2014 (legacy wallet)"
+ },
+ {
+  "route": "/reference/wallet-api/wallet-bridge",
+  "title": "WalletBridge API Commands",
+  "desc": "These methods can be used by an untrusted Dapp without breaching the wallet's integrity. They are also exposed via the iframe/WebSocket bridge\u2026",
+  "lines": 65,
+  "insidebar": false,
+  "aat": "\u2014 (legacy wallet)"
+ },
+ {
+  "route": "/reference/wallet-api/wallet-commands",
+  "title": "Wallet API Commands",
+  "desc": "Returns the wallet bridge that bypasses Dapp-authorization. This should only be used within the REPL or deployment scripts that want to use the\u2026",
+  "lines": 64,
+  "insidebar": false,
+  "aat": "\u2014 (legacy wallet)"
+ },
+ {
+  "route": "/reference/zoe-api/",
+  "title": "Zoe API",
+  "desc": "The Zoe framework provides a way to write smart contracts without having to worry about offer safety. To use Zoe, we put things in terms of\u2026",
+  "lines": 43,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab"
+ },
+ {
+  "route": "/reference/zoe-api/mutable-quote",
+  "title": "NOT CURRENTLY INCLUDED IN THE PUBLISHED DOCS; PLEASE IGNORE",
+  "desc": "Use a **MutableQuote** when you expect to make multiple calls, replacing the trigger value. If you just need a single quote, and won't change the\u2026",
+  "lines": 30,
+  "insidebar": false,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/reference/zoe-api/price-authority-admin",
+  "title": "/reference/zoe-api/price-authority-admin",
+  "desc": "\u2022 **registerPriceAuthority**: (pa: ERef\\<PriceAuthority\\>, brandIn: Brand\\<AssetKind\\>, brandOut: Brand\\<AssetKind\\>, force?: boolean) =>\u2026",
+  "lines": 19,
+  "insidebar": false,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/reference/zoe-api/price-authority",
+  "title": "PriceAuthority Object",
+  "desc": "PriceAuthority object: quoteGiven, quoteWanted, quoteAtTime, quoteWhenGT and related price-quote methods.",
+  "lines": 255,
+  "insidebar": true,
+  "aat": "\u2014 (DeFi)"
+ },
+ {
+  "route": "/reference/zoe-api/ratio-math",
+  "title": "Ratio Math Functions",
+  "desc": "These functions let you apply a **Ratio** (a fraction) to an amount, multiplying or dividing an amount by a ratio of two natural numbers.",
+  "lines": 405,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/zoe-api/user-seat",
+  "title": "UserSeat Object",
+  "desc": "Within Zoe, **seats** are used by contracts and users to access or manipulate offers. Zoe has two kinds of seats. **ZCFSeats** are used within\u2026",
+  "lines": 138,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/zoe-api/zcfmint",
+  "title": "ZCFMint Object",
+  "desc": "An object used by the **Zoe Contract Facet** to issue digital assets. It's very similar to the **Mint** object, but it has a more limited set of\u2026",
+  "lines": 36,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/zoe-api/zcfseat",
+  "title": "ZCFSeat Object",
+  "desc": "Zoe uses **seats** to access or manipulate offers. Seats represent active offers and let contracts and users interact with them. Two kinds of\u2026",
+  "lines": 132,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/zoe-api/zoe-contract-facet",
+  "title": "Zoe Contract Facet (ZCF)",
+  "desc": "A Zoe Contract Facet is an API object for a running contract instance to access the Zoe state for that instance. A Zoe Contract Facet is accessed\u2026",
+  "lines": 387,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/zoe-api/zoe-data-types",
+  "title": "Zoe Data Types",
+  "desc": "Zoe data types: Allocation, Instance, Installation, Invitation, Keyword, Proposal, ProposalRecord, Seat kinds, TransferPart, and more.",
+  "lines": 132,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/zoe-api/zoe-helpers",
+  "title": "ZoeHelper Functions",
+  "desc": "The ZoeHelper functions provide convenient abstractions for accessing Zoe functionality from within contracts. In most cases, you pass a reference\u2026",
+  "lines": 417,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/reference/zoe-api/zoe",
+  "title": "Zoe Service",
+  "desc": "Zoe provides a framework for deploying and working with smart contracts. It is accessed as a long-lived and well-trusted service that enforces\u2026",
+  "lines": 429,
+  "insidebar": true,
+  "aat": "manifest \u00b7 offer-lab (API reference)"
+ },
+ {
+  "route": "/what-is-agoric",
+  "title": "What is Agoric?",
+  "desc": "Agoric is a Cosmos-based Layer 1 blockchain for building cross-chain smart contracts in JavaScript. The platform\u2019s asynchronous, multi-block\u2026",
+  "lines": 33,
+  "insidebar": true,
+  "aat": "plain-docs \u00b7 STALE (IST as fee token)"
+ }
+]
