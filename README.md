@@ -102,8 +102,11 @@ cp .env.example .env
 docker compose up -d
 
 npm install
-npm run db:push
+npm run db:push   # first-time local create only; see the note below
+npm run db:ensure # verify the result, and the command deploys use
 ```
+
+`db:push` is a development convenience for creating a fresh local database. It is **not** idempotent on PostgreSQL 17 and later, where a second run tries to drop every `NOT NULL` constraint and fails, and its npm wrapper exits 0 when it does. Deploys therefore run **`npm run db:ensure`**, which creates missing additive tables and verifies the rest without ever issuing `ALTER` or `DROP`. See `docs/DEVELOPMENT.md` → "Deploy-time schema step".
 
 **Run the app from the repository root** (so Next.js finds `src/app/`). Example: `cd agoric-dash && npm run dev`.
 
@@ -295,7 +298,8 @@ npm test
 | `npm run reindex:reset` | `scripts/reindexReset.ts` — **destructive** full-reindex reset (gated by `REINDEX_CONFIRM=YES`); truncates rollup tables incl. `offer_participant_day` and clears the cursor |
 | `npx tsx scripts/refreshAgoricNames.ts` | Regenerate `src/config/agoricNames.json` (offer instance/brand labels + vbank brand→denom map) |
 | `npx tsx scripts/refreshDenomChains.ts` | Chain-disambiguate `denoms.json` labels (`WRITE=1` to apply; dry-run otherwise) |
-| `npm run db:push` | Apply Drizzle schema to Postgres |
+| `npm run db:ensure` | Create missing additive tables, then verify every declared table, column, nullability and primary key; exits non-zero on drift and never alters. The deploy-time schema step |
+| `npm run db:push` | Apply Drizzle schema to Postgres. **Local, first-time create only** — not idempotent on PostgreSQL 17+, and it exits 0 on failure |
 | `npm run db:generate` | Generate SQL migrations (optional) |
 | `npm test` | Run Vitest once (`vitest run`) |
 | `npm run test:watch` | Vitest in watch mode |
