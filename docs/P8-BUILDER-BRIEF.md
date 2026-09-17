@@ -82,7 +82,26 @@ You do not need to re-derive these. Re-verify only what your change depends on.
 
 **Provision pool** (`/agoric/vstorage/data/published.provisionPool.metrics`, confirmed live): `walletsProvisioned` 1452, `totalMintedProvided` 3700000000 ubld.
 
-**Chain context.** BLD is the fee token; IST is not, and Inter Protocol (vaults, PSM minting, auctions) was wound down to a 30 June 2025 shutdown — before indexed history begins on 2026-01-01. Mainnet runs `agoric-upgrade-23a` on ibc-go v10.5.0. Orchestration moves USDC to EVM chains over CCTP via a Noble account, not only over IBC.
+**Chain context.** BLD is the fee token; IST is not, and Inter Protocol (vaults, PSM minting, auctions) was wound down to a 30 June 2025 shutdown, which precedes every coverage floor below. Mainnet runs `agoric-upgrade-23a` on ibc-go v10.5.0. Orchestration moves USDC to EVM chains over CCTP via a Noble account, not only over IBC.
+
+**Three different history boundaries. Do not conflate them.**
+
+| Boundary | Value | What it is |
+|---|---|---|
+| Reporting floor | 2026-01-01 | `INDEXED_HISTORY_FROM_DAY` in `src/lib/semantics.ts`. The API clamps requests to it and the "Indexed history" preset starts here. |
+| Indexer start | 2026-05-19T01:52:00Z, height 25498665 | `INDEXER_START_DATE` on the Railway indexer. What the live indexer replays from. |
+| Offer-series floor | 2026-05-30, height 25669513 | Where the SwingSet offer series actually begin, because that is where the category backfill started. |
+
+Consequences you must respect:
+
+- Cosmos-level series (`tx_success`, `tx_failed`, `fee_paid`, `gas_used`, the IBC and transfer series, `bank_credits_volume`) run from 2026-01-01, because they were backfilled below the indexer start.
+- Orchestration series (`ibc_transfer_amount_out_orch`) begin 2026-05-19.
+- Everything Q2 depends on (`offer_category`, `offer_source`, `offer_outcome`, `wallet_actions`, `invoke_target`), plus `staking_*` and `block_gas_limit`, begin 2026-05-30. Offer data covers 106 days of the 260-day reporting window.
+- So "over all indexed history" means a different span per question. Any Q2 statement is really "since 30 May". Scoping a backfill for an offer-derived series from 2026-01-01 would replay four and a half months that can never yield rows.
+
+**Worth surfacing to readers, and not yet done:** the "Indexed history" preset gives Q2 a range where 154 of 260 days have no offer data at all, with nothing telling the reader the floor differs per question. A per-series coverage floor is a candidate Tier 1 item if you judge it cheap.
+
+**On the reference documents in `docs/agoric-*.md`:** they are a verbatim third-party research snapshot, committed as a source of record and not maintained here. Do not edit them to satisfy review comments; cite them and move on. Where they disagree with this repository, **the repository wins** — they mention `main.rpc.agoric.net`, while this project uses and has verified `main-a.rpc.agoric.net`.
 
 **Already checked, do not "fix":**
 - Fee accounting already uses BLD (`FEE_DENOM_UBLB = "ubld"`).
