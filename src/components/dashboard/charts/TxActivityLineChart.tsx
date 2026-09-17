@@ -31,7 +31,8 @@ export default function TxActivityLineChart({
   bucketsAreDays,
   timeAxis,
 }: {
-  data: { bucket: string; successfulTx: number }[];
+  /** `successfulTx` is null before the series' coverage floor: draw a gap, never a zero. */
+  data: { bucket: string; successfulTx: number | null }[];
   anomalies: AnomalyPoint[];
   bucketsAreDays: boolean;
   timeAxis: XAxisSpread;
@@ -88,7 +89,7 @@ export default function TxActivityLineChart({
               }}
             />
             <Legend />
-            <Line yAxisId={0} type="monotone" dataKey="successfulTx" name="Successful txs" stroke={chartTheme.lineA} dot={showDots} strokeWidth={1.75} />
+            <Line yAxisId={0} type="monotone" dataKey="successfulTx" name="Successful txs" stroke={chartTheme.lineA} dot={showDots} strokeWidth={1.75}  connectNulls={false} />
             <Line
               yAxisId={0}
               type="monotone"
@@ -98,7 +99,7 @@ export default function TxActivityLineChart({
               dot={false}
               strokeOpacity={0.85}
               {...chartTheme.trendLineProps}
-            />
+             connectNulls={false} />
             {markers.map((m) => (
               <ReferenceDot
                 key={m.day}

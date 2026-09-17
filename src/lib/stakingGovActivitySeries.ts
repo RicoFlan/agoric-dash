@@ -2,11 +2,12 @@ import { alignBucketSeries, type BucketPoint } from "@/lib/bucketSeriesAlign";
 
 export type StakingGovActivityRow = {
   bucket: string;
-  delegations: number;
-  undelegations: number;
-  redelegations: number;
-  govVotes: number;
-  govProposals: number;
+  /** Null before this series' coverage floor: the chart must show a gap, not a line at zero. */
+  delegations: number | null;
+  undelegations: number | null;
+  redelegations: number | null;
+  govVotes: number | null;
+  govProposals: number | null;
 };
 
 export type StakingGovSeriesInput = {
@@ -21,12 +22,13 @@ export type StakingGovSeriesInput = {
 export function buildStakingGovActivityRows(
   input: StakingGovSeriesInput
 ): StakingGovActivityRow[] {
+  const n = (v: bigint | null | undefined) => (v === null || v === undefined ? null : Number(v));
   return alignBucketSeries({ ...input }).map(({ bucket, values }) => ({
     bucket,
-    delegations: Number(values.delegations!),
-    undelegations: Number(values.undelegations!),
-    redelegations: Number(values.redelegations!),
-    govVotes: Number(values.govVotes!),
-    govProposals: Number(values.govProposals!),
+    delegations: n(values.delegations),
+    undelegations: n(values.undelegations),
+    redelegations: n(values.redelegations),
+    govVotes: n(values.govVotes),
+    govProposals: n(values.govProposals),
   }));
 }

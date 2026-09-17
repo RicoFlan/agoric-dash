@@ -70,7 +70,7 @@ value, so a first-row rule cannot tell *no activity* from *no coverage*, and it 
 genuinely know to be zero.
 
 `gov_proposals` is the proof, and it is the very series this finding is about. Its first row is
-2026-07-22, but the series has been indexed since 2026-05-30 07:00. The chain's proposals are 118 on
+2026-07-22, but the series has been indexed since 2026-05-30 06:51:13Z. The chain's proposals are 118 on
 2026-03-30 and then 119 on 2026-07-22 — confirmed live against
 `/cosmos/gov/v1/proposals` — so **2026-05-30 to 2026-07-21 is 53 days of real, observed zero**. A
 derived floor would blank all 53 as unknown, discarding something we actually know. For this project,
@@ -84,7 +84,7 @@ Declare them in a small map in `semantics.ts`, each entry carrying how it was es
 | **2026-01-01** | `tx_success`, `tx_failed`, `fee_paid`, `gas_used`, `bank_credits_volume`, `transfer_volume`, `ibc_transfer_amount_in`, `ibc_transfer_amount_out`, `ibc_transfer_in_count`, `ibc_transfer_out_count`, `ibc_transfer_flow_in` | Cosmos-level backfill, below the indexer start |
 | **2026-05-19** | `ibc_transfer_amount_out_orch`, `ibc_transfer_out_count_orch` | Indexer start, height 25498665 |
 | **2026-05-30 00:00** | `offer_category`, `offer_outcome_category` | Category backfill start, height 25669513 |
-| **2026-05-30 07:00** | `wallet_actions`, `offer_source`, `offer_outcome`, `offer_maker`, `offer_instance`, `offer_give_volume`, `offer_want_volume`, `offer_payout_volume`, `invoke_target`, `gov_proposals`, `gov_votes`, `staking_delegations`, `staking_undelegations`, `staking_redelegations`, `block_gas_limit`, `gas_wanted` | Base indexer's first write |
+| **2026-05-30 06:51:13Z** | `wallet_actions`, `offer_source`, `offer_outcome`, `offer_maker`, `offer_instance`, `offer_give_volume`, `offer_want_volume`, `offer_payout_volume`, `invoke_target`, `gov_proposals`, `gov_votes`, `staking_delegations`, `staking_undelegations`, `staking_redelegations`, `block_gas_limit`, `gas_wanted` | Base indexer's first write |
 
 **No wildcards, deliberately.** An earlier draft wrote row 1 as `ibc_transfer_*` and row 2 as the two
 orchestration series. Those overlap: `ibc_transfer_*` matches
@@ -102,9 +102,9 @@ stragglers:
 
 | Series | First row | Floor |
 |---|---|---|
-| `gov_proposals`, `gov_votes` | 2026-07-22 | 2026-05-30 07:00 |
-| `offer_instance`, `offer_give_volume`, `offer_want_volume`, `offer_payout_volume` | 2026-06-01 | 2026-05-30 07:00 |
-| `staking_redelegations` | 2026-05-31 | 2026-05-30 07:00 |
+| `gov_proposals`, `gov_votes` | 2026-07-22 | 2026-05-30 06:51:13Z |
+| `offer_instance`, `offer_give_volume`, `offer_want_volume`, `offer_payout_volume` | 2026-06-01 | 2026-05-30 06:51:13Z |
+| `staking_redelegations` | 2026-05-31 | 2026-05-30 06:51:13Z |
 
 Every one of those gaps is observed zero, not absent coverage. Declaring them at the real floor is
 exactly what stops the gap reading as missing data.
@@ -365,7 +365,9 @@ Every hour of 2026-05-30, from `hourly_metrics` (production, read-only):
 The two families have **different start times inside the same UTC day**:
 
 - **Rebuild-derived** — `offer_category`, `offer_outcome_category` — start at **00:00**.
-- **Base-indexer** — `wallet_actions`, `offer_source`, `offer_outcome` — start at **07:00**.
+- **Base-indexer** — `wallet_actions`, `offer_source`, `offer_outcome` — first have rows at **07:00**.
+  (Their *floor* is earlier, 06:51:13Z; see the correction below. 07:00 is when the first wallet
+  action occurred, which is a fact about the chain, not about coverage.)
 
 From 07:00 onward every series agrees exactly. A spurious rebuild would not stop cleanly at 07:00 and
 then match perfectly for 106 days; a series that simply *starts* at 07:00 does. And both totals fall
@@ -383,14 +385,28 @@ with a stray run.
 **One consequence the reviewer drew does not hold.** The review argued that because `offersSeen`
 comes from `wallet_actions` (the undercounted side) while settled outcomes do not, `unresolved` is
 biased negative in those hours. It is not: `offer_outcome` is a **base-indexer** series and shares the
-same 07:00 floor — zero in hours 00–06, first row at 07:00, as the table above shows. Seen and
+same base-indexer floor — zero in hours 00–06, first row at 07:00, as the table above shows. Seen and
 settled are on the *same* side of the split. The residue for 2026-05-30 is therefore exactly **0**,
 and across all history only one day is negative, 2026-06-08 at −1, which is the ordinary windowing
 artifact already documented. The negative path still has exactly one cause.
 
+**Correction: the base-indexer floor is 06:51:13Z, not 07:00.** This section originally called 07:00
+the base-indexer floor, and that repeated the very conflation the document exists to dismantle —
+07:00 is when the first *wallet action* occurred, which is an observation about the chain, not about
+coverage. The right probe is `block_gas_limit`, which is written once per block unconditionally and
+so cannot confuse "nothing happened" with "not covered". Its first hourly bucket is 2026-05-30 06:00
+holding 11,520,000,000 ÷ 120,000,000 = **96 blocks**, ending at height 25674073 (06:59:57.288Z); 96
+back is height **25673978**, block time **2026-05-30T06:51:13.390Z**. Both boundaries confirmed
+against the archive, and independently reproduced by the reviewer.
+
+Nothing above changes: the 16 and 10 still come from hours 00–06, because those hours have no
+base-indexer rows either way. What changes is the gap's width — 00:00 to 06:51:13Z, not to 07:00 —
+and the fact that the authoritative floors now live in code, in `src/lib/coverageFloors.ts`, where
+the drift guard checks them against the data rather than against a memory.
+
 **For Tier 3.4.** The acceptance test is “no other series moved”. Baseline it as a **split floor**,
 not as contamination: a full rebuild that starts below 25669513 will legitimately *raise*
-`offer_category` relative to today, and re-running the base indexer over 2026-05-30 00:00–07:00 would
+`offer_category` relative to today, and re-running the base indexer over 2026-05-30 00:00–06:51:13Z would
 legitimately raise `wallet_actions` by 16 and `offer_outcome` by 10. Those are corrections, not
 drift, and the acceptance test must not read them as regressions.
 
@@ -442,7 +458,7 @@ drift, and the acceptance test must not read them as regressions.
   would close the split-floor gap described above. Scoping it from 2026-01-01 replays four and a half
   months that can never yield offer rows.
 - **Baseline Tier 3.4 as a split floor.** “No other series moved” must tolerate `wallet_actions`
-  rising by 16 and `offer_outcome` by 10 if the base indexer is re-run over 2026-05-30 00:00–07:00.
+  rising by 16 and `offer_outcome` by 10 if the base indexer is re-run over 2026-05-30 00:00–06:51:13Z.
   Those are corrections, not drift.
 - **Nothing can start until the end-block backfill finishes.** It is at height 26,041,664 of
   25,498,665–27,169,144 — about 32% through, checkpointed in `backfill_checkpoint` as

@@ -13,10 +13,19 @@ export type Granularity = "hour" | "day" | "week";
 export type KpiDelta = { current: string; previous: string; pctChange: number | null };
 export type OfferLabeledCount = { key: string; label: string; count: string };
 
+/** One series' coverage floor as shipped by /api/metrics (see lib/coverageFloors.ts). */
+export type SeriesCoverageFloor = { from: string; height: number | null; source: string };
+
 export interface MetricsPayload {
   /** Four-questions section (P1/P2); absent on older API builds. */
   questions?: QuestionsPayload;
   granularity?: Granularity;
+  /**
+   * When each series began being written. `indexedHistoryFromDay` is the REPORTING floor and holds
+   * only for the Cosmos-level series; message-decoded ones start months later. A bucket before a
+   * series' floor arrives as `value: null`, meaning not indexed — never 0.
+   */
+  seriesCoverage?: Record<string, SeriesCoverageFloor>;
   display?: EnrichedDisplay;
   range: { from: string; to: string };
   comparisonWindow: { from: string; to: string };
@@ -57,25 +66,25 @@ export interface MetricsPayload {
     govProposals: { current: string; previous: string; pctChange: number | null };
   };
   series: {
-    txTotal: { bucket: string; value: string }[];
-    txFailed: { bucket: string; value: string }[];
-    ibcCombinedCounts: { bucket: string; value: string }[];
-    ibcOutboundMsgs: { bucket: string; value: string }[];
-    ibcInboundRecvFlows: { bucket: string; value: string }[];
-    gasUsed: { bucket: string; value: string }[];
-    gasWanted: { bucket: string; value: string }[];
-    blockGasLimit: { bucket: string; value: string }[];
+    txTotal: { bucket: string; value: string | null }[];
+    txFailed: { bucket: string; value: string | null }[];
+    ibcCombinedCounts: { bucket: string; value: string | null }[];
+    ibcOutboundMsgs: { bucket: string; value: string | null }[];
+    ibcInboundRecvFlows: { bucket: string; value: string | null }[];
+    gasUsed: { bucket: string; value: string | null }[];
+    gasWanted: { bucket: string; value: string | null }[];
+    blockGasLimit: { bucket: string; value: string | null }[];
     stakingGov: {
-      delegations: { bucket: string; value: string }[];
-      undelegations: { bucket: string; value: string }[];
-      redelegations: { bucket: string; value: string }[];
-      govVotes: { bucket: string; value: string }[];
-      govProposals: { bucket: string; value: string }[];
+      delegations: { bucket: string; value: string | null }[];
+      undelegations: { bucket: string; value: string | null }[];
+      redelegations: { bucket: string; value: string | null }[];
+      govVotes: { bucket: string; value: string | null }[];
+      govProposals: { bucket: string; value: string | null }[];
     };
     transferVolumeSeries: { denom: string; data: { bucket: string; value: string }[] }[];
-    bankCreditsVolumeSeries: { denom: string; data: { bucket: string; value: string }[] }[];
-    ibcAmountInSeries: { denom: string; data: { bucket: string; value: string }[] }[];
-    ibcAmountOutSeries: { denom: string; data: { bucket: string; value: string }[] }[];
+    bankCreditsVolumeSeries: { denom: string; data: { bucket: string; value: string | null }[] }[];
+    ibcAmountInSeries: { denom: string; data: { bucket: string; value: string | null }[] }[];
+    ibcAmountOutSeries: { denom: string; data: { bucket: string; value: string | null }[] }[];
   };
   transferVolumeByDenom: Record<string, string>;
   bankCreditsVolumeByDenom: Record<string, string>;

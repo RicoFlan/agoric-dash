@@ -18,9 +18,17 @@ export function buildGasUtilizationRows(
   gasWanted: readonly BucketPoint[],
   blockGasLimit: readonly BucketPoint[]
 ): GasUtilizationRow[] {
-  return alignBucketSeries({ gasUsed, gasWanted, blockGasLimit }).map(({ bucket, values }) => ({
-    bucket,
-    gasEfficiencyPct: gasEfficiencyPct(values.gasUsed!, values.gasWanted!),
-    blockGasUtilizationPct: blockGasUtilizationPct(values.gasUsed!, values.blockGasLimit!),
-  }));
+  return alignBucketSeries({ gasUsed, gasWanted, blockGasLimit }).map(({ bucket, values }) => {
+    // Each ratio needs both of ITS operands covered. gas_used sits at the Cosmos-level floor while
+    // gas_wanted and block_gas_limit only start with the base indexer, so early buckets have a real
+    // numerator and no denominator — exactly the case that must read blank rather than 0%.
+    const used = values.gasUsed;
+    const wanted = values.gasWanted;
+    const limit = values.blockGasLimit;
+    return {
+      bucket,
+      gasEfficiencyPct: used !== null && wanted !== null ? gasEfficiencyPct(used, wanted) : null,
+      blockGasUtilizationPct: used !== null && limit !== null ? blockGasUtilizationPct(used, limit) : null,
+    };
+  });
 }

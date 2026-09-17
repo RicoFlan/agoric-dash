@@ -100,7 +100,7 @@ export default function TxSuccessRateLineChart({
               name="Failed txs"
               stroke={chartTheme.lineD}
               dot={false}
-            />
+             connectNulls={false} />
             <Line
               yAxisId="rate"
               type="monotone"
@@ -110,7 +110,7 @@ export default function TxSuccessRateLineChart({
               dot={false}
               strokeOpacity={0.85}
               {...chartTheme.trendLineProps}
-            />
+             connectNulls={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>

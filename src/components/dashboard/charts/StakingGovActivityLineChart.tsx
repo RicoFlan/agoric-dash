@@ -76,7 +76,7 @@ export default function StakingGovActivityLineChart({
                 name={l.name}
                 stroke={l.stroke}
                 dot={false}
-              />
+               connectNulls={false} />
             ))}
           </LineChart>
         </ResponsiveContainer>

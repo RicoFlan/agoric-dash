@@ -412,11 +412,15 @@ export function Dashboard() {
 
         <p className="w-full text-center text-xs leading-[1.4] text-[var(--muted)]">
           <span className="font-bold">
-            Indexed rollups and participation metrics start <time dateTime={INDEXED_HISTORY_FROM_DAY}>{INDEXED_HISTORY_FROM_DAY}</time>{" "}
-            UTC.
+            Coverage starts <time dateTime={INDEXED_HISTORY_FROM_DAY}>{INDEXED_HISTORY_FROM_DAY}</time> UTC for
+            transaction, fee, gas and IBC series — but not for all of them.
           </span>{" "}
-          The API clamps <strong className="font-medium text-[var(--color-text-secondary)]">From</strong> to that day when
-          needed so results match the indexer window. Daily presets end at the last complete UTC day — today&apos;s partial day
+          Smart-wallet offers, staking and governance are decoded from messages and only begin{" "}
+          <time dateTime="2026-05-30">2026-05-30</time>; orchestration flows begin{" "}
+          <time dateTime="2026-05-19">2026-05-19</time>. Before its own start date a series reads blank rather than
+          zero, because it was never indexed — which is different from having been indexed and found empty. The API
+          clamps <strong className="font-medium text-[var(--color-text-secondary)]">From</strong> to the earliest
+          covered day when needed so results match the indexer window. Daily presets end at the last complete UTC day — today&apos;s partial day
           is excluded (use Custom Range to include it). Every comparison is against an equal-length window ending just before From.
         </p>
       </section>
