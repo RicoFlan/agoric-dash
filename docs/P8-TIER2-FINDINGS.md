@@ -216,8 +216,11 @@ both live **right now**, side by side.
 | vstorage children | `evmWallets, pendingTxs, portfolios` | identical |
 | portfolios published | 111 | 266 |
 | portfolios in our DB | 111 | 266 |
-| positions | 278 | 661 |
-| net principal (`Σ totalIn − totalOut`) | **308,689,429** (~$309) | **15,853,230,013,474** (~$15.85M) |
+| positions, all | 278 | 661 |
+| positions counted by Q3 (`total_in >= total_out`) | 147 | 322 |
+| portfolios holding a counted position | 77 | 163 |
+| **net principal on Q3's basis** | **372,441,450** (~$372) | **15,894,644,324,814** (~$15.89M) |
+| net principal over *all* positions, quarantined included | 308,689,429 (~$309) | 15,853,230,013,474 (~$15.85M) |
 | gross in / out | 1,907,976,143 / 1,599,286,714 | 27,205,990,201,853 / 11,352,760,188,379 |
 | denom | `ibc/FE98…76A9` (USDC) | same |
 | newest `updated_height` | 27,385,904 (head) | 27,378,356 |
@@ -229,20 +232,39 @@ coverage for, and `ymax1`'s oldest update *precedes* `ymax0`'s — so `ymax0` is
 Both portfolio id namespaces start at `portfolio0`, so `portfolio101` exists in both and means two
 different things.
 
-Same denom and decimals for both, so the 50,000× principal gap is real and not a units artifact.
-`ymax0` carries roughly **$309** of net principal against `ymax1`'s **$15.85M**, on a comparable
+Same denom and decimals for both, so the ~43,000× principal gap is real and not a units artifact.
+`ymax0` carries roughly **$372** of net principal against `ymax1`'s **$15.89M**, on a comparable
 number of portfolios — the profile of a canary or staging deployment kept alive on mainnet, not of a
 product.
+
+> **Which principal figure.** An earlier draft of this table reported Σ(`total_in` − `total_out`) over
+> *all* positions. That is not the number Q3 shows: `ymaxQueries.ts` builds `byVenue` under
+> `WHERE total_in >= total_out`, quarantining positions whose outflow exceeds their inflow and
+> reporting them separately. Since this section exists to advise a **presentation** decision about
+> Q3's headline, the table now leads with Q3's own basis and keeps the unfiltered sum beneath it for
+> comparison. Note the direction: quarantined rows carry negative principal, so including them
+> *understated* both contracts — ymax0 by about $63. Raised by the reviewer on #14 and reproduced;
+> both sets of figures are correct for what they measure, and the two counts of “portfolios” are
+> different measures too (111/266 are portfolios ever created, matching the vstorage children exactly;
+> 77/163 are those holding a counted position).
 
 **Good news on data integrity:** `ymax_portfolio`, `ymax_position` and `ymax_flow` are all keyed by
 `(contract, portfolio, …)`, so the two never collide in storage. The one place the contract is lost
 is the `invoke_target` series, whose dimensions are bare (`delegate-portfolio101`,
 `portfolioMandate-portfolio102`), so ymax0 and ymax1 portfolios with the same number merge there.
 
-**Recommendation.** Not an annotation about continuity — there is no boundary to annotate. Q3 should
-either **split the two contracts** or say which one it is reporting. Summing them is numerically
-harmless (ymax0 is 0.002% of principal) but presents a dust deployment and a $15.9M product as one
-number, and would mislead badly the moment ymax0's balance moves.
+**Recommendation.** Not an annotation about continuity — there is no boundary to annotate. And not
+exclusion either: ymax0 is real deployed capital, Q3 asks how much capital is deployed through
+orchestration, so the **sum answers the question correctly** and dropping a venue for being small
+would invert the project's own principle. The defect is purely presentational — two deployments at
+~43,000× different scale rendered as one number, with no way for a reader to notice when the small
+one moves.
+
+So: keep the headline as the sum, and **surface the per-contract split beside it**. `byVenue` already
+carries a `contract` column, so this is an aside in the existing payload rather than new data. The
+headline keeps meaning exactly what it says, and the moment ymax0 stops being dust the reader sees
+it. (This framing is the reviewer's on #14, and it is better than the split-or-exclude options this
+document first proposed.)
 
 ---
 
