@@ -157,7 +157,8 @@ export function Q2Organic({
               <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
                 Settled states are <strong className="font-medium text-[var(--color-text-secondary)]">not</strong>{" "}
                 exhaustive: an offer can stay live indefinitely with the seat open and no error published
-                anywhere, and a transaction can succeed while its offer is rejected later.{" "}
+                anywhere, a transaction can succeed while its offer is rejected later, and an offer made near
+                the end of the range may simply not have settled yet.{" "}
                 <em>Unresolved</em> is the range residual, offers seen minus offers settled — a windowing
                 figure, not a lifecycle state. It goes negative when an offer made before the range settles
                 inside it.

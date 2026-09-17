@@ -30,7 +30,7 @@ export const DEFINITIONS = {
   q2_continuing_share:
     "Share of Zoe offers exercised against a seat that ALREADY EXISTS (offer_source `continuing`) rather than from a fresh invitation (contract, agoricNames path or purse). It separates managing an open position from opening one. It is NOT an automation signal: a person rebalancing their own portfolio by hand produces continuing offers exactly as a planner bot does. Offers whose source could not be determined are excluded from both sides.",
   q2_unresolved_offers:
-    "Zoe offers seen in range minus offers that reached a terminal payout in range. Unresolved, NOT failed: an offer can stay live indefinitely with the seat open and no error published anywhere, and a transaction can succeed while its offer is rejected later. A negative value is a windowing artifact — an offer made before the range settling inside it — not a data error.",
+    "Zoe offers seen in range minus offers that reached a terminal payout in range. Unresolved, NOT failed, and not all of it is stuck: an offer can stay live indefinitely with the seat open and no error published anywhere, a transaction can succeed while its offer is rejected later, and an offer made near the end of the range may simply not have settled yet. A negative value is a windowing artifact — an offer made before the range settling inside it — not a data error.",
   q2_satisfaction_rate:
     "Share of settled Zoe offers whose terminal payout satisfied at least one DECLARED want (numWantsSatisfied ≥ 1), counted once per offer. It is an execution property, not user or product satisfaction, and it excludes invocations and unsettled offers.",
 
