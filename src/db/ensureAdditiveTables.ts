@@ -7,6 +7,7 @@
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type * as schema from "./schema";
+import { ensureDenomPriceDayTable } from "@/lib/coingecko/priceStore";
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -81,4 +82,30 @@ export const BACKFILL_CHECKPOINT_CREATE_SQL = `CREATE TABLE IF NOT EXISTS backfi
 
 export async function ensureBackfillCheckpointTable(db: Db): Promise<void> {
   await db.execute(sql.raw(BACKFILL_CHECKPOINT_CREATE_SQL));
+}
+
+/**
+ * Every table that is created lazily rather than by the original `db:push` baseline.
+ *
+ * Single source of truth so the deploy-time check and the runtime call sites cannot drift apart.
+ * `denom_price_day` belongs here even though its statement lives with the price store: it is
+ * declared in `schema.ts`, so a schema check will look for it, but nothing creates it until the
+ * price refresh loop first runs. Before this list existed, a fresh deployment failed its schema
+ * check on that table before the indexer had a chance to create it.
+ */
+export const ADDITIVE_TABLE_NAMES = [
+  "offer_category_participant_day",
+  "ymax_portfolio",
+  "ymax_position",
+  "ymax_flow",
+  "backfill_checkpoint",
+  "denom_price_day",
+] as const;
+
+/** Create every additive table if missing. Idempotent: each statement is CREATE TABLE IF NOT EXISTS. */
+export async function ensureAllAdditiveTables(db: Db): Promise<void> {
+  await ensureOfferCategoryParticipantDayTable(db);
+  await ensureYmaxTables(db);
+  await ensureBackfillCheckpointTable(db);
+  await ensureDenomPriceDayTable(db);
 }
