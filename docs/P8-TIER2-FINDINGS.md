@@ -56,9 +56,42 @@ selecting *Indexed history* today sees 2 governance proposals where the chain ha
 staking and offer history that begins five months late. This is the failure mode the project exists
 to avoid.
 
-**Recommendation.** A per-series coverage floor in the read path, derived from the data rather than
-declared: report each series' first indexed day alongside its values, and blank (not zero) any
-requested day before it. That is a read-time change and does not need a reindex.
+**Recommendation.** A per-series coverage floor in the read path: report each series' floor alongside
+its values, and blank (not zero) any requested day before it. Read-time; no reindex.
+
+**The floors must be DECLARED, not derived.** An earlier draft of this document recommended deriving
+each floor from the series' first row. That is wrong, and wrong in the same direction as the bug it
+was meant to fix — just pointed the other way. `daily_metrics` holds only day, series, dimension and
+value, so a first-row rule cannot tell *no activity* from *no coverage*, and it would blank days we
+genuinely know to be zero.
+
+`gov_proposals` is the proof, and it is the very series this finding is about. Its first row is
+2026-07-22, but the series has been indexed since 2026-05-30 07:00. The chain's proposals are 118 on
+2026-03-30 and then 119 on 2026-07-22 — confirmed live against
+`/cosmos/gov/v1/proposals` — so **2026-05-30 to 2026-07-21 is 53 days of real, observed zero**. A
+derived floor would blank all 53 as unknown, discarding something we actually know. For this project,
+understating what we know is as much a defect as overstating it.
+
+Declare them in a small map in `semantics.ts`, each entry carrying how it was established:
+
+| Series | Floor | How established |
+|---|---|---|
+| `tx_success`, `tx_failed`, `fee_paid`, `gas_used`, `bank_credits_volume`, `transfer_volume`, `ibc_transfer_*` | 2026-01-01 | Cosmos-level backfill, below the indexer start |
+| `ibc_transfer_amount_out_orch`, `ibc_transfer_out_count_orch` | 2026-05-19 | Indexer start, height 25498665 |
+| `offer_category`, `offer_outcome_category` | 2026-05-30 **00:00** | Category backfill start, height 25669513 |
+| `wallet_actions`, `offer_source`, `offer_outcome`, `invoke_target`, `staking_*`, `block_gas_limit`, `gas_wanted` | 2026-05-30 **07:00** | Base indexer's first write |
+
+Declared beats derived on three counts: it is honest about provenance, it needs no schema change and
+is reviewable in a diff, and — the one a derived floor cannot do at all — it can express the
+**intra-day** boundary. `wallet_actions` begins seven hours into its first day. A day-granular
+derived floor would get that series wrong on precisely the day this document is about.
+
+Guard the drift that declaring invites with a test: derive candidate floors from the data and assert
+each declared floor is no later than the first observed row for that series. That catches a floor
+that has moved without ever letting inference decide the answer.
+
+*(Raised by CodeRabbit and the reviewer on #15; the `gov_proposals` illustration and the 53-day
+window are verified here.)*
 
 Backfilling the message-decoded series below 2026-05-30 is a separate, expensive decision — and note
 the brief's own warning that scoping such a backfill from 2026-01-01 would replay four and a half
@@ -94,8 +127,9 @@ Checked:
   `published.committees.Economic_Committee.latestQuestion` was last written at **block 20,349,129**;
   `latestOutcome` at **block 20,364,327**. Both are far below the indexer's start height
   (25,498,665). The question itself was a `param_change` on `LiquidationMargin` with a closing
-  deadline of `+1751400076` — 2026-07-01 in Unix seconds, i.e. the last Inter Protocol parameter vote
-  before the 30 June 2025 shutdown. `published.committees.kread-gov.latestQuestion` is empty.
+  deadline of `+1751400076` — **2025-07-01T20:01:16Z**. That is the day *after* the 30 June 2025
+  shutdown, so this was the final Inter Protocol parameter vote, closing as the protocol wound down.
+  `published.committees.kread-gov.latestQuestion` is empty.
 
 **Deliverable: no category-rule change.** Changing the rules would be motion without effect. Two
 honest options instead, in order of preference:
