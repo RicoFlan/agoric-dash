@@ -160,8 +160,8 @@ export function Q2Organic({
                 anywhere, a transaction can succeed while its offer is rejected later, and an offer made near
                 the end of the range may simply not have settled yet.{" "}
                 <em>Unresolved</em> is the range residual, offers seen minus offers settled — a windowing
-                figure, not a lifecycle state. It goes negative when an offer made before the range settles
-                inside it.
+                figure, not a lifecycle state. It goes negative when an offer made before the range reaches
+                terminal payout inside it, counting toward settled but never toward seen.
               </p>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <KpiCard title="Offers seen" subtitle="Zoe offers submitted in range (executeOffer / tryExitOffer)" current={offers.outcomes.offersSeen.current} previous={offers.outcomes.offersSeen.previous} pct={offers.outcomes.offersSeen.pctChange} />
