@@ -18,11 +18,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "../src/db/schema";
-import {
-  ensureBackfillCheckpointTable,
-  ensureOfferCategoryParticipantDayTable,
-  ensureYmaxTables,
-} from "../src/db/ensureAdditiveTables";
+import { ADDITIVE_TABLE_NAMES, ensureAllAdditiveTables } from "../src/db/ensureAdditiveTables";
 import {
   describeProblem,
   diffSchema,
@@ -44,10 +40,8 @@ async function main() {
 
   try {
     // Additive creates only. Each is CREATE TABLE IF NOT EXISTS, so a re-run is a no-op.
-    await ensureOfferCategoryParticipantDayTable(db);
-    await ensureYmaxTables(db);
-    await ensureBackfillCheckpointTable(db);
-    console.log(`${TAG} additive tables ensured.`);
+    await ensureAllAdditiveTables(db);
+    console.log(`${TAG} ${ADDITIVE_TABLE_NAMES.length} additive tables ensured.`);
 
     const res = await db.execute<{ table_name: string; column_name: string; is_nullable: string }>(
       sql`SELECT table_name, column_name, is_nullable
