@@ -131,4 +131,13 @@ describe("isBeforeCoverage", () => {
   it("ignores an unparseable bucket label rather than blanking it", () => {
     expect(isBeforeCoverage("wallet_actions", "not-a-date", "day")).toBe(false);
   });
+
+  it("does not blank a covered DAY bucket that is checked at day granularity", () => {
+    // Regression for the hour-view daily fallback: when the hourly table is empty the read path
+    // builds day-LABELLED buckets while the requested granularity is still "hour". Checking a day
+    // label with an hour-length window would end 2026-05-30 at 01:00 — before the 06:51:13Z floor —
+    // and blank a fully indexed day. The read path passes the buckets' real granularity.
+    expect(isBeforeCoverage("wallet_actions", "2026-05-30", "day")).toBe(false);
+    expect(isBeforeCoverage("wallet_actions", "2026-05-30", "hour")).toBe(true);
+  });
 });

@@ -27,7 +27,7 @@ export default function TxSuccessRateLineChart({
   timeAxis: XAxisSpread;
 }) {
   const rows = useMemo(() => {
-    const rateTrend = linearTrendLine(data.map((d) => d.successRatePct ?? NaN));
+    const rateTrend = linearTrendLine(data.map((d) => d.successRatePct));
     return data.map((row, i) => ({ ...row, successRatePctTrend: rateTrend[i]! }));
   }, [data]);
 

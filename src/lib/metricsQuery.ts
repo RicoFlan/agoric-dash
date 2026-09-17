@@ -350,24 +350,33 @@ export async function buildMetricsPayload(
   const feeUbldCur = sumSeries(curBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
   const feeUbldPrev = sumSeries(prevBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
 
-  const txTotal = seriesOverTime(curBuckets, SERIES.TX_SUCCESS, granularity);
-  const txFailedOverTime = seriesOverTime(curBuckets, SERIES.TX_FAILED, granularity);
+  /**
+   * The granularity the BUCKET LABELS actually carry, which is not always the requested one: when
+   * the hourly table has no rows we fall back to day-labelled buckets while `granularity` stays
+   * "hour". Coverage checks compare a bucket against a floor by adding the bucket's length, so
+   * using "hour" there would treat the covered day 2026-05-30 as ending at 01:00 — before the
+   * 06:51:13Z base-indexer floor — and blank a day that is fully indexed.
+   */
+  const bucketGranularity: Granularity = usedDailyFallbackForHourView ? "day" : granularity;
+
+  const txTotal = seriesOverTime(curBuckets, SERIES.TX_SUCCESS, bucketGranularity);
+  const txFailedOverTime = seriesOverTime(curBuckets, SERIES.TX_FAILED, bucketGranularity);
   const ibcMsgCombined = seriesIbcMsgCombinedOverTime(curBuckets);
-  const ibcOutSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT, granularity);
+  const ibcOutSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT, bucketGranularity);
   const ibcInSeries = seriesIbcRecvDisplayOverTime(curBuckets);
 
   /** Raw per-bucket gas series — combined client-side into efficiency / block-space utilization % trends. */
-  const gasUsedOverTime = seriesOverTime(curBuckets, SERIES.GAS_USED, granularity);
-  const gasWantedOverTime = seriesOverTime(curBuckets, SERIES.GAS_WANTED, granularity);
-  const blockGasLimitOverTime = seriesOverTime(curBuckets, SERIES.BLOCK_GAS_LIMIT, granularity);
+  const gasUsedOverTime = seriesOverTime(curBuckets, SERIES.GAS_USED, bucketGranularity);
+  const gasWantedOverTime = seriesOverTime(curBuckets, SERIES.GAS_WANTED, bucketGranularity);
+  const blockGasLimitOverTime = seriesOverTime(curBuckets, SERIES.BLOCK_GAS_LIMIT, bucketGranularity);
 
   /** Per-bucket staking & governance message counts for the activity trend chart. */
   const stakingGovOverTime = {
-    delegations: seriesOverTime(curBuckets, SERIES.STAKING_DELEGATIONS, granularity),
-    undelegations: seriesOverTime(curBuckets, SERIES.STAKING_UNDELEGATIONS, granularity),
-    redelegations: seriesOverTime(curBuckets, SERIES.STAKING_REDELEGATIONS, granularity),
-    govVotes: seriesOverTime(curBuckets, SERIES.GOV_VOTES, granularity),
-    govProposals: seriesOverTime(curBuckets, SERIES.GOV_PROPOSALS, granularity),
+    delegations: seriesOverTime(curBuckets, SERIES.STAKING_DELEGATIONS, bucketGranularity),
+    undelegations: seriesOverTime(curBuckets, SERIES.STAKING_UNDELEGATIONS, bucketGranularity),
+    redelegations: seriesOverTime(curBuckets, SERIES.STAKING_REDELEGATIONS, bucketGranularity),
+    govVotes: seriesOverTime(curBuckets, SERIES.GOV_VOTES, bucketGranularity),
+    govProposals: seriesOverTime(curBuckets, SERIES.GOV_PROPOSALS, bucketGranularity),
   };
 
   /** SwingSet/Zoe offers: KPIs, category/source/instance/maker/target breakdowns, and trend. */
@@ -407,7 +416,7 @@ export async function buildMetricsPayload(
     .map(([d]) => d);
   const bankCreditsVolumeSeries = bankCreditsDenomsSorted.map((denom) => ({
     denom,
-    data: seriesOverTime(curBuckets, SERIES.BANK_CREDITS_VOLUME, granularity, denom),
+    data: seriesOverTime(curBuckets, SERIES.BANK_CREDITS_VOLUME, bucketGranularity, denom),
   }));
 
   const ibcInDenomsSorted = [...ibcInSums.entries()]
@@ -420,11 +429,11 @@ export async function buildMetricsPayload(
     .map(([d]) => d);
   const ibcAmountInSeries = ibcInDenomsSorted.map((denom) => ({
     denom,
-    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN, granularity, denom),
+    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN, bucketGranularity, denom),
   }));
   const ibcAmountOutSeries = ibcOutDenomsSorted.map((denom) => ({
     denom,
-    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT, granularity, denom),
+    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT, bucketGranularity, denom),
   }));
 
   return {

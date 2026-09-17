@@ -133,8 +133,9 @@ window are verified here.)*
 
 Backfilling the message-decoded series below 2026-05-30 is a separate, expensive decision — and note
 the brief's own warning that scoping such a backfill from 2026-01-01 would replay four and a half
-months that can never yield rows. The base indexer's own floor is 2026-05-19 (height 25498665);
-2026-01-01 is a *reporting* floor reached by a Cosmos-level backfill only.
+months that can never yield rows. The base indexer's own floor is 2026-05-30T06:51:13Z (height
+25673978); 2026-05-19 (height 25498665) is the *orchestration* backfill's, and 2026-01-01 is a
+*reporting* floor reached by a Cosmos-level backfill only.
 
 ---
 

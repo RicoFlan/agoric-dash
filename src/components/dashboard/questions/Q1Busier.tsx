@@ -86,8 +86,10 @@ export function Q1Busier({
     const outM = new Map(o.map((r) => [r.bucket, pointN(r.value)]));
     const inM = new Map(i.map((r) => [r.bucket, pointN(r.value)]));
     const keys = [...new Set([...outM.keys(), ...inM.keys()])].sort();
-    // `?? 0` only fills a bucket this series never emitted; an emitted null stays null.
-    return keys.map((bucket) => ({ bucket, out: outM.get(bucket) ?? 0, recv: inM.get(bucket) ?? 0 }));
+    // `??` treats null and undefined alike, so it would swallow an emitted null (uncovered) along
+    // with an absent bucket (a genuine zero for this series). Membership distinguishes them.
+    const at = (m: Map<string, number | null>, b: string) => (m.has(b) ? m.get(b) ?? null : 0);
+    return keys.map((bucket) => ({ bucket, out: at(outM, bucket), recv: at(inM, bucket) }));
   }, [data.series?.ibcOutboundMsgs, data.series?.ibcInboundRecvFlows]);
   const chartSuccessRate = useMemo(
     () => (data.series ? buildSuccessRateRows(data.series.txTotal ?? [], data.series.txFailed ?? []) : []),
