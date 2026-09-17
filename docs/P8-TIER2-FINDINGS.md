@@ -26,14 +26,18 @@ they start 2026-01-01.**
 > open defect in the **product**: `INDEXED_HISTORY_FROM_DAY` is still a single constant, the banner
 > still says 2026-01-01, and nothing in the read path distinguishes “not indexed” from “zero”.
 
-Per-series first indexed day, from `daily_metrics` (production, read-only):
+Three tiers of coverage, from `daily_metrics` (production, read-only). **This is an orientation
+summary, not a per-series index.** The date is the *earliest* first row in each tier; individual
+series within a tier appear later simply because nothing happened yet, which is the distinction this
+whole finding is about. The complete, definitive list is the 31-series floor table under
+**Recommendation** below — where a floor is *declared*, not read off a first row.
 
-| Group | First day | Series |
+| Tier | Earliest first row | Series |
 |---|---|---|
-| Transaction / economic | **2026-01-01** | `tx_success`, `tx_failed`, `fee_paid`, `gas_used`, `bank_credits_volume`, `transfer_volume`, all `ibc_transfer_*` (non-orch) |
-| End-block orchestration | **2026-05-19** | `ibc_transfer_*_orch` (the running backfill's start height) |
-| **Message-decoded** | **2026-05-30** | `staking_delegations`, `staking_undelegations`, `staking_redelegations`, `wallet_actions`, `offer_category`, `offer_source`, `offer_maker`, `offer_outcome`, `invoke_target`, `block_gas_limit`, `gas_wanted` |
-| Governance | first *occurrence* 2026-07-22 | `gov_proposals`, `gov_votes` |
+| Transaction / economic | **2026-01-01** | `tx_success`, `tx_failed`, `fee_paid`, `gas_used`, `bank_credits_volume`, `transfer_volume`, `ibc_transfer_amount_in`, `ibc_transfer_amount_out`, `ibc_transfer_in_count`, `ibc_transfer_out_count`, `ibc_transfer_flow_in` |
+| End-block orchestration | **2026-05-19** | `ibc_transfer_amount_out_orch`, `ibc_transfer_out_count_orch` (the running backfill's start height) |
+| **Message-decoded** | **2026-05-30** | `wallet_actions`, `offer_category`, `offer_outcome_category`, `offer_source`, `offer_maker`, `offer_outcome`, `invoke_target`, `staking_delegations`, `staking_undelegations`, `block_gas_limit`, `gas_wanted` — then `staking_redelegations` (05-31), `offer_instance`, `offer_give_volume`, `offer_want_volume`, `offer_payout_volume` (06-01) |
+| Governance | first *occurrence* 2026-07-22 | `gov_proposals`, `gov_votes` — same tier as message-decoded, listed apart because the gap to its first row is the largest and most misleading |
 
 `INDEXED_HISTORY_FROM_DAY` is a single constant, `"2026-01-01"` (`src/lib/semantics.ts:20`). The API
 clamps `from` to it, the UI banner says “Indexed rollups and participation metrics start 2026-01-01
