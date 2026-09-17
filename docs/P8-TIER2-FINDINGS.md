@@ -4,15 +4,27 @@ Investigated 2026-09-17 against mainnet `agoric-3`, the production database (rea
 codebase. Every claim below states how it was checked. These are findings, not changes: nothing here
 has been implemented.
 
-Three of these findings contradict the P8 brief. They are marked **⚠ contradicts the brief** and
-stated plainly rather than worked around, per §8.
+Two of these findings contradict the P8 brief as it now stands on `main`. They are marked
+**⚠ contradicts the brief** and stated plainly rather than worked around, per §8. A third — the
+coverage floor — was written against the earlier brief and has since been **confirmed and adopted
+into it** (PR #13, §3 “Three different history boundaries”); it is kept below because the *dashboard*
+still presents those boundaries as one.
+
+One item in this document was **corrected after review**: the 16-action offset on the floor day. See
+that section for the corrected diagnosis and what Tier 3.4 must baseline.
 
 ---
 
-## 0. ⚠ The coverage floor — found while investigating 2.1, and larger than 2.1
+## 0. The coverage floor — found while investigating 2.1, and larger than 2.1
 
 **Message-derived series do not cover indexed history. They start 2026-05-30. The dashboard says
 they start 2026-01-01.**
+
+> **Status.** Found here independently; the brief on `main` now records the same three boundaries
+> (§3, from PR #13) including the offer-series floor at 2026-05-30 / height 25669513, and reaches the
+> same 106-of-260-days figure. So this is no longer a disagreement with the brief — but it remains an
+> open defect in the **product**: `INDEXED_HISTORY_FROM_DAY` is still a single constant, the banner
+> still says 2026-01-01, and nothing in the read path distinguishes “not indexed” from “zero”.
 
 Per-series first indexed day, from `daily_metrics` (production, read-only):
 
@@ -46,8 +58,12 @@ to avoid.
 
 **Recommendation.** A per-series coverage floor in the read path, derived from the data rather than
 declared: report each series' first indexed day alongside its values, and blank (not zero) any
-requested day before it. That is a read-time change and does not need a reindex. Backfilling the
-message-decoded series to 2026-01-01 is a separate, expensive decision.
+requested day before it. That is a read-time change and does not need a reindex.
+
+Backfilling the message-decoded series below 2026-05-30 is a separate, expensive decision — and note
+the brief's own warning that scoping such a backfill from 2026-01-01 would replay four and a half
+months that can never yield rows. The base indexer's own floor is 2026-05-19 (height 25498665);
+2026-01-01 is a *reporting* floor reached by a Cosmos-level backfill only.
 
 ---
 
@@ -230,21 +246,59 @@ number, and would mislead badly the moment ymax0's balance moves.
 
 ---
 
-## Incidental: a 16-action inconsistency in the offer rollups
+## The 16-action offset on the floor day — a split floor, not a stray rebuild
 
-`offer_category` sums to **4,433** over all history while `wallet_actions` sums to **4,417**. The
-entire 16-action difference is on **2026-05-30**, in hours 00, 01, 04 and 05. Those hours have
-`offer_category` and `offer_outcome_category` rows but **no** `wallet_actions` rows, while
-`tx_success` is present — so the blocks were indexed. `offer_outcome_category` (2,667) likewise runs
-10 ahead of `offer_outcome` (2,657).
+**Corrected.** An earlier draft of this document read this as a category rebuild writing rows the
+base indexer never recorded, “plausibly a test run”. That diagnosis was **inverted**, as the
+designated reviewer pointed out on #14. The hour-level data says the opposite, and the arithmetic
+closes exactly.
 
-The signature is a category rebuild that wrote categories for actions the base indexer never recorded
-as wallet actions — plausibly a test run on the day `agoricNames.json` was generated
-(`generatedAt: 2026-05-30T05:39:54Z`, inside the affected hours).
+Every hour of 2026-05-30, from `hourly_metrics` (production, read-only):
 
-It changes nothing on the dashboard today — the Q2 denominator is `offer_category`'s own total, so it
-is internally consistent — but **Tier 3.4's acceptance test is “no other series moved”**, and that
-comparison needs this 16-action offset recorded as the baseline or it will read as fresh drift.
+| Hour (UTC) | `offer_category` | `wallet_actions` | `offer_source` | `offer_outcome_category` | `offer_outcome` | `tx_success` |
+|---|---|---|---|---|---|---|
+| 00 | 1 | 0 | 0 | 1 | 0 | 26 |
+| 01 | 2 | 0 | 0 | 0 | 0 | 26 |
+| 02 | 0 | 0 | 0 | 0 | 0 | 25 |
+| 03 | 0 | 0 | 0 | 0 | 0 | 33 |
+| 04 | 6 | 0 | 0 | 2 | 0 | 28 |
+| 05 | 7 | 0 | 0 | 7 | 0 | 35 |
+| 06 | 0 | 0 | 0 | 0 | 0 | 15 |
+| **07** | 1 | **1** | **1** | 1 | **1** | 23 |
+| 08 | 8 | 8 | 6 | 6 | 6 | 37 |
+| 12 | 3 | 3 | 3 | — | — | 29 |
+
+The two families have **different start times inside the same UTC day**:
+
+- **Rebuild-derived** — `offer_category`, `offer_outcome_category` — start at **00:00**.
+- **Base-indexer** — `wallet_actions`, `offer_source`, `offer_outcome` — start at **07:00**.
+
+From 07:00 onward every series agrees exactly. A spurious rebuild would not stop cleanly at 07:00 and
+then match perfectly for 106 days; a series that simply *starts* at 07:00 does. And both totals fall
+out of the table with no remainder:
+
+- `offer_category` − `wallet_actions` = 4,433 − 4,417 = **16** = 1 + 2 + 6 + 7, the pre-07:00 hours.
+- `offer_outcome_category` − `offer_outcome` = 2,667 − 2,657 = **10** = 1 + 2 + 7, likewise.
+
+So `offer_category` is not 16 ahead. **`wallet_actions` is missing its first seven hours**, and the
+rebuild-derived series are the *more* complete of the two at the floor. The 16 are real offers the
+base series never recorded. This also sits exactly on the third boundary the brief now records — the
+offer-series floor, 2026-05-30, height 25669513 — which is consistent with a floor effect and not
+with a stray run.
+
+**One consequence the reviewer drew does not hold.** The review argued that because `offersSeen`
+comes from `wallet_actions` (the undercounted side) while settled outcomes do not, `unresolved` is
+biased negative in those hours. It is not: `offer_outcome` is a **base-indexer** series and shares the
+same 07:00 floor — zero in hours 00–06, first row at 07:00, as the table above shows. Seen and
+settled are on the *same* side of the split. The residue for 2026-05-30 is therefore exactly **0**,
+and across all history only one day is negative, 2026-06-08 at −1, which is the ordinary windowing
+artifact already documented. The negative path still has exactly one cause.
+
+**For Tier 3.4.** The acceptance test is “no other series moved”. Baseline it as a **split floor**,
+not as contamination: a full rebuild that starts below 25669513 will legitimately *raise*
+`offer_category` relative to today, and re-running the base indexer over 2026-05-30 00:00–07:00 would
+legitimately raise `wallet_actions` by 16 and `offer_outcome` by 10. Those are corrections, not
+drift, and the acceptance test must not read them as regressions.
 
 ---
 
@@ -277,6 +331,13 @@ comparison needs this 16-action offset recorded as the baseline or it will read 
   costs nothing extra because it rides the same rebuild. It should be settled and included **before**
   the rebuild runs, per §5. It is also a *reclassification*, so it belongs in the “what changed this
   period” counting-rule log alongside the 2026-09-03 YMax entry.
+- **Scope the rebuild to the offer-series floor, not the reporting floor.** The category rebuild must
+  cover from height **25669513** (2026-05-30) at the latest, and running it from below that is what
+  would close the split-floor gap described above. Scoping it from 2026-01-01 replays four and a half
+  months that can never yield offer rows.
+- **Baseline Tier 3.4 as a split floor.** “No other series moved” must tolerate `wallet_actions`
+  rising by 16 and `offer_outcome` by 10 if the base indexer is re-run over 2026-05-30 00:00–07:00.
+  Those are corrections, not drift.
 - **Nothing can start until the end-block backfill finishes.** It is at height 26,041,664 of
   25,498,665–27,169,144 — about 32% through, checkpointed in `backfill_checkpoint` as
   `endblock_ibc_orch`.
