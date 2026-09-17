@@ -167,8 +167,8 @@ export function Q2Organic({
                 <KpiCard title="Settled offers" subtitle="Zoe offers reaching terminal payout in range" current={offers.outcomes.settled.current} previous={offers.outcomes.settled.previous} pct={offers.outcomes.settled.pctChange} />
                 <KpiCard title="Unresolved" subtitle="Range residual of seen − settled. Not failed; negative at a range edge." current={offers.outcomes.unresolved.current} previous={offers.outcomes.unresolved.previous} pct={offers.outcomes.unresolved.pctChange} definition={DEFINITIONS.q2_unresolved_offers} upIsGood={false} />
                 <KpiCard title="Wants satisfied" subtitle="numWantsSatisfied ≥ 1" current={offers.outcomes.wantsSatisfied.current} previous={offers.outcomes.wantsSatisfied.previous} pct={offers.outcomes.wantsSatisfied.pctChange} />
-                <KpiCard title="Refunded / unsatisfied" subtitle="numWantsSatisfied === 0 (give refunded)" current={offers.outcomes.wantsUnsatisfied.current} previous={offers.outcomes.wantsUnsatisfied.previous} pct={offers.outcomes.wantsUnsatisfied.pctChange} />
-                <KpiCard title="Errored" subtitle="Settled status carrying an error" current={offers.outcomes.errored.current} previous={offers.outcomes.errored.previous} pct={offers.outcomes.errored.pctChange} />
+                <KpiCard title="Refunded / unsatisfied" subtitle="numWantsSatisfied === 0 (give refunded)" current={offers.outcomes.wantsUnsatisfied.current} previous={offers.outcomes.wantsUnsatisfied.previous} pct={offers.outcomes.wantsUnsatisfied.pctChange} upIsGood={false} />
+                <KpiCard title="Errored" subtitle="Settled status carrying an error" current={offers.outcomes.errored.current} previous={offers.outcomes.errored.previous} pct={offers.outcomes.errored.pctChange} upIsGood={false} />
               </div>
             </div>
           )}
