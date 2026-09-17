@@ -17,7 +17,7 @@ import { effectiveNumberFromHhi, herfindahlFromWeights } from "@/lib/concentrati
 import { utcDaysInclusive, usdForLeg, type DailyPriceTable, type UsdPricingMeta } from "@/lib/denomPrices";
 import type { EnrichedDisplay } from "@/lib/metricsDisplayTypes";
 import { buildNetIbcFlow, type NetIbcFlow } from "@/lib/netIbcFlow";
-import { buildOrganicActivity, type DayBucketMap, type OrganicActivity } from "@/lib/organicActivity";
+import { buildOrganicActivity, unclassifiedSharePct, type DayBucketMap, type OrganicActivity } from "@/lib/organicActivity";
 import type { OfferCategoryParticipantStats } from "@/lib/offersQuery";
 import { outcomesByCategory, type OutcomeByCategory } from "@/lib/offerOutcomeCategory";
 import type { RetentionCounts } from "@/lib/participationQueries";
@@ -75,6 +75,14 @@ export interface QuestionsPayload {
       mixedWallets: number | null;
       /** Denominator of `walletWeightedPct` for the current window. */
       categorizedWallets: number | null;
+      /**
+       * Share of categorized wallet actions the category rules could not place (`other` ÷ total),
+       * for the current window. Both organic ratios carry these actions in their DENOMINATOR, so
+       * this is the coverage caveat a reader needs to discount the headline by. Null when nothing
+       * was categorized in range — an unavailable category rollup reads as unknown coverage, not
+       * as perfect coverage.
+       */
+      unclassifiedSharePct: number | null;
       /** False until the P2 indexer + backfill have populated the table; counts are 0 then, not "none". */
       available: boolean;
       /** Settled-offer satisfaction per functional category over the range (offer_outcome_category); empty before the P2 backfill. */
@@ -416,6 +424,7 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
         categorizedWallets: input.categoryParticipants.current.available
           ? input.categoryParticipants.current.distinctCategorizedWallets
           : null,
+        unclassifiedSharePct: unclassifiedSharePct(organic.counts.current),
         available: input.categoryParticipants.current.available && input.categoryParticipants.previous.available,
         satisfactionByCategory: outcomesByCategory(dimTotalsOverDays(dailyContext, days, SERIES.OFFER_OUTCOME_CATEGORY)),
       },

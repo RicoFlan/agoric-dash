@@ -18,8 +18,8 @@ import { filterNonZeroTooltipPayload, formatTooltipNumber } from "@/lib/recharts
 type XAxisSpread = ComponentProps<typeof XAxis>;
 
 const LINES: { key: keyof Omit<OffersActivityRow, "bucket">; name: string; stroke: string }[] = [
-  { key: "interactive", name: "Interactive (vaults/PSM/auction/gov)", stroke: chartTheme.lineA },
-  { key: "automated", name: "Automated (orchestration/oracle/fast-USDC)", stroke: chartTheme.lineD },
+  { key: "interactive", name: "User-initiated (YMax, PSM)", stroke: chartTheme.lineA },
+  { key: "automated", name: "Automated (fast-USDC, orchestration, oracle)", stroke: chartTheme.lineD },
   { key: "unknown", name: "Uncategorized", stroke: chartTheme.axisLabelMuted },
 ];
 
@@ -37,9 +37,12 @@ export default function OffersActivityLineChart({
       </h3>
       <p className="mb-4 text-xs leading-[1.4] text-[var(--muted)]">
         Wallet actions per bucket, grouped by the functional category&apos;s automation class. Automated flows
-        (orchestration, oracle pushes, fast-USDC settlement) dominate raw counts; the interactive line
-        (vaults, PSM, auction, governance offers) is the closer proxy for deliberate user activity. This is a
-        read-time grouping of <code>offer_category</code> — counts are wallet actions, not distinct wallets.
+        (fast-USDC settlement, orchestration, oracle pushes) dominate raw counts; the user-initiated line is
+        the closer proxy for deliberate user activity, and over indexed history it is almost entirely YMax
+        portfolio activity with a small PSM remainder. The vaults, auction and governance categories are
+        grouped here too but have recorded no actions — Inter Protocol was sunset on 30 June 2025, before
+        indexed history begins. This is a read-time grouping of <code>offer_category</code> — counts are
+        wallet actions, not distinct wallets.
       </p>
       <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">

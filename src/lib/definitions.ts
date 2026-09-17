@@ -18,13 +18,19 @@ export const DEFINITIONS = {
 
   // Q2 — organic
   q2_organic_ratio:
-    "Interactive-category wallet actions ÷ all wallet actions in successful txs, from the offer_category rollup (exactly one category per action). Interactive = vaults, PSM, auction, governance, and YMax user actions (portfolio offers, EVM-wallet deposits); automated = the YMax planner and other orchestration, oracle price feeds, fast-USDC settlement.",
+    "User-initiated wallet actions ÷ all wallet actions in successful txs, from the offer_category rollup (exactly one category per action). Over indexed history the user-initiated side is almost entirely YMax (portfolio offers and EVM-wallet deposits) with a small PSM remainder; automated = fast-USDC settlement, the YMax planner and other orchestration, and oracle price feeds. The vaults, auction and governance categories are also grouped as user-initiated but have recorded zero actions — Inter Protocol was sunset on 30 June 2025, before indexed history begins. Unclassified actions stay in the denominator, so read this with the unclassified share beside it.",
   q2_wallet_weighted_organic:
     "Distinct wallets with at least one user-initiated action, over distinct wallets with at least one categorized action. The wallet-weighted counterpart to the action-weighted headline: a wallet counts once however many actions it took, so a single busy bot cannot move it. A wallet active in both groups counts as user-initiated, so read this as reach rather than as a split of wallets.",
   q2_distinct_interactive_wallets:
-    "Unique smart-wallet owners that submitted at least one interactive-category action in range (offer_category_participant_day). The check against a few bots inflating action counts.",
+    "Unique smart-wallet owners that submitted at least one user-initiated action in range (offer_category_participant_day) — in practice YMax and PSM. The check against a few bots inflating action counts.",
   q2_distinct_automated_wallets:
     "Unique smart-wallet owners with at least one orchestration, oracle, or fast-USDC action in range.",
+  q2_unclassified_share:
+    "Share of categorized wallet actions that no category rule could place (the `other` category ÷ all actions). These actions sit in the DENOMINATOR of both organic ratios, so they suppress them: the true user-initiated share lies between the headline and the headline plus this figure. Reads — rather than 0% when no actions were categorized in range.",
+  q2_continuing_share:
+    "Share of Zoe offers exercised against a seat that ALREADY EXISTS (offer_source `continuing`) rather than from a fresh invitation (contract, agoricNames path or purse). It separates managing an open position from opening one. It is NOT an automation signal: a person rebalancing their own portfolio by hand produces continuing offers exactly as a planner bot does. Offers whose source could not be determined are excluded from both sides.",
+  q2_unresolved_offers:
+    "Zoe offers seen in range minus offers that reached a terminal payout in range. Unresolved, NOT failed: an offer can stay live indefinitely with the seat open and no error published anywhere, and a transaction can succeed while its offer is rejected later. A negative value is a windowing artifact — an offer made before the range settling inside it — not a data error.",
   q2_satisfaction_rate:
     "Share of settled Zoe offers whose terminal payout satisfied at least one DECLARED want (numWantsSatisfied ≥ 1), counted once per offer. It is an execution property, not user or product satisfaction, and it excludes invocations and unsettled offers.",
 

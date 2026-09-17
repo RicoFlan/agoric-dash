@@ -13,7 +13,7 @@ const denomToCoinId = new Map([["ubld", "agoric"]]);
 const D = ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04"] as const;
 
 /** Context: 08-01..08-04; prior window 08-01..08-02; range 08-03..08-04. */
-function ctx(): DayBucketMap {
+function ctx(curCats: Record<string, number> = { vaults: 5, oracle: 5 }): DayBucketMap {
   const day = (tx: number, failed: number, feeUbld: number, cats: Record<string, number>, ibcIn: number) =>
     new Map<string, Map<string, bigint>>([
       [SERIES.TX_SUCCESS, new Map([["", BigInt(tx)]])],
@@ -26,8 +26,8 @@ function ctx(): DayBucketMap {
   return new Map([
     [D[0], day(100, 0, 1_000_000, { vaults: 1, oracle: 9 }, 1_000_000)],
     [D[1], day(100, 0, 1_000_000, { vaults: 1, oracle: 9 }, 1_000_000)],
-    [D[2], day(150, 50, 3_000_000, { vaults: 5, oracle: 5 }, 4_000_000)],
-    [D[3], day(150, 50, 3_000_000, { vaults: 5, oracle: 5 }, 0)],
+    [D[2], day(150, 50, 3_000_000, curCats, 4_000_000)],
+    [D[3], day(150, 50, 3_000_000, curCats, 0)],
   ]);
 }
 
@@ -41,9 +41,9 @@ function feeByDay() {
   ]);
 }
 
-function build() {
+function build(curCats?: Record<string, number>) {
   const table = new DailyPriceTable(new Map([["agoric", new Map(D.map((d) => [d, 1]))]]), D[0], D[3], D[3]);
-  const dailyContext = ctx();
+  const dailyContext = ctx(curCats);
   return buildQuestions({
     fromDay: D[2],
     toDay: D[3],
@@ -124,12 +124,21 @@ describe("questions payload (contract)", () => {
       walletWeightedPct: { current: 75, previous: 80, deltaPts: -5 },
       mixedWallets: 1,
       categorizedWallets: 16,
+      unclassifiedSharePct: 0,
       distinctAutomatedWallets: { current: 3, previous: 3, pctChange: 0 },
       available: true,
       satisfactionByCategory: [
         { category: "vaults", settled: 8, wantsSatisfied: 6, wantsUnsatisfied: 0, errored: 2, satisfactionRatePct: 75 },
       ],
     });
+  });
+
+  it("Q2: unclassified share is the `other` coverage caveat, and null when nothing was categorized", () => {
+    const withOther = build({ vaults: 5, oracle: 5, other: 10 });
+    expect(withOther.q2.support.unclassifiedSharePct).toBe(50);
+    // The ratio is suppressed by exactly that denominator: 5/20 interactive, not 5/10.
+    expect(withOther.q2.headline.current).toBe(25);
+    expect(build({}).q2.support.unclassifiedSharePct).toBeNull();
   });
 
   it("Q3: net IBC USD, day-priced, with its own pricing meta", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOrganicActivity, organicRatioPct, type DayBucketMap } from "@/lib/organicActivity";
+import { buildOrganicActivity, organicRatioPct, unclassifiedSharePct, type DayBucketMap } from "@/lib/organicActivity";
 import { SERIES } from "@/lib/semantics";
 
 function ctx(rows: Record<string, Record<string, number>>): DayBucketMap {
@@ -41,5 +41,13 @@ describe("buildOrganicActivity", () => {
     expect(r.ratioPct).toEqual({ current: null, previous: null, deltaPts: null });
     expect(r.dailyRatioPct.every((p) => p.value === null)).toBe(true);
     expect(organicRatioPct({ interactive: 0, automated: 0, other: 0, total: 0, interactiveByCategory: [] })).toBeNull();
+  });
+
+  it("reports the unclassified share that suppresses the ratio, and null when nothing was categorized", () => {
+    const counts = { interactive: 2, automated: 6, other: 2, total: 10, interactiveByCategory: [] };
+    expect(unclassifiedSharePct(counts)).toBe(20);
+    // The organic ratio and the unclassified share bound the true user-initiated share.
+    expect(organicRatioPct(counts)).toBe(20);
+    expect(unclassifiedSharePct({ interactive: 0, automated: 0, other: 0, total: 0, interactiveByCategory: [] })).toBeNull();
   });
 });

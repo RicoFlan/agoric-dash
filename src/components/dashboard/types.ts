@@ -122,15 +122,25 @@ export interface MetricsPayload {
       interactiveActions: KpiDelta;
     };
     outcomes: {
+      offersSeen: KpiDelta;
       settled: KpiDelta;
       wantsSatisfied: KpiDelta;
       wantsUnsatisfied: KpiDelta;
       errored: KpiDelta;
+      /** Seen − settled: no terminal payout observed in range. Negative at a range edge. */
+      unresolved: KpiDelta;
       satisfactionRatePct: number | null;
       overTime: { outcome: string; data: { bucket: string; value: string }[] }[];
     };
     byCategory: { category: string; automation: string; count: string }[];
     bySource: OfferLabeledCount[];
+    /** Continuing (acting on an existing seat) vs fresh invitation; `unknown` is excluded from the share. */
+    engagement: {
+      continuing: string;
+      fresh: string;
+      unknown: string;
+      continuingSharePct: number | null;
+    };
     byInstance: OfferLabeledCount[];
     byMaker: OfferLabeledCount[];
     byTarget: OfferLabeledCount[];

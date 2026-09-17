@@ -1,9 +1,10 @@
 /**
  * Q2 — "Is usage becoming more organic?" Pure derivation from the `offer_category` rollup: each
  * wallet action carries exactly one category, and `categoryAutomation()` groups categories into
- * interactive (vaults, PSM, auction, governance) vs automated (orchestration, oracle, fast-USDC)
- * vs unknown (`other`). The organic activity ratio is interactive ÷ ALL actions, so bot-dominated
- * days read low even when interactive counts are steady. Reported with the raw counts because a
+ * user-initiated (in practice YMax and PSM; the Inter Protocol categories are declared but sunset)
+ * vs automated (fast-USDC settlement, orchestration, oracle) vs unknown (`other`). The organic
+ * activity ratio is interactive ÷ ALL actions, so bot-dominated days read low even when
+ * interactive counts are steady. Reported with the raw counts because a
  * falling ratio on a rising base and a falling ratio on a collapsing base mean different things.
  */
 import { categoryAutomation, type OfferCategory } from "@/lib/offerCategory";
@@ -72,6 +73,17 @@ function add(a: OrganicCounts, b: OrganicCounts): OrganicCounts {
 
 export function organicRatioPct(c: OrganicCounts): number | null {
   return c.total > 0 ? (c.interactive / c.total) * 100 : null;
+}
+
+/**
+ * Coverage caveat for both organic ratios: the share of categorized wallet actions the category
+ * rules could not place (`other` ÷ total), as a percentage. Unclassified actions sit in the
+ * DENOMINATOR of the ratios, so they suppress them silently; this is what the reader needs to
+ * discount the headline by. Null — not zero — when no actions were categorized in the window, so an
+ * unavailable category rollup reads as unknown coverage rather than as perfect coverage.
+ */
+export function unclassifiedSharePct(c: OrganicCounts): number | null {
+  return c.total > 0 ? (c.other / c.total) * 100 : null;
 }
 
 /**

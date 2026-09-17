@@ -126,7 +126,7 @@ export function buildVerdicts(q: QuestionsPayload, opts: { symbolOf?: (denom: st
       qualifier:
         share !== null && share >= 50
           ? `${share.toFixed(0)}% of user-initiated actions came from ${top!.category} alone, so this is that product's adoption rather than broad growth.`
-          : "Action-weighted, so a few busy wallets can move it; compare with distinct interactive wallets.",
+          : "Action-weighted, so a few busy wallets can move it; compare with distinct user-initiated wallets.",
     });
   }
 

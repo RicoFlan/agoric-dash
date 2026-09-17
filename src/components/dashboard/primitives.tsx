@@ -265,22 +265,29 @@ export function KpiCard({
   current,
   previous,
   pct,
+  definition,
+  upIsGood = true,
 }: {
   title: string;
   subtitle?: string;
   current: string;
   previous: string;
   pct: number | null;
+  definition?: string;
+  upIsGood?: boolean;
 }) {
   return (
     <div className={CARD_CLASS}>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+        {title}
+        {definition && <InfoHint text={definition} />}
+      </h3>
       {subtitle && <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p>}
       <p className="mt-2 font-mono text-2xl text-[var(--text)]">{current}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">
         Prior window (equal length): <span className="font-mono text-[var(--text)]">{previous}</span>
         {" · "}
-        <span className={deltaTone(pct)}>{fmtPct(pct)}</span>
+        <span className={deltaTone(pct, upIsGood)}>{fmtPct(pct)}</span>
       </p>
     </div>
   );
