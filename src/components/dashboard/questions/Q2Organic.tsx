@@ -15,6 +15,7 @@ import {
   fmtPts,
   Headline,
   IN_CARD_TITLE_CLASS,
+  InfoHint,
   KpiCard,
   QuestionBlock,
   SupportFigure,
@@ -82,6 +83,14 @@ export function Q2Organic({
 
   const ratio = q?.headline;
   const counts = q?.counts.current;
+  /**
+   * Coverage caveat for the headline: unclassified actions are in its DENOMINATOR, so the true
+   * user-initiated share lies between the printed ratio and the ratio plus this share. Null (not 0)
+   * when nothing was categorized in range.
+   */
+  const unclassifiedPct = q?.support.unclassifiedSharePct ?? null;
+  const organicUpperPct = ratio?.current != null && unclassifiedPct !== null ? ratio.current + unclassifiedPct : null;
+  const engagement = offers?.engagement;
   const sat = q?.support.satisfactionByCategory ?? [];
   const walletsAvailable = q?.support.available ?? false;
 
@@ -99,9 +108,12 @@ export function Q2Organic({
       intro={
         <>
           Most Agoric activity is smart-wallet intent (Zoe offers and invocations), and a few automation wallets submit most
-          of it. The organic ratio is the share of wallet actions in interactive categories — vaults, PSM, auction,
-          governance, and YMax users (portfolio offers, EVM-wallet deposits) — versus automated ones (the YMax planner and other
-          orchestration, oracle price feeds, fast-USDC). Distinct interactive wallets is the anti-overcounting check.
+          of it. The organic ratio is the share of wallet actions in user-initiated categories — over indexed history that
+          is almost entirely YMax (portfolio offers, EVM-wallet deposits) with a small PSM remainder — versus automated ones
+          (fast-USDC settlement, the YMax planner and other orchestration, oracle price feeds). The vaults, auction and
+          governance categories are grouped as user-initiated too, but have recorded zero actions: Inter Protocol was sunset
+          on 30 June 2025, before indexed history begins. Distinct user-initiated wallets is the anti-overcounting check,
+          and the unclassified share is how much of the denominator no rule could place.
         </>
       }
       headline={
@@ -115,8 +127,22 @@ export function Q2Organic({
           aside={
             counts ? (
               <>
-                {fmtInt(counts.interactive)} interactive · {fmtInt(counts.automated)} automated
-                {counts.other > 0 ? ` · ${fmtInt(counts.other)} uncategorized` : ""} · {fmtInt(counts.total)} total actions
+                {fmtInt(counts.interactive)} user-initiated · {fmtInt(counts.automated)} automated
+                {counts.other > 0 ? ` · ${fmtInt(counts.other)} unclassified` : ""} · {fmtInt(counts.total)} total actions
+                <br />
+                <span className={unclassifiedPct !== null && unclassifiedPct > 0 ? "font-semibold text-[var(--color-warning)]" : undefined}>
+                  {unclassifiedPct === null
+                    ? "Category coverage unknown — no actions categorized in range."
+                    : `${fmtPct1(unclassifiedPct)} of actions could not be classified`}
+                  <InfoHint text={DEFINITIONS.q2_unclassified_share} />
+                </span>
+                {organicUpperPct !== null && unclassifiedPct !== null && unclassifiedPct > 0 && (
+                  <>
+                    {" "}
+                    — they stay in the denominator, so the user-initiated share is between{" "}
+                    {fmtPct1(ratio?.current ?? null)} and {fmtPct1(organicUpperPct)}.
+                  </>
+                )}
               </>
             ) : undefined
           }
@@ -127,12 +153,23 @@ export function Q2Organic({
         <>
           {offers && (
             <div>
-              <h3 className={IN_CARD_TITLE_CLASS}>Settled outcomes (all categories)</h3>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <h3 className={IN_CARD_TITLE_CLASS}>Offer outcomes (all categories)</h3>
+              <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+                Settled states are <strong className="font-medium text-[var(--color-text-secondary)]">not</strong>{" "}
+                exhaustive: an offer can stay live indefinitely with the seat open and no error published
+                anywhere, a transaction can succeed while its offer is rejected later, and an offer made near
+                the end of the range may simply not have settled yet.{" "}
+                <em>Unresolved</em> is the range residual, offers seen minus offers settled — a windowing
+                figure, not a lifecycle state. It goes negative when an offer made before the range reaches
+                terminal payout inside it, counting toward settled but never toward seen.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <KpiCard title="Offers seen" subtitle="Zoe offers submitted in range (executeOffer / tryExitOffer)" current={offers.outcomes.offersSeen.current} previous={offers.outcomes.offersSeen.previous} pct={offers.outcomes.offersSeen.pctChange} />
                 <KpiCard title="Settled offers" subtitle="Zoe offers reaching terminal payout in range" current={offers.outcomes.settled.current} previous={offers.outcomes.settled.previous} pct={offers.outcomes.settled.pctChange} />
+                <KpiCard title="Unresolved" subtitle="Range residual of seen − settled. Not failed; negative at a range edge." current={offers.outcomes.unresolved.current} previous={offers.outcomes.unresolved.previous} pct={offers.outcomes.unresolved.pctChange} definition={DEFINITIONS.q2_unresolved_offers} upIsGood={false} />
                 <KpiCard title="Wants satisfied" subtitle="numWantsSatisfied ≥ 1" current={offers.outcomes.wantsSatisfied.current} previous={offers.outcomes.wantsSatisfied.previous} pct={offers.outcomes.wantsSatisfied.pctChange} />
-                <KpiCard title="Refunded / unsatisfied" subtitle="numWantsSatisfied === 0 (give refunded)" current={offers.outcomes.wantsUnsatisfied.current} previous={offers.outcomes.wantsUnsatisfied.previous} pct={offers.outcomes.wantsUnsatisfied.pctChange} />
-                <KpiCard title="Errored" subtitle="Settled status carrying an error" current={offers.outcomes.errored.current} previous={offers.outcomes.errored.previous} pct={offers.outcomes.errored.pctChange} />
+                <KpiCard title="Refunded / unsatisfied" subtitle="numWantsSatisfied === 0 (give refunded)" current={offers.outcomes.wantsUnsatisfied.current} previous={offers.outcomes.wantsUnsatisfied.previous} pct={offers.outcomes.wantsUnsatisfied.pctChange} upIsGood={false} />
+                <KpiCard title="Errored" subtitle="Settled status carrying an error" current={offers.outcomes.errored.current} previous={offers.outcomes.errored.previous} pct={offers.outcomes.errored.pctChange} upIsGood={false} />
               </div>
             </div>
           )}
@@ -208,7 +245,7 @@ export function Q2Organic({
           <OfferEmpty />
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SupportFigure
           label="User-initiated share of wallets"
           value={walletsAvailable ? fmtPct1(q?.support.walletWeightedPct.current ?? null) : "—"}
@@ -225,7 +262,7 @@ export function Q2Organic({
           }
         />
         <SupportFigure
-          label="Distinct interactive wallets"
+          label="Distinct user-initiated wallets"
           value={walletsAvailable ? fmtInt(q?.support.distinctInteractiveWallets.current ?? null) : "—"}
           previous={walletsAvailable ? fmtInt(q?.support.distinctInteractiveWallets.previous ?? null) : undefined}
           delta={walletsAvailable ? fmtPct(q?.support.distinctInteractiveWallets.pctChange ?? null) : undefined}
@@ -243,6 +280,17 @@ export function Q2Organic({
           note={walletsAvailable ? undefined : "Available after the offer-category backfill."}
         />
         <SupportFigure
+          label="Continuing offers"
+          value={engagement ? fmtPct1(engagement.continuingSharePct) : "—"}
+          definition={DEFINITIONS.q2_continuing_share}
+          note={
+            engagement
+              ? `${fmtInt(Number(engagement.continuing))} on an existing seat, ${fmtInt(Number(engagement.fresh))} from a fresh invitation` +
+                (Number(engagement.unknown) > 0 ? `; ${fmtInt(Number(engagement.unknown))} of unknown source excluded` : "")
+              : undefined
+          }
+        />
+        <SupportFigure
           label="Declared-wants fulfillment"
           value={fmtPct1(offers?.outcomes.satisfactionRatePct)}
           definition={DEFINITIONS.q2_satisfaction_rate}
@@ -253,8 +301,9 @@ export function Q2Organic({
         <div className={CARD_CLASS}>
           <h3 className={IN_CARD_TITLE_CLASS}>Satisfaction by category</h3>
           <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
-            Settled offers per functional category and the share that got what they asked for. A product health signal:
-            vault and PSM offers should settle satisfied; auctions and liquidations legitimately do not.
+            Settled offers per functional category and the share that got what they asked for. A product health signal,
+            read per category: a YMax portfolio offer or a PSM swap should settle satisfied, while an auction bid
+            legitimately may not. Categories with no activity in range are absent here rather than shown as zero.
           </p>
           {sat.length === 0 ? (
             <EmptyNote>No settled offers by category in range (populates after the offer-category backfill).</EmptyNote>

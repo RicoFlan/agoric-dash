@@ -84,8 +84,11 @@ export function classifyOfferCategory(input: OfferCategoryInput): OfferCategory 
 
 /**
  * Coarse automated-vs-interactive grouping (read-time, refinable without reindex). Machine-driven
- * flows (orchestration, oracle pushes, fast-USDC settlement) vs deliberate economic/governance
- * offers (vaults, psm, auction, governance). `other` is left unknown rather than guessed.
+ * flows (fast-USDC settlement, orchestration, oracle pushes) vs deliberate economic/governance
+ * offers. On agoric-3 the interactive side is in practice `ymax` plus a little `psm`: `vaults`,
+ * `auction` and `governance` stay declared here but record zero actions, because Inter Protocol was
+ * wound down to a 30 June 2025 shutdown, before indexed history begins. `other` is left unknown
+ * rather than guessed.
  */
 export function categoryAutomation(category: OfferCategory): AutomationClass {
   switch (category) {

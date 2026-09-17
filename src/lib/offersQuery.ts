@@ -52,7 +52,7 @@ export async function queryOfferParticipantsRange(
 }
 
 export interface OfferCategoryParticipantStats {
-  /** Distinct wallets that submitted at least one action in an interactive category (vaults, PSM, auction, governance). */
+  /** Distinct wallets that submitted at least one action in a user-initiated category (in practice ymax and psm). */
   distinctInteractiveWallets: number;
   /** Distinct wallets that submitted at least one action in an automated category (orchestration, oracle, fast-USDC). */
   distinctAutomatedWallets: number;

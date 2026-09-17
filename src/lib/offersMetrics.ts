@@ -6,7 +6,8 @@
  * Reads the offer series produced by the indexer (semantics.ts SERIES + walletOfferRollup.ts):
  * wallet_actions (by kind), offer_category (one per action), offer_source, offer_instance,
  * offer_maker, invoke_target. Instance Board ids are resolved to agoricNames labels at read time;
- * the automated-vs-interactive grouping is the read-time relabel of offer_category.
+ * the automated-vs-interactive grouping is the read-time relabel of offer_category. Zoe offer
+ * outcomes are reported against offers SEEN, with the residue surfaced as unresolved.
  */
 import { SERIES } from "@/lib/semantics";
 import { instanceName } from "@/lib/agoricInstanceNames";
@@ -45,6 +46,21 @@ export interface OfferBucketPoint {
 
 export type OfferOutcomeDim = "wants_satisfied" | "wants_unsatisfied" | "errored";
 
+/**
+ * Engagement axis from `offer_source`: a `continuing` offer is exercised against a seat that already
+ * exists, a fresh one comes from an invitation (contract / agoricContract / purse). This separates
+ * OPENING a position from MANAGING one. It is NOT an automation signal — a person rebalancing their
+ * own portfolio by hand produces continuing offers exactly as a bot does.
+ */
+export interface OfferEngagement {
+  continuing: string;
+  fresh: string;
+  /** Offers whose invitation source could not be determined; excluded from the share, disclosed here. */
+  unknown: string;
+  /** continuing ÷ (continuing + fresh), percent. Null when neither was seen in range. */
+  continuingSharePct: number | null;
+}
+
 export interface OffersSection {
   kpis: {
     totalActions: KpiDelta;
@@ -53,12 +69,25 @@ export interface OffersSection {
     automatedActions: KpiDelta;
     interactiveActions: KpiDelta;
   };
-  /** Settled Zoe offer outcomes (block-grain, self-indexed from vstorage offerStatus). */
+  /** Zoe offer outcomes (block-grain, self-indexed from vstorage offerStatus). */
   outcomes: {
+    /**
+     * Zoe offers SEEN in range (`wallet_actions` kind `zoe_offer`) — the denominator the outcome
+     * states sum to. Settled + unresolved = seen, by construction.
+     */
+    offersSeen: KpiDelta;
     settled: KpiDelta;
     wantsSatisfied: KpiDelta;
     wantsUnsatisfied: KpiDelta;
     errored: KpiDelta;
+    /**
+     * Offers seen minus offers settled: seen in range with no terminal payout update observed.
+     * Reported as UNRESOLVED, not failed — an offer can stay live indefinitely with no error
+     * anywhere. Can go negative at a range edge, when an offer made before `from` settles inside
+     * the range; that is a boundary artifact of windowing, not a data error, so it is surfaced
+     * rather than clamped to zero.
+     */
+    unresolved: KpiDelta;
     /** Share (0–100) of settled offers with wants satisfied, or null when nothing settled in range. */
     satisfactionRatePct: number | null;
     /** Per-bucket settled-offer counts by outcome (dense over cur buckets), for the trend. */
@@ -68,6 +97,8 @@ export interface OffersSection {
   };
   byCategory: CategoryCount[];
   bySource: LabeledCount[];
+  /** Continuing-vs-fresh split of `bySource` (see {@link OfferEngagement}). */
+  engagement: OfferEngagement;
   byInstance: LabeledCount[];
   byMaker: LabeledCount[];
   byTarget: LabeledCount[];
@@ -140,6 +171,30 @@ function sortedLabeled(
     .map(([key, v]) => ({ key, label: label(key), count: v.toString() }));
 }
 
+/**
+ * Splits `offer_source` into continuing (acting on an existing seat) vs fresh (a new invitation
+ * from a contract, agoricNames path or purse). `unknown` is reported separately and kept OUT of the
+ * share's denominator: it is neither, and folding it into "fresh" would overstate new engagements.
+ */
+export function buildOfferEngagement(sourceDims: Map<string, bigint>): OfferEngagement {
+  let continuing = BigInt(0);
+  let fresh = BigInt(0);
+  let unknown = BigInt(0);
+  for (const [source, v] of sourceDims) {
+    if (v <= BigInt(0)) continue;
+    if (source === "continuing") continuing += v;
+    else if (source === "unknown") unknown += v;
+    else fresh += v;
+  }
+  const denom = continuing + fresh;
+  return {
+    continuing: continuing.toString(),
+    fresh: fresh.toString(),
+    unknown: unknown.toString(),
+    continuingSharePct: denom === BigInt(0) ? null : Number((continuing * BigInt(10000)) / denom) / 100,
+  };
+}
+
 function categoryOverTime(b: OfferBuckets, category: OfferCategory): OfferBucketPoint[] {
   return [...b.keys()].sort().map((bucket) => ({
     bucket,
@@ -161,6 +216,7 @@ export function buildOffersSection(cur: OfferBuckets, prev: OfferBuckets): Offer
   const prevKinds = dimTotals(prev, SERIES.WALLET_ACTIONS);
   const curCats = dimTotals(cur, SERIES.OFFER_CATEGORY);
   const prevCats = dimTotals(prev, SERIES.OFFER_CATEGORY);
+  const curSources = dimTotals(cur, SERIES.OFFER_SOURCE);
 
   const byCategory: CategoryCount[] = OFFER_CATEGORIES.map((category) => ({
     category,
@@ -174,7 +230,12 @@ export function buildOffersSection(cur: OfferBuckets, prev: OfferBuckets): Offer
   const curOutcomes = dimTotals(cur, SERIES.OFFER_OUTCOME);
   const prevOutcomes = dimTotals(prev, SERIES.OFFER_OUTCOME);
   const settled = sumMap(curOutcomes);
+  const prevSettled = sumMap(prevOutcomes);
   const satisfied = dimValue(curOutcomes, "wants_satisfied");
+  // Offers SEEN is the wallet_actions zoe_offer count; the outcome states are a partition of it,
+  // with the residue unresolved rather than failed.
+  const seen = dimValue(curKinds, "zoe_offer");
+  const prevSeen = dimValue(prevKinds, "zoe_offer");
   const presentOutcomes: OfferOutcomeDim[] = (["wants_satisfied", "wants_unsatisfied", "errored"] as const).filter(
     (o) => dimValue(curOutcomes, o) > BigInt(0)
   );
@@ -188,10 +249,12 @@ export function buildOffersSection(cur: OfferBuckets, prev: OfferBuckets): Offer
       interactiveActions: kpi(automationTotal(curCats, "interactive"), automationTotal(prevCats, "interactive")),
     },
     outcomes: {
-      settled: kpi(settled, sumMap(prevOutcomes)),
+      offersSeen: kpi(seen, prevSeen),
+      settled: kpi(settled, prevSettled),
       wantsSatisfied: kpi(satisfied, dimValue(prevOutcomes, "wants_satisfied")),
       wantsUnsatisfied: kpi(dimValue(curOutcomes, "wants_unsatisfied"), dimValue(prevOutcomes, "wants_unsatisfied")),
       errored: kpi(dimValue(curOutcomes, "errored"), dimValue(prevOutcomes, "errored")),
+      unresolved: kpi(seen - settled, prevSeen - prevSettled),
       satisfactionRatePct:
         settled === BigInt(0) ? null : Number((satisfied * BigInt(10000)) / settled) / 100,
       overTime: presentOutcomes.map((outcome) => ({
@@ -204,7 +267,8 @@ export function buildOffersSection(cur: OfferBuckets, prev: OfferBuckets): Offer
       byCategory: outcomesByCategory(dimTotals(cur, SERIES.OFFER_OUTCOME_CATEGORY)),
     },
     byCategory,
-    bySource: sortedLabeled(dimTotals(cur, SERIES.OFFER_SOURCE), (k) => k),
+    bySource: sortedLabeled(curSources, (k) => k),
+    engagement: buildOfferEngagement(curSources),
     byInstance: sortedLabeled(dimTotals(cur, SERIES.OFFER_INSTANCE), (boardId) => instanceName(boardId) ?? boardId),
     byMaker: sortedLabeled(dimTotals(cur, SERIES.OFFER_MAKER), (k) => k),
     byTarget: sortedLabeled(dimTotals(cur, SERIES.INVOKE_TARGET), (k) => k),

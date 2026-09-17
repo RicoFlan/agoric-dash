@@ -5,7 +5,7 @@ import { CARD_CLASS, EmptyNote, IN_CARD_TITLE_CLASS, TABLE_CLASS, TABLE_HEAD_ROW
 
 const AUTOMATION_LABEL: Record<string, string> = {
   automated: "Automated",
-  interactive: "Interactive",
+  interactive: "User-initiated",
   unknown: "Uncategorized",
 };
 
@@ -23,8 +23,9 @@ export function OfferCategoryTable({ rows }: { rows: { category: string; automat
     <div className={CARD_CLASS}>
       <h3 className={IN_CARD_TITLE_CLASS}>Actions by functional category</h3>
       <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
-        Exactly one category per action (additive, non-overlapping). Class is the read-time automated-vs-interactive
-        grouping that drives the organic ratio.
+        Exactly one category per action (additive, non-overlapping). Class is the read-time
+        automated-vs-user-initiated grouping that drives the organic ratio. Categories with no actions in range are
+        absent from this table rather than shown as zero.
       </p>
       {rows.length === 0 ? (
         <OfferEmpty />

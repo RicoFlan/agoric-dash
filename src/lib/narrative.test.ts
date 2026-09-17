@@ -30,7 +30,7 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
       daily: [],
       dailyCounts: [],
       anomalies: [],
-      support: { distinctInteractiveWallets: { current: 1, previous: 1, pctChange: 0 }, distinctAutomatedWallets: { current: 1, previous: 1, pctChange: 0 }, walletWeightedPct: { current: 50, previous: 50, deltaPts: 0 }, mixedWallets: 0, categorizedWallets: 2, available: true, satisfactionByCategory: [] },
+      support: { distinctInteractiveWallets: { current: 1, previous: 1, pctChange: 0 }, distinctAutomatedWallets: { current: 1, previous: 1, pctChange: 0 }, walletWeightedPct: { current: 50, previous: 50, deltaPts: 0 }, mixedWallets: 0, categorizedWallets: 2, unclassifiedSharePct: 0, available: true, satisfactionByCategory: [] },
     },
     q3: {
       id: "value-flow",
@@ -147,7 +147,8 @@ describe("buildVerdicts", () => {
       })
     );
     expect(v[0]!.answer).toBe("No indexed transaction activity in this range.");
-    expect(v[1]!.answer).toBe("No smart-wallet actions in this range.");
+    // A null ratio means no CATEGORIZED actions; it is not evidence that nothing happened.
+    expect(v[1]!.answer).toBe("No categorized wallet actions in this range.");
     expect(v[2]!.answer).toBe("No priced IBC transfer traffic in this range.");
   });
 
