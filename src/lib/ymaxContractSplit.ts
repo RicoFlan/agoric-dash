@@ -16,6 +16,16 @@ export interface YmaxVenueLike {
   readonly contract: string;
   readonly positions: number;
   readonly principalUsd: number | null;
+  /** Native principal as an integer string; used only to drop venues holding nothing. */
+  readonly principal?: string;
+}
+
+/** A venue that holds nothing: principal "0" natively, or 0 USD with no native figure to check. */
+function isZeroPrincipal(v: YmaxVenueLike): boolean {
+  if (typeof v.principal === "string" && /^-?\d+$/.test(v.principal)) {
+    return BigInt(v.principal) === BigInt(0);
+  }
+  return v.principalUsd === 0;
 }
 
 export interface YmaxContractTotal {
@@ -37,6 +47,11 @@ export interface YmaxContractTotal {
 export function ymaxContractSplit(byVenue: readonly YmaxVenueLike[]): YmaxContractTotal[] {
   const acc = new Map<string, { positions: number; usd: number | null; unpriced: number }>();
   for (const v of byVenue) {
+    // Venues holding nothing are excluded, matching the venue table beside this split: ymaxQueries
+    // admits total_in = total_out, so a drained venue survives with principal 0. Counting its
+    // positions here while the table omits them makes the two disagree on the same page — which
+    // happens today, for ymax0's Beefy/Optimism venue.
+    if (isZeroPrincipal(v)) continue;
     const cur = acc.get(v.contract) ?? { positions: 0, usd: null, unpriced: 0 };
     cur.positions += v.positions;
     if (v.principalUsd === null) cur.unpriced += 1;

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { formatSharePct, ymaxContractSplit } from "@/lib/ymaxContractSplit";
 
-const v = (contract: string, positions: number, principalUsd: number | null) => ({ contract, positions, principalUsd });
+const v = (contract: string, positions: number, principalUsd: number | null, principal?: string) => ({
+  contract,
+  positions,
+  principalUsd,
+  ...(principal === undefined ? {} : { principal }),
+});
 
 describe("ymaxContractSplit", () => {
   it("separates the two concurrent deployments and shows how lopsided they are", () => {
@@ -57,6 +62,30 @@ describe("ymaxContractSplit", () => {
     expect(ymaxContractSplit([])).toEqual([]);
   });
 });
+
+  it("drops venues holding nothing, so it agrees with the venue table beside it", () => {
+    // Live case: ymaxQueries admits total_in = total_out, so ymax0's Beefy/Optimism venue survives
+    // with principal 0. The venue table filters it out; counting its position here made the two
+    // disagree on the same page.
+    const rows = ymaxContractSplit([
+      v("ymax0", 146, 372, "372000000"),
+      v("ymax0", 1, 0, "0"),
+      v("ymax1", 322, 15_890_015, "15890015000000"),
+    ]);
+    expect(rows.find((r) => r.contract === "ymax0")!.positions).toBe(146);
+    expect(rows.find((r) => r.contract === "ymax1")!.positions).toBe(322);
+  });
+
+  it("does not count a drained venue as unpriced", () => {
+    // Without the zero check, an unpriced-looking 0 would inflate the unpriced warning.
+    const rows = ymaxContractSplit([v("ymax0", 5, 10, "10"), v("ymax0", 1, 0, "0")]);
+    expect(rows[0]).toMatchObject({ positions: 5, principalUsd: 10, unpricedVenues: 0 });
+  });
+
+  it("falls back to the USD figure when no native principal is supplied", () => {
+    const rows = ymaxContractSplit([v("ymax1", 3, 0), v("ymax1", 2, 7)]);
+    expect(rows[0]).toMatchObject({ positions: 2, principalUsd: 7 });
+  });
 
 describe("formatSharePct", () => {
   it("never prints a dominant share as 100% when something else exists", () => {
