@@ -24,6 +24,19 @@ describe("ymaxContractSplit", () => {
     expect(rows[0]!.sharePct! + rows[1]!.sharePct!).toBeCloseTo(100);
   });
 
+  it("lets one deployment read as the whole when the other is entirely unpriced — which is why the render must qualify the share", () => {
+    // The failure the disclosure exists for: ymax0 holds capital, but none of it is priced, so the
+    // share arithmetic sees only ymax1. 100% here means "100% of what we could value", not "all of it".
+    const rows = ymaxContractSplit([v("ymax1", 10, 500), v("ymax0", 4, null)]);
+    const one = rows.find((r) => r.contract === "ymax1")!;
+    const zero = rows.find((r) => r.contract === "ymax0")!;
+    expect(one.sharePct).toBe(100);
+    expect(zero.sharePct).toBeNull();
+    // The unpriced count is what makes that qualifiable, so it must survive.
+    expect(zero.unpricedVenues).toBe(1);
+    expect(rows.reduce((n, r) => n + r.unpricedVenues, 0)).toBe(1);
+  });
+
   it("counts unpriced venues instead of treating them as zero", () => {
     const rows = ymaxContractSplit([v("ymax1", 4, 100), v("ymax1", 2, null), v("ymax0", 1, null)]);
     const one = rows.find((r) => r.contract === "ymax1")!;

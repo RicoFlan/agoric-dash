@@ -116,6 +116,8 @@ export function Q3ValueFlow({
    * sum answers Q3's question correctly but hides that one of them holds essentially all of it.
    */
   const contractSplit = useMemo(() => ymaxContractSplit(o?.byVenue ?? []), [o?.byVenue]);
+  /** Venues with no USD price. The shares divide priced principal, so this qualifies them. */
+  const unpricedVenueTotal = useMemo(() => contractSplit.reduce((n, c) => n + c.unpricedVenues, 0), [contractSplit]);
   const orchVenues = useMemo(() => (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0)), [o?.byVenue]);
   /**
    * Share of principal in the two largest venues. Suppressed unless EVERY venue holding principal is
@@ -308,9 +310,17 @@ export function Q3ValueFlow({
                       {i > 0 ? " · " : ""}
                       <span className="font-mono">{c.contract}</span> {fmtUsd(c.principalUsd)}
                       {formatSharePct(c.sharePct) === null ? "" : ` (${formatSharePct(c.sharePct)})`}
+                      {c.unpricedVenues > 0 && (
+                        <span className="font-semibold text-[var(--color-warning)]"> +{c.unpricedVenues} unpriced</span>
+                      )}
                     </span>
                   ))}
                   . They are separate contracts, not one across a redeploy: portfolio numbering restarts in each.
+                  {/* The shares divide PRICED principal only, so an unpriced venue would otherwise let one
+                      deployment read as the whole while the real composition is unknown. */}
+                  {unpricedVenueTotal > 0
+                    ? ` Shares are of priced principal; ${unpricedVenueTotal} venue${unpricedVenueTotal === 1 ? "" : "s"} could not be valued, so the split is incomplete.`
+                    : " Shares are of priced principal; every venue is priced here."}
                 </>
               )}
               {o.quarantined.positions > 0 && (
