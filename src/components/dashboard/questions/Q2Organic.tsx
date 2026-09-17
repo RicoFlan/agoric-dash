@@ -155,15 +155,17 @@ export function Q2Organic({
             <div>
               <h3 className={IN_CARD_TITLE_CLASS}>Offer outcomes (all categories)</h3>
               <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
-                Every Zoe offer seen in range is in exactly one state below: settled (satisfied, refunded or
-                errored) or unresolved. Settled states are <strong className="font-medium text-[var(--color-text-secondary)]">not</strong>{" "}
-                exhaustive on their own — an offer can stay live indefinitely with the seat open and no error
-                published anywhere, and a transaction can succeed while its offer is rejected later.
+                Settled states are <strong className="font-medium text-[var(--color-text-secondary)]">not</strong>{" "}
+                exhaustive: an offer can stay live indefinitely with the seat open and no error published
+                anywhere, and a transaction can succeed while its offer is rejected later.{" "}
+                <em>Unresolved</em> is the range residual, offers seen minus offers settled — a windowing
+                figure, not a lifecycle state. It goes negative when an offer made before the range settles
+                inside it.
               </p>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <KpiCard title="Offers seen" subtitle="Zoe offers submitted in range (executeOffer / tryExitOffer)" current={offers.outcomes.offersSeen.current} previous={offers.outcomes.offersSeen.previous} pct={offers.outcomes.offersSeen.pctChange} />
                 <KpiCard title="Settled offers" subtitle="Zoe offers reaching terminal payout in range" current={offers.outcomes.settled.current} previous={offers.outcomes.settled.previous} pct={offers.outcomes.settled.pctChange} />
-                <KpiCard title="Unresolved" subtitle="Seen − settled: no terminal payout observed. Not failed." current={offers.outcomes.unresolved.current} previous={offers.outcomes.unresolved.previous} pct={offers.outcomes.unresolved.pctChange} definition={DEFINITIONS.q2_unresolved_offers} upIsGood={false} />
+                <KpiCard title="Unresolved" subtitle="Range residual of seen − settled. Not failed; negative at a range edge." current={offers.outcomes.unresolved.current} previous={offers.outcomes.unresolved.previous} pct={offers.outcomes.unresolved.pctChange} definition={DEFINITIONS.q2_unresolved_offers} upIsGood={false} />
                 <KpiCard title="Wants satisfied" subtitle="numWantsSatisfied ≥ 1" current={offers.outcomes.wantsSatisfied.current} previous={offers.outcomes.wantsSatisfied.previous} pct={offers.outcomes.wantsSatisfied.pctChange} />
                 <KpiCard title="Refunded / unsatisfied" subtitle="numWantsSatisfied === 0 (give refunded)" current={offers.outcomes.wantsUnsatisfied.current} previous={offers.outcomes.wantsUnsatisfied.previous} pct={offers.outcomes.wantsUnsatisfied.pctChange} />
                 <KpiCard title="Errored" subtitle="Settled status carrying an error" current={offers.outcomes.errored.current} previous={offers.outcomes.errored.previous} pct={offers.outcomes.errored.pctChange} />

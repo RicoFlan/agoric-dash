@@ -112,7 +112,7 @@ export function buildVerdicts(q: QuestionsPayload, opts: { symbolOf?: (denom: st
     const cur = q.q2.counts.current;
     const answer =
       h.current === null
-        ? "No smart-wallet actions in this range."
+        ? "No categorized wallet actions in this range."
         : h.deltaPts === null
           ? `${h.current.toFixed(1)}% of wallet actions were user-initiated.`
           : Math.abs(h.deltaPts) < 0.5
