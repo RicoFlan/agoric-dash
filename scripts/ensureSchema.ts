@@ -55,12 +55,20 @@ async function main() {
       isNullable: r.is_nullable === "YES",
     }));
 
+    /**
+     * Joined on the table as well as the constraint name. A constraint name is only unique per
+     * table, and while two primary keys cannot collide (their backing indexes would), a FOREIGN KEY
+     * creates no index and may reuse a primary key's name on another table. Joining on the name
+     * alone then attributes that table's column to this key and reports drift that does not exist.
+     */
     const pkRes = await db.execute<{ table_name: string; column_name: string }>(
       sql`SELECT tc.table_name, kcu.column_name
           FROM information_schema.table_constraints tc
           JOIN information_schema.key_column_usage kcu
             ON kcu.constraint_name = tc.constraint_name
            AND kcu.constraint_schema = tc.constraint_schema
+           AND kcu.table_schema = tc.table_schema
+           AND kcu.table_name = tc.table_name
           WHERE tc.constraint_schema = 'public' AND tc.constraint_type = 'PRIMARY KEY'
           ORDER BY tc.table_name, kcu.ordinal_position`
     );
