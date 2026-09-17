@@ -24,6 +24,7 @@ import { fmtCompactUsd } from "@/lib/compactNumber";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
+import { formatSharePct, ymaxContractSplit } from "@/lib/ymaxContractSplit";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 import { INDEXER_SCOPE_CAVEAT_SUBTITLE } from "@/lib/semantics";
 
@@ -110,6 +111,11 @@ export function Q3ValueFlow({
   const netUsd = fmtCompactUsd(h?.netUsd ?? null, true);
   const prevNetUsd = fmtCompactUsd(h?.previousNetUsd ?? null, true);
   const o = q?.orchestrated;
+  /**
+   * Per-contract composition of the headline. ymax0 and ymax1 are two concurrent deployments, so the
+   * sum answers Q3's question correctly but hides that one of them holds essentially all of it.
+   */
+  const contractSplit = useMemo(() => ymaxContractSplit(o?.byVenue ?? []), [o?.byVenue]);
   const orchVenues = useMemo(() => (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0)), [o?.byVenue]);
   /**
    * Share of principal in the two largest venues. Suppressed unless EVERY venue holding principal is
@@ -293,6 +299,20 @@ export function Q3ValueFlow({
               {o.portfoliosActive} active portfolios of {o.portfoliosTotal} created · net deposits in range {fmtUsd(o.netDepositsUsd, true)}
               <br />
               {flowLine}
+              {contractSplit.length > 1 && (
+                <>
+                  <br />
+                  <span className="text-[var(--color-text-secondary)]">Across {contractSplit.length} concurrent deployments:</span>{" "}
+                  {contractSplit.map((c, i) => (
+                    <span key={c.contract}>
+                      {i > 0 ? " · " : ""}
+                      <span className="font-mono">{c.contract}</span> {fmtUsd(c.principalUsd)}
+                      {formatSharePct(c.sharePct) === null ? "" : ` (${formatSharePct(c.sharePct)})`}
+                    </span>
+                  ))}
+                  . They are separate contracts, not one across a redeploy: portfolio numbering restarts in each.
+                </>
+              )}
               {o.quarantined.positions > 0 && (
                 <>
                   <br />
