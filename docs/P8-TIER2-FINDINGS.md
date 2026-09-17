@@ -89,9 +89,12 @@ on match order — and the floors genuinely differ, by four and a half months. E
 failure mode instead of managing it, and makes the completeness check below trivial. (Found by the
 reviewer on #15; neither I nor CodeRabbit caught it.)
 
-**Eleven of these have a first row later than their floor, and that is the point.** CodeRabbit named
-three missing series; there are in fact seven, and the reviewer's count is the right one — the draft
-table covered 24 of 31. The stragglers:
+**Seven of these have a first row later than their declared floor, and that is the point.**
+(Separately, the draft table *omitted* seven series: CodeRabbit named three, and the reviewer's seven
+is the right count — the draft covered 24 of 31.) The two sevens are the same number by coincidence,
+not the same set: they overlap in six, the omissions also include `offer_maker`, and the stragglers
+also include `staking_redelegations`, which the draft's `staking_*` wildcard already covered. The
+stragglers:
 
 | Series | First row | Floor |
 |---|---|---|
@@ -101,6 +104,9 @@ table covered 24 of 31. The stragglers:
 
 Every one of those gaps is observed zero, not absent coverage. Declaring them at the real floor is
 exactly what stops the gap reading as missing data.
+
+Verified by diffing the 31 declared series against `select distinct series from daily_metrics`: 31
+declared, 31 actual, nothing missing in either direction.
 
 Declared beats derived on three counts: it is honest about provenance, it needs no schema change and
 is reviewable in a diff, and — the one a derived floor cannot do at all — it can express the
