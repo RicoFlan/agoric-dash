@@ -72,23 +72,51 @@ genuinely know to be zero.
 derived floor would blank all 53 as unknown, discarding something we actually know. For this project,
 understating what we know is as much a defect as overstating it.
 
-Declare them in a small map in `semantics.ts`, each entry carrying how it was established:
+Declare them in a small map in `semantics.ts`, each entry carrying how it was established.
+**Enumerate every series; do not use wildcards.** All 31 series in `daily_metrics`:
 
-| Series | Floor | How established |
+| Floor | Series | How established |
 |---|---|---|
-| `tx_success`, `tx_failed`, `fee_paid`, `gas_used`, `bank_credits_volume`, `transfer_volume`, `ibc_transfer_*` | 2026-01-01 | Cosmos-level backfill, below the indexer start |
-| `ibc_transfer_amount_out_orch`, `ibc_transfer_out_count_orch` | 2026-05-19 | Indexer start, height 25498665 |
-| `offer_category`, `offer_outcome_category` | 2026-05-30 **00:00** | Category backfill start, height 25669513 |
-| `wallet_actions`, `offer_source`, `offer_outcome`, `invoke_target`, `staking_*`, `block_gas_limit`, `gas_wanted` | 2026-05-30 **07:00** | Base indexer's first write |
+| **2026-01-01** | `tx_success`, `tx_failed`, `fee_paid`, `gas_used`, `bank_credits_volume`, `transfer_volume`, `ibc_transfer_amount_in`, `ibc_transfer_amount_out`, `ibc_transfer_in_count`, `ibc_transfer_out_count`, `ibc_transfer_flow_in` | Cosmos-level backfill, below the indexer start |
+| **2026-05-19** | `ibc_transfer_amount_out_orch`, `ibc_transfer_out_count_orch` | Indexer start, height 25498665 |
+| **2026-05-30 00:00** | `offer_category`, `offer_outcome_category` | Category backfill start, height 25669513 |
+| **2026-05-30 07:00** | `wallet_actions`, `offer_source`, `offer_outcome`, `offer_maker`, `offer_instance`, `offer_give_volume`, `offer_want_volume`, `offer_payout_volume`, `invoke_target`, `gov_proposals`, `gov_votes`, `staking_delegations`, `staking_undelegations`, `staking_redelegations`, `block_gas_limit`, `gas_wanted` | Base indexer's first write |
+
+**No wildcards, deliberately.** An earlier draft wrote row 1 as `ibc_transfer_*` and row 2 as the two
+orchestration series. Those overlap: `ibc_transfer_*` matches
+`ibc_transfer_amount_out_orch` too, so a pattern-resolved lookup returns a different floor depending
+on match order — and the floors genuinely differ, by four and a half months. Enumeration removes the
+failure mode instead of managing it, and makes the completeness check below trivial. (Found by the
+reviewer on #15; neither I nor CodeRabbit caught it.)
+
+**Eleven of these have a first row later than their floor, and that is the point.** CodeRabbit named
+three missing series; there are in fact seven, and the reviewer's count is the right one — the draft
+table covered 24 of 31. The stragglers:
+
+| Series | First row | Floor |
+|---|---|---|
+| `gov_proposals`, `gov_votes` | 2026-07-22 | 2026-05-30 07:00 |
+| `offer_instance`, `offer_give_volume`, `offer_want_volume`, `offer_payout_volume` | 2026-06-01 | 2026-05-30 07:00 |
+| `staking_redelegations` | 2026-05-31 | 2026-05-30 07:00 |
+
+Every one of those gaps is observed zero, not absent coverage. Declaring them at the real floor is
+exactly what stops the gap reading as missing data.
 
 Declared beats derived on three counts: it is honest about provenance, it needs no schema change and
 is reviewable in a diff, and — the one a derived floor cannot do at all — it can express the
 **intra-day** boundary. `wallet_actions` begins seven hours into its first day. A day-granular
 derived floor would get that series wrong on precisely the day this document is about.
 
-Guard the drift that declaring invites with a test: derive candidate floors from the data and assert
-each declared floor is no later than the first observed row for that series. That catches a floor
-that has moved without ever letting inference decide the answer.
+Guard the drift that declaring invites with a **two-way** test:
+
+1. **No floor is too late.** For every declared series, the declared floor is no later than its first
+   observed row. Catches a floor that has moved.
+2. **No series is undeclared.** Every series present in `daily_metrics` has a declared floor. This is
+   the one that matters, and the one that would have caught the seven omissions above: an undeclared
+   series falls silently outside the read-path contract rather than failing loudly.
+
+Neither direction lets inference decide the answer — the declaration is still the source of truth;
+the test only checks it against reality.
 
 *(Raised by CodeRabbit and the reviewer on #15; the `gov_proposals` illustration and the 53-day
 window are verified here.)*
@@ -374,14 +402,26 @@ drift, and the acceptance test must not read them as regressions.
   | `SubmitEvidence` | `packages/fast-usdc-contract/src/exos/operator-kit.ts` — the FastUSDC **operator kit**, an oracle operator submitting CCTP evidence | `fast_usdc` (automated) |
   | `SimpleRebalance` | `packages/portfolio-contract/src/portfolio.exo.ts` — the portfolio contract, of which `ymax0`/`ymax1` are the instances | `ymax` (user-initiated) |
 
-  Projected effect on Q2, holding today's counts (4,433 categorized actions, 573 user-initiated,
-  570 unclassified):
+  Projected effect on Q2. **All figures on complete UTC days only** (through 2026-09-16), since the
+  current partial day would otherwise mix two ranges: 4,402 categorized actions, 573 user-initiated,
+  570 unclassified, `SubmitEvidence` 444, `SimpleRebalance` 63.
 
   | | today | after these two rules |
   |---|---|---|
-  | unclassified share | 12.9% | **~1.4%** (63 actions) |
-  | user-initiated share | 13.0% | **~14.4%** (+63 to `ymax`) |
-  | stated bound on the true share | 13.0%–26.0% | **14.4%–15.8%** |
+  | unclassified share | 12.9% | **1.4%** (63 actions left) |
+  | user-initiated share | 13.0% | **14.4%** (+63 to `ymax`) |
+  | stated bound on the true share | 13.0%–26.0% | **14.4%–15.9%** |
+
+  > **Two arithmetic corrections here**, both raised by the reviewer on #15. First, the draft quoted
+  > the denominator as 4,433 — an all-days figure — while the numerators were complete-days. The
+  > percentages were right, but a baseline assembled from two ranges would show Tier 3.4 drift that has
+  > nothing to do with the rebuild. One range throughout now. Second, the upper bound was 15.8%; it is
+  > **15.9%**, because I added two already-rounded numbers instead of rounding once
+  > (699/4402 = 15.879%).
+  >
+  > The reviewer's own corrected figure of 14.5% is the same double-rounding error pointed the other
+  > way: 636/4402 = **14.448%**, which is 14.4% at one decimal, not 14.5%. Their range-mixing point
+  > stands; that one digit does not.
 
   That is the single largest available improvement to the figure Tier 3.4 is measured on, and it
   costs nothing extra because it rides the same rebuild. It should be settled and included **before**
