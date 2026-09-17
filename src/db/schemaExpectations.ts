@@ -56,23 +56,37 @@ export interface LiveColumn {
   isNullable: boolean;
 }
 
+/** The live primary key of one table, as its constraint declares it. */
+export interface LivePrimaryKey {
+  table: string;
+  columns: string[];
+}
+
 export type SchemaProblem =
   | { kind: "missing-table"; table: string }
   | { kind: "missing-column"; table: string; column: string }
-  | { kind: "nullability"; table: string; column: string; expectedNotNull: boolean };
+  | { kind: "nullability"; table: string; column: string; expectedNotNull: boolean }
+  | { kind: "primary-key"; table: string; expected: string[]; actual: string[] };
 
 /**
  * Compare expectations against the live columns. Extra tables and extra columns are NOT problems:
  * the database may legitimately carry more than this application declares, and a deploy has no
  * business dropping them.
  */
-export function diffSchema(expected: ExpectedTable[], live: LiveColumn[]): SchemaProblem[] {
+export function diffSchema(
+  expected: ExpectedTable[],
+  live: LiveColumn[],
+  livePrimaryKeys: LivePrimaryKey[] = []
+): SchemaProblem[] {
   const byTable = new Map<string, Map<string, LiveColumn>>();
   for (const c of live) {
     let t = byTable.get(c.table);
     if (!t) byTable.set(c.table, (t = new Map()));
     t.set(c.column, c);
   }
+  const pkByTable = new Map<string, string[]>();
+  for (const pk of livePrimaryKeys) pkByTable.set(pk.table, pk.columns);
+
   const problems: SchemaProblem[] = [];
   for (const table of expected) {
     const liveCols = byTable.get(table.name);
@@ -90,8 +104,29 @@ export function diffSchema(expected: ExpectedTable[], live: LiveColumn[]): Schem
         problems.push({ kind: "nullability", table: table.name, column: col.name, expectedNotNull: col.notNull });
       }
     }
+
+    /**
+     * The primary key is load-bearing here: every rollup write is an upsert whose conflict target is
+     * that key, so a key that is missing, replaced, or carrying an extra column changes what counts
+     * as a duplicate and silently corrupts the sums. Compared as a SET, not a sequence: a reordered
+     * key is functionally identical for conflict resolution, and failing a deploy over column order
+     * would be noise. Tables that declare no key are skipped rather than required to have none.
+     */
+    const expectedPk = table.columns.filter((c) => c.primaryKey).map((c) => c.name);
+    if (expectedPk.length > 0) {
+      const actualPk = pkByTable.get(table.name) ?? [];
+      if (!sameSet(expectedPk, actualPk)) {
+        problems.push({ kind: "primary-key", table: table.name, expected: [...expectedPk].sort(), actual: [...actualPk].sort() });
+      }
+    }
   }
   return problems;
+}
+
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((x) => set.has(x));
 }
 
 export function describeProblem(p: SchemaProblem): string {
@@ -102,5 +137,9 @@ export function describeProblem(p: SchemaProblem): string {
       return `${p.table}.${p.column} is missing`;
     case "nullability":
       return `${p.table}.${p.column} should be ${p.expectedNotNull ? "NOT NULL" : "nullable"} and is not`;
+    case "primary-key":
+      return `${p.table} primary key should be (${p.expected.join(", ")}) and is ${
+        p.actual.length > 0 ? `(${p.actual.join(", ")})` : "absent"
+      }`;
   }
 }

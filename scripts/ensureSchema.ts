@@ -23,7 +23,13 @@ import {
   ensureOfferCategoryParticipantDayTable,
   ensureYmaxTables,
 } from "../src/db/ensureAdditiveTables";
-import { describeProblem, diffSchema, expectedTables, type LiveColumn } from "../src/db/schemaExpectations";
+import {
+  describeProblem,
+  diffSchema,
+  expectedTables,
+  type LiveColumn,
+  type LivePrimaryKey,
+} from "../src/db/schemaExpectations";
 
 const TAG = "[ensureSchema]";
 
@@ -55,8 +61,26 @@ async function main() {
       isNullable: r.is_nullable === "YES",
     }));
 
+    const pkRes = await db.execute<{ table_name: string; column_name: string }>(
+      sql`SELECT tc.table_name, kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu
+            ON kcu.constraint_name = tc.constraint_name
+           AND kcu.constraint_schema = tc.constraint_schema
+          WHERE tc.constraint_schema = 'public' AND tc.constraint_type = 'PRIMARY KEY'
+          ORDER BY tc.table_name, kcu.ordinal_position`
+    );
+    const pkRows = (Array.isArray(pkRes) ? pkRes : pkRes.rows) as { table_name: string; column_name: string }[];
+    const pkMap = new Map<string, string[]>();
+    for (const r of pkRows) {
+      const cols = pkMap.get(r.table_name);
+      if (cols) cols.push(r.column_name);
+      else pkMap.set(r.table_name, [r.column_name]);
+    }
+    const livePrimaryKeys: LivePrimaryKey[] = [...pkMap].map(([table, columns]) => ({ table, columns }));
+
     const expected = expectedTables();
-    const problems = diffSchema(expected, live);
+    const problems = diffSchema(expected, live, livePrimaryKeys);
 
     if (problems.length === 0) {
       console.log(`${TAG} OK — ${expected.length} declared tables match the database.`);
