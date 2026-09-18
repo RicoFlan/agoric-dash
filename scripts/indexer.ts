@@ -37,6 +37,11 @@ import { maxGasFromBlockResults } from "../src/lib/blockGasLimit";
 import { stakingGovSeriesForTypeUrl } from "../src/lib/stakingGovMsgTypes";
 import { parseCapData } from "../src/lib/walletOfferMarshal";
 import { walletActionRollupDeltas } from "../src/lib/walletOfferRollup";
+import {
+  drainResolutionWarning,
+  newResolutionWarnings,
+  recordResolution,
+} from "../src/lib/offerResolutionWarnings";
 import { extractWalletStreamCells, summarizeOfferStatus } from "../src/lib/walletOutcomeSummary";
 import { refreshDailyPrices } from "../src/lib/coingecko/priceRefresh";
 import { ensureOfferCategoryParticipantDayTable, ensureYmaxTables } from "../src/db/ensureAdditiveTables";
@@ -333,6 +338,25 @@ async function fetchBlockPair(height: bigint): Promise<{
  * submitting smart-wallet owner for distinct-wallet counts. Never throws — undecodable bodies are
  * still counted as wallet_actions[unknown] so real activity is not dropped.
  */
+/**
+ * Category-resolution decay, accumulated across the run and logged periodically. agoricNames.json
+ * goes stale silently — a redeployed contract gets a new Board id and its offers become `other` with
+ * nothing failing — so the indexer says so rather than letting the unclassified share drift.
+ */
+const resolutionWarnings = newResolutionWarnings();
+let lastResolutionLogMs = 0;
+const RESOLUTION_LOG_INTERVAL_MS = 15 * 60_000;
+
+/** Log the accumulated resolution problems at most once per interval; silent when there are none. */
+export function logResolutionWarningsIfDue(nowMs: number = Date.now()): void {
+  if (nowMs - lastResolutionLogMs < RESOLUTION_LOG_INTERVAL_MS) return;
+  // Drains as it formats, so each line reports ITS interval — a cumulative counter could not say
+  // whether the problem is current, and would keep reporting stale failures after a map refresh.
+  const msg = drainResolutionWarning(resolutionWarnings);
+  lastResolutionLogMs = nowMs;
+  if (msg) console.warn(msg);
+}
+
 function accumulateWalletAction(
   daily: Map<string, bigint>,
   hourly: Map<string, bigint>,
@@ -350,6 +374,12 @@ function accumulateWalletAction(
     return;
   }
   const { owner, summary, instanceName: resolvedInstanceName, category } = decoded;
+  recordResolution(resolutionWarnings, {
+    instanceBoardId: summary.instanceBoardId,
+    instanceName: resolvedInstanceName,
+    maker: summary.maker,
+    category,
+  });
   for (const d of walletActionRollupDeltas(summary, resolvedInstanceName)) {
     addRollupDelta(daily, hourly, day, hour, d.series, d.dimension, BigInt(1));
   }
@@ -826,6 +856,7 @@ async function main() {
 
   for (;;) {
     const { inCatchup } = await loop(startFloorHeight);
+    logResolutionWarningsIfDue();
     await sleep(inCatchup ? CATCHUP_POLL_MS : POLL_MS);
   }
 }
