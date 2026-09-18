@@ -24,6 +24,7 @@ import { fmtCompactUsd } from "@/lib/compactNumber";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
 import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
+import { formatSharePct, ymaxContractSplit } from "@/lib/ymaxContractSplit";
 import type { QuestionsPayload } from "@/lib/questionsPayload";
 import { INDEXER_SCOPE_CAVEAT_SUBTITLE } from "@/lib/semantics";
 
@@ -110,6 +111,13 @@ export function Q3ValueFlow({
   const netUsd = fmtCompactUsd(h?.netUsd ?? null, true);
   const prevNetUsd = fmtCompactUsd(h?.previousNetUsd ?? null, true);
   const o = q?.orchestrated;
+  /**
+   * Per-contract composition of the headline. ymax0 and ymax1 are two concurrent deployments, so the
+   * sum answers Q3's question correctly but hides that one of them holds essentially all of it.
+   */
+  const contractSplit = useMemo(() => ymaxContractSplit(o?.byVenue ?? []), [o?.byVenue]);
+  /** Venues with no USD price. The shares divide priced principal, so this qualifies them. */
+  const unpricedVenueTotal = useMemo(() => contractSplit.reduce((n, c) => n + c.unpricedVenues, 0), [contractSplit]);
   const orchVenues = useMemo(() => (o?.byVenue ?? []).filter((v) => BigInt(v.principal.replace(/^-/, "")) > BigInt(0)), [o?.byVenue]);
   /**
    * Share of principal in the two largest venues. Suppressed unless EVERY venue holding principal is
@@ -293,6 +301,28 @@ export function Q3ValueFlow({
               {o.portfoliosActive} active portfolios of {o.portfoliosTotal} created · net deposits in range {fmtUsd(o.netDepositsUsd, true)}
               <br />
               {flowLine}
+              {contractSplit.length > 1 && (
+                <>
+                  <br />
+                  <span className="text-[var(--color-text-secondary)]">Across {contractSplit.length} concurrent deployments:</span>{" "}
+                  {contractSplit.map((c, i) => (
+                    <span key={c.contract}>
+                      {i > 0 ? " · " : ""}
+                      <span className="font-mono">{c.contract}</span> {fmtUsd(c.principalUsd)}
+                      {formatSharePct(c.sharePct) === null ? "" : ` (${formatSharePct(c.sharePct)})`}
+                      {c.unpricedVenues > 0 && (
+                        <span className="font-semibold text-[var(--color-warning)]"> +{c.unpricedVenues} unpriced</span>
+                      )}
+                    </span>
+                  ))}
+                  . They are separate contracts, not one across a redeploy: portfolio numbering restarts in each.
+                  {/* The shares divide PRICED principal only, so an unpriced venue would otherwise let one
+                      deployment read as the whole while the real composition is unknown. */}
+                  {unpricedVenueTotal > 0
+                    ? ` Shares are of priced principal; ${unpricedVenueTotal} venue${unpricedVenueTotal === 1 ? "" : "s"} could not be valued, so the split is incomplete.`
+                    : " Shares are of priced principal; every venue is priced here."}
+                </>
+              )}
               {o.quarantined.positions > 0 && (
                 <>
                   <br />

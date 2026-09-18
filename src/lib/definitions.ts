@@ -43,7 +43,7 @@ export const DEFINITIONS = {
   q3_orch_outflow:
     "Of the outflow, IBC sends executed by orchestration in EndBlock (a contract moving funds from its own Agoric account) — invisible to transaction-scoped counts. Found via YMax.",
   q3_deployed_principal:
-    "Σ over YMax positions of (totalIn − totalOut), each at its latest published state. This is capital SENT to venues at cost, not those positions' current value: it excludes any yield or loss accrued there. Positions publish at different heights, so the figure mixes ages; positions whose outflow exceeds inflow are excluded and reported separately.",
+    "Σ over YMax positions of (totalIn − totalOut) for venues that could be PRICED, each at its latest published state. A venue with no USD price is omitted from the figure entirely and disclosed beside it, so this is a priced subtotal rather than the whole. This is capital SENT to venues at cost, not those positions' current value: it excludes any yield or loss accrued there. Positions publish at different heights, so the figure mixes ages; positions whose outflow exceeds inflow are excluded and reported separately. It spans BOTH concurrently deployed YMax contracts, ymax0 and ymax1 — separate deployments rather than one across a redeploy, since portfolio numbering restarts in each — so the per-contract split is shown beside it.",
   q3_active_portfolios: "YMax portfolios whose positions sum to positive principal, out of all portfolios ever created.",
   q3_net_deposits: "YMax deposit flows minus withdraw flows first seen in the range (from portfolio status updates), priced at the range end day.",
 
