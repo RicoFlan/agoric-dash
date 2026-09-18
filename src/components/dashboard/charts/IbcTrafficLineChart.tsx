@@ -22,7 +22,8 @@ export default function IbcTrafficLineChart({
   data,
   timeAxis,
 }: {
-  data: { bucket: string; out: number; recv: number }[];
+  /** Null before the series' coverage floor: draw a gap, never a zero. */
+  data: { bucket: string; out: number | null; recv: number | null }[];
   timeAxis: XAxisSpread;
 }) {
   const rows = useMemo(() => {
@@ -82,7 +83,7 @@ export default function IbcTrafficLineChart({
               name="Out (MsgTransfer msgs)"
               stroke={chartTheme.lineB}
               dot={false}
-            />
+             connectNulls={false} />
             <Line
               yAxisId={0}
               type="monotone"
@@ -90,7 +91,7 @@ export default function IbcTrafficLineChart({
               name="Received (flow / msg count)"
               stroke={chartTheme.lineD}
               dot={false}
-            />
+             connectNulls={false} />
             <Line
               yAxisId={0}
               type="monotone"
@@ -100,7 +101,7 @@ export default function IbcTrafficLineChart({
               dot={false}
               strokeOpacity={0.85}
               {...chartTheme.trendLineProps}
-            />
+             connectNulls={false} />
             <Line
               yAxisId={0}
               type="monotone"
@@ -110,7 +111,7 @@ export default function IbcTrafficLineChart({
               dot={false}
               strokeOpacity={0.85}
               {...chartTheme.trendLineProps}
-            />
+             connectNulls={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>

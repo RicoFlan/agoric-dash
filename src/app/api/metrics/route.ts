@@ -14,6 +14,7 @@ import { buildQuestions } from "@/lib/questionsPayload";
 import { utcDaysInclusive } from "@/lib/denomPrices";
 import { parseUsdEstimateSortKey } from "@/lib/grossTableUsdSort";
 import { computeNormalizedRatios, formatNormalizedRatios } from "@/lib/normalizedRatios";
+import { SERIES_COVERAGE_FLOORS } from "@/lib/coverageFloors";
 import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, SERIES } from "@/lib/semantics";
 
 /** YYYY-MM-DD shifted by `days` (UTC). */
@@ -173,6 +174,12 @@ export async function GET(req: NextRequest) {
       normalizedRatios,
       questions,
       indexedHistoryFromDay: INDEXED_HISTORY_FROM_DAY,
+      /**
+       * Per-series coverage floors. `indexedHistoryFromDay` above is the REPORTING floor and is true
+       * only of the Cosmos-level series; everything message-decoded begins months later. Shipping
+       * the floors lets a client say which of its zeros are real.
+       */
+      seriesCoverage: SERIES_COVERAGE_FLOORS,
     });
   } catch (e) {
     return serverErrorResponse(e);

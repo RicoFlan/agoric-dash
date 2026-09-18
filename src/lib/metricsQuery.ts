@@ -6,6 +6,7 @@ import {
   seriesIbcRecvDisplayOverTime,
   sumIbcRecvDisplay,
 } from "@/lib/ibcRollupDisplay";
+import { isBeforeCoverage } from "@/lib/coverageFloors";
 import { FEE_DENOM_UBLB, SERIES } from "@/lib/semantics";
 import { successRatePct } from "@/lib/txSuccessRate";
 import { blockGasUtilizationPct, gasEfficiencyPct } from "@/lib/gasEfficiency";
@@ -157,15 +158,29 @@ function sumSeries(
   return t;
 }
 
+/**
+ * Per-bucket values for one series, dense over the bucket map.
+ *
+ * `value` is **null, not "0"**, for any bucket entirely before the series' declared coverage floor
+ * (coverageFloors.ts). A missing row means one of two different things — the series was written and
+ * nothing happened, or the series was not written at all — and coalescing both to 0 is what let the
+ * dashboard report 2 governance proposals for a window in which the chain had 5. Null says "we do
+ * not know"; 0 continues to mean "we looked and there was nothing".
+ */
 function seriesOverTime(
   bucketMap: Map<string, Map<string, Map<string, bigint>>>,
   series: string,
+  /** Required, and placed before `dimension` deliberately: both are strings, so an optional
+   * granularity in last position silently accepts a dimension in its place and vice versa. */
+  granularity: Granularity,
   dimension = ""
-): { bucket: string; value: string }[] {
+): { bucket: string; value: string | null }[] {
   const keys = [...bucketMap.keys()].sort();
   return keys.map((bucket) => ({
     bucket,
-    value: (bucketMap.get(bucket)?.get(series)?.get(dimension) ?? BigInt(0)).toString(),
+    value: isBeforeCoverage(series, bucket, granularity)
+      ? null
+      : (bucketMap.get(bucket)?.get(series)?.get(dimension) ?? BigInt(0)).toString(),
   }));
 }
 
@@ -335,24 +350,33 @@ export async function buildMetricsPayload(
   const feeUbldCur = sumSeries(curBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
   const feeUbldPrev = sumSeries(prevBuckets, SERIES.FEE_PAID, FEE_DENOM_UBLB);
 
-  const txTotal = seriesOverTime(curBuckets, SERIES.TX_SUCCESS);
-  const txFailedOverTime = seriesOverTime(curBuckets, SERIES.TX_FAILED);
+  /**
+   * The granularity the BUCKET LABELS actually carry, which is not always the requested one: when
+   * the hourly table has no rows we fall back to day-labelled buckets while `granularity` stays
+   * "hour". Coverage checks compare a bucket against a floor by adding the bucket's length, so
+   * using "hour" there would treat the covered day 2026-05-30 as ending at 01:00 — before the
+   * 06:51:13Z base-indexer floor — and blank a day that is fully indexed.
+   */
+  const bucketGranularity: Granularity = usedDailyFallbackForHourView ? "day" : granularity;
+
+  const txTotal = seriesOverTime(curBuckets, SERIES.TX_SUCCESS, bucketGranularity);
+  const txFailedOverTime = seriesOverTime(curBuckets, SERIES.TX_FAILED, bucketGranularity);
   const ibcMsgCombined = seriesIbcMsgCombinedOverTime(curBuckets);
-  const ibcOutSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT);
+  const ibcOutSeries = seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_OUT_COUNT, bucketGranularity);
   const ibcInSeries = seriesIbcRecvDisplayOverTime(curBuckets);
 
   /** Raw per-bucket gas series — combined client-side into efficiency / block-space utilization % trends. */
-  const gasUsedOverTime = seriesOverTime(curBuckets, SERIES.GAS_USED);
-  const gasWantedOverTime = seriesOverTime(curBuckets, SERIES.GAS_WANTED);
-  const blockGasLimitOverTime = seriesOverTime(curBuckets, SERIES.BLOCK_GAS_LIMIT);
+  const gasUsedOverTime = seriesOverTime(curBuckets, SERIES.GAS_USED, bucketGranularity);
+  const gasWantedOverTime = seriesOverTime(curBuckets, SERIES.GAS_WANTED, bucketGranularity);
+  const blockGasLimitOverTime = seriesOverTime(curBuckets, SERIES.BLOCK_GAS_LIMIT, bucketGranularity);
 
   /** Per-bucket staking & governance message counts for the activity trend chart. */
   const stakingGovOverTime = {
-    delegations: seriesOverTime(curBuckets, SERIES.STAKING_DELEGATIONS),
-    undelegations: seriesOverTime(curBuckets, SERIES.STAKING_UNDELEGATIONS),
-    redelegations: seriesOverTime(curBuckets, SERIES.STAKING_REDELEGATIONS),
-    govVotes: seriesOverTime(curBuckets, SERIES.GOV_VOTES),
-    govProposals: seriesOverTime(curBuckets, SERIES.GOV_PROPOSALS),
+    delegations: seriesOverTime(curBuckets, SERIES.STAKING_DELEGATIONS, bucketGranularity),
+    undelegations: seriesOverTime(curBuckets, SERIES.STAKING_UNDELEGATIONS, bucketGranularity),
+    redelegations: seriesOverTime(curBuckets, SERIES.STAKING_REDELEGATIONS, bucketGranularity),
+    govVotes: seriesOverTime(curBuckets, SERIES.GOV_VOTES, bucketGranularity),
+    govProposals: seriesOverTime(curBuckets, SERIES.GOV_PROPOSALS, bucketGranularity),
   };
 
   /** SwingSet/Zoe offers: KPIs, category/source/instance/maker/target breakdowns, and trend. */
@@ -392,7 +416,7 @@ export async function buildMetricsPayload(
     .map(([d]) => d);
   const bankCreditsVolumeSeries = bankCreditsDenomsSorted.map((denom) => ({
     denom,
-    data: seriesOverTime(curBuckets, SERIES.BANK_CREDITS_VOLUME, denom),
+    data: seriesOverTime(curBuckets, SERIES.BANK_CREDITS_VOLUME, bucketGranularity, denom),
   }));
 
   const ibcInDenomsSorted = [...ibcInSums.entries()]
@@ -405,11 +429,11 @@ export async function buildMetricsPayload(
     .map(([d]) => d);
   const ibcAmountInSeries = ibcInDenomsSorted.map((denom) => ({
     denom,
-    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN, denom),
+    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_IN, bucketGranularity, denom),
   }));
   const ibcAmountOutSeries = ibcOutDenomsSorted.map((denom) => ({
     denom,
-    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT, denom),
+    data: seriesOverTime(curBuckets, SERIES.IBC_TRANSFER_AMOUNT_OUT, bucketGranularity, denom),
   }));
 
   return {

@@ -3,9 +3,10 @@ import { successRatePct } from "@/lib/txSuccessRate";
 
 export type SuccessRateRow = {
   bucket: string;
-  successful: number;
-  failed: number;
-  /** tx_success / (tx_success + tx_failed) * 100, or null when no aligned txs in the bucket. */
+  /** Null when the bucket is before this series' coverage floor — not indexed, not zero. */
+  successful: number | null;
+  failed: number | null;
+  /** tx_success / (tx_success + tx_failed) * 100; null when no aligned txs, or when either side is uncovered. */
   successRatePct: number | null;
 };
 
@@ -18,13 +19,15 @@ export function buildSuccessRateRows(
   failed: readonly BucketPoint[]
 ): SuccessRateRow[] {
   return alignBucketSeries({ successful, failed }).map(({ bucket, values }) => {
-    const s = values.successful!;
-    const f = values.failed!;
+    const s = values.successful;
+    const f = values.failed;
+    // A rate needs both sides covered; deriving one from a half-covered bucket would invent a number.
+    const covered = s !== null && f !== null;
     return {
       bucket,
-      successful: Number(s),
-      failed: Number(f),
-      successRatePct: successRatePct(s, f),
+      successful: s === null ? null : Number(s),
+      failed: f === null ? null : Number(f),
+      successRatePct: covered ? successRatePct(s, f) : null,
     };
   });
 }

@@ -18,7 +18,7 @@ describe("linearTrendLine", () => {
   it("matches known slope for evenly spaced indices", () => {
     const y = [0, 1, 2, 3, 4];
     const t = linearTrendLine(y);
-    expect(t.every((v, i) => Math.abs(v - i) < 1e-9)).toBe(true);
+    expect(t.every((v, i) => v !== null && Math.abs(v - i) < 1e-9)).toBe(true);
   });
 
   it("ignores non-finite values when fitting", () => {
@@ -28,5 +28,24 @@ describe("linearTrendLine", () => {
     expect(t[0]).toBeCloseTo(0);
     expect(t[1]).toBeCloseTo(2);
     expect(t[2]).toBeCloseTo(4);
+  });
+
+  it("gaps the trend where the series is uncovered, and still fits the covered points", () => {
+    // null = before the coverage floor. The fit uses 2,3,4 (slope 1 through index 2..4) and the
+    // uncovered indices get null rather than a confident extrapolation into unindexed ground.
+    const t = linearTrendLine([null, null, 2, 3, 4]);
+    expect(t[0]).toBeNull();
+    expect(t[1]).toBeNull();
+    expect(t[2]).toBeCloseTo(2);
+    expect(t[4]).toBeCloseTo(4);
+  });
+
+  it("returns nulls, not zeros, when every value is uncovered", () => {
+    expect(linearTrendLine([null, null])).toEqual([null, null]);
+  });
+
+  it("still gives NaN buckets an ordinate — missing inside covered ground is not uncovered", () => {
+    const t = linearTrendLine([0, Number.NaN, 4]);
+    expect(t[1]).not.toBeNull();
   });
 });

@@ -27,7 +27,7 @@ export default function TxSuccessRateLineChart({
   timeAxis: XAxisSpread;
 }) {
   const rows = useMemo(() => {
-    const rateTrend = linearTrendLine(data.map((d) => d.successRatePct ?? NaN));
+    const rateTrend = linearTrendLine(data.map((d) => d.successRatePct));
     return data.map((row, i) => ({ ...row, successRatePctTrend: rateTrend[i]! }));
   }, [data]);
 
@@ -100,7 +100,7 @@ export default function TxSuccessRateLineChart({
               name="Failed txs"
               stroke={chartTheme.lineD}
               dot={false}
-            />
+             connectNulls={false} />
             <Line
               yAxisId="rate"
               type="monotone"
@@ -110,7 +110,7 @@ export default function TxSuccessRateLineChart({
               dot={false}
               strokeOpacity={0.85}
               {...chartTheme.trendLineProps}
-            />
+             connectNulls={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>

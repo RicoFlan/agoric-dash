@@ -27,7 +27,7 @@ export default function GasUtilizationLineChart({
   timeAxis: XAxisSpread;
 }) {
   const rows = useMemo(() => {
-    const utilTrend = linearTrendLine(data.map((d) => d.blockGasUtilizationPct ?? NaN));
+    const utilTrend = linearTrendLine(data.map((d) => d.blockGasUtilizationPct));
     return data.map((row, i) => ({ ...row, blockGasUtilizationPctTrend: utilTrend[i]! }));
   }, [data]);
 

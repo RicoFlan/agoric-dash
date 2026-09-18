@@ -55,6 +55,15 @@ function finiteN(n: number): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * A chart point from a payload series. Null means the bucket is before that series' coverage floor —
+ * not indexed — and must stay null so recharts draws a gap. `Number(null)` is 0, which would render
+ * "we never looked" as "nothing happened"; that is the whole defect coverage floors exist to fix.
+ */
+function pointN(value: string | null): number | null {
+  return value === null ? null : finiteN(Number(value));
+}
+
 /** Q1 — Is the chain busier? Headline: successful txs vs the prior window. */
 export function Q1Busier({
   data,
@@ -68,16 +77,19 @@ export function Q1Busier({
   timeAxis: XAxisSpread;
 }) {
   const chartTx = useMemo(
-    () => (data.series?.txTotal ?? []).map((r) => ({ bucket: r.bucket, successfulTx: finiteN(Number(r.value)) })),
+    () => (data.series?.txTotal ?? []).map((r) => ({ bucket: r.bucket, successfulTx: pointN(r.value) })),
     [data.series?.txTotal]
   );
   const chartIbcTraffic = useMemo(() => {
     const o = data.series?.ibcOutboundMsgs ?? [];
     const i = data.series?.ibcInboundRecvFlows ?? [];
-    const outM = new Map(o.map((r) => [r.bucket, finiteN(Number(r.value))]));
-    const inM = new Map(i.map((r) => [r.bucket, finiteN(Number(r.value))]));
+    const outM = new Map(o.map((r) => [r.bucket, pointN(r.value)]));
+    const inM = new Map(i.map((r) => [r.bucket, pointN(r.value)]));
     const keys = [...new Set([...outM.keys(), ...inM.keys()])].sort();
-    return keys.map((bucket) => ({ bucket, out: outM.get(bucket) ?? 0, recv: inM.get(bucket) ?? 0 }));
+    // `??` treats null and undefined alike, so it would swallow an emitted null (uncovered) along
+    // with an absent bucket (a genuine zero for this series). Membership distinguishes them.
+    const at = (m: Map<string, number | null>, b: string) => (m.has(b) ? m.get(b) ?? null : 0);
+    return keys.map((bucket) => ({ bucket, out: at(outM, bucket), recv: at(inM, bucket) }));
   }, [data.series?.ibcOutboundMsgs, data.series?.ibcInboundRecvFlows]);
   const chartSuccessRate = useMemo(
     () => (data.series ? buildSuccessRateRows(data.series.txTotal ?? [], data.series.txFailed ?? []) : []),
