@@ -65,6 +65,35 @@ function categoryFromInstanceName(name: string): OfferCategory {
 /** invokeEntry targets that are a user acting through YMax's EVM-wallet handler, not a bot. */
 const YMAX_USER_INVOKE_TARGETS = new Set(["evmWalletHandler"]);
 
+/**
+ * Invitation makers that identify their contract by name alone, for continuing offers that carry no
+ * resolvable Instance. This is the ONLY handle those offers give us, so a name may be used here only
+ * if it is unique to one contract in agoric-sdk — otherwise another contract's activity would be
+ * filed under this one, silently and with nothing on the offer to contradict it.
+ *
+ * Audited against Agoric's source before adding:
+ *  - `SettleTransaction`, `SubmitEvidence` — `packages/fast-usdc-contract`, the settlement and
+ *    operator-kit paths. Operators submitting CCTP evidence are automation, not users.
+ *  - `SimpleRebalance` — `packages/portfolio-contract/src/portfolio.exo.ts`, of which ymax0/ymax1 are
+ *    the instances. It is a PortfolioContinuingInvitationMaker, handed to the portfolio holder at
+ *    creation, so it is a user managing their own position. The planner cannot be its submitter:
+ *    the planner acts through invokeEntry, recorded as `invoke_target`, and `offer_maker` is only
+ *    written for `zoe_offer` (walletOfferRollup.ts) — the two paths are mutually exclusive.
+ *
+ * DELIBERATELY ABSENT: `Deposit` and `Withdraw`, the sibling makers on that same portfolio facet.
+ * `packages/orchestration/src/exos/local-orchestration-account.js` declares an `invitationMakers`
+ * interface carrying `CloseAccount, Delegate, Deposit, Send, SendAll, Transfer, Undelegate,
+ * Withdraw`, so any contract handing out a LocalOrchestrationAccount's makers — Fast-USDC among them
+ * on this chain — produces offers with those names. They stay `other` until a continuing offer can be
+ * resolved by the seat it acts on (`invitationSpec.previousOffer`) rather than by a name, which is
+ * decoded today but discarded in walletOfferSummary.ts.
+ */
+const MAKER_CATEGORY: Readonly<Record<string, OfferCategory>> = {
+  SettleTransaction: "fast_usdc",
+  SubmitEvidence: "fast_usdc",
+  SimpleRebalance: "ymax",
+};
+
 /** Exactly one functional category per wallet action (objective; baked into offer_category). */
 export function classifyOfferCategory(input: OfferCategoryInput): OfferCategory {
   // invokeEntry: automation by construction (planner, delegates…) — except YMax's EVM-wallet
@@ -78,7 +107,7 @@ export function classifyOfferCategory(input: OfferCategoryInput): OfferCategory 
   // No resolvable instance (continuing / tryExitOffer): fall back to the invitation maker.
   const maker = input.maker ?? "";
   if (/pushprice/i.test(maker)) return "oracle";
-  if (maker === "SettleTransaction") return "fast_usdc";
+  if (MAKER_CATEGORY[maker]) return MAKER_CATEGORY[maker];
   return "other";
 }
 
