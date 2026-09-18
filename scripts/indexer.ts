@@ -38,7 +38,7 @@ import { stakingGovSeriesForTypeUrl } from "../src/lib/stakingGovMsgTypes";
 import { parseCapData } from "../src/lib/walletOfferMarshal";
 import { walletActionRollupDeltas } from "../src/lib/walletOfferRollup";
 import {
-  formatResolutionWarning,
+  drainResolutionWarning,
   newResolutionWarnings,
   recordResolution,
 } from "../src/lib/offerResolutionWarnings";
@@ -350,7 +350,9 @@ const RESOLUTION_LOG_INTERVAL_MS = 15 * 60_000;
 /** Log the accumulated resolution problems at most once per interval; silent when there are none. */
 export function logResolutionWarningsIfDue(nowMs: number = Date.now()): void {
   if (nowMs - lastResolutionLogMs < RESOLUTION_LOG_INTERVAL_MS) return;
-  const msg = formatResolutionWarning(resolutionWarnings);
+  // Drains as it formats, so each line reports ITS interval — a cumulative counter could not say
+  // whether the problem is current, and would keep reporting stale failures after a map refresh.
+  const msg = drainResolutionWarning(resolutionWarnings);
   lastResolutionLogMs = nowMs;
   if (msg) console.warn(msg);
 }

@@ -15,17 +15,47 @@
  *    candidate for `MAKER_CATEGORY`, but only if that name is unique to one contract in agoric-sdk
  *    (see offerCategory.ts — `Deposit` and `Withdraw` are the counter-example).
  */
+/**
+ * Counts for ONE reporting interval, plus since-start totals for context.
+ *
+ * Interval-scoped deliberately: a cumulative counter cannot say whether the problem is happening
+ * now or stopped hours ago, and after a map refresh it would keep reporting the old failures until
+ * the process restarted. Draining at each log makes the signal current and bounds memory in the
+ * same step — both maps are keyed by CHAIN-CONTROLLED strings, so an unbounded key space is a
+ * memory leak an adversary could drive.
+ */
 export interface ResolutionWarnings {
   /** Board id → count of offers that named it while the map did not resolve it. */
   readonly unresolvedInstances: Map<string, number>;
   /** Maker name → count of instance-less offers that fell through to `other`. */
   readonly unclassifiedMakers: Map<string, number>;
-  /** Actions considered, so a count can be read as a share. */
+  /** Actions considered this interval, so a count can be read as a share. */
   totalActions: number;
+  /** Distinct keys dropped this interval after hitting {@link MAX_TRACKED_KEYS}. */
+  droppedKeys: number;
+  /** Since process start, for context in the log line. */
+  totalActionsSinceStart: number;
+  unresolvedHitsSinceStart: number;
+  unclassifiedHitsSinceStart: number;
 }
 
+/**
+ * Ceiling on distinct keys held per map. Well above any plausible real cardinality — there are 41
+ * instances and 10 makers in all of indexed history — so hitting it means something is generating
+ * junk names, which the dropped-key count reports rather than silently absorbing.
+ */
+export const MAX_TRACKED_KEYS = 200;
+
 export function newResolutionWarnings(): ResolutionWarnings {
-  return { unresolvedInstances: new Map(), unclassifiedMakers: new Map(), totalActions: 0 };
+  return {
+    unresolvedInstances: new Map(),
+    unclassifiedMakers: new Map(),
+    totalActions: 0,
+    droppedKeys: 0,
+    totalActionsSinceStart: 0,
+    unresolvedHitsSinceStart: 0,
+    unclassifiedHitsSinceStart: 0,
+  };
 }
 
 export interface ResolutionObservation {
@@ -38,16 +68,31 @@ export interface ResolutionObservation {
   readonly category: string;
 }
 
-const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+/** Increment `k`, or count a drop once the map is at its ceiling. Returns whether it was counted. */
+function bump(acc: ResolutionWarnings, m: Map<string, number>, k: string): void {
+  const seen = m.get(k);
+  if (seen === undefined && m.size >= MAX_TRACKED_KEYS) {
+    acc.droppedKeys += 1;
+    return;
+  }
+  m.set(k, (seen ?? 0) + 1);
+}
 
 /** Record one classified action. Cheap enough to call per action. */
 export function recordResolution(acc: ResolutionWarnings, o: ResolutionObservation): void {
   acc.totalActions += 1;
+  acc.totalActionsSinceStart += 1;
   // A named instance that did not resolve is the stale-map signal, and it is worth flagging even
   // when the action still got a category some other way — the map is wrong either way.
-  if (o.instanceBoardId && !o.instanceName) bump(acc.unresolvedInstances, o.instanceBoardId);
+  if (o.instanceBoardId && !o.instanceName) {
+    acc.unresolvedHitsSinceStart += 1;
+    bump(acc, acc.unresolvedInstances, o.instanceBoardId);
+  }
   // Only instance-less offers reach the maker fallback, so a maker is a rule candidate only there.
-  if (o.category === "other" && !o.instanceBoardId && o.maker) bump(acc.unclassifiedMakers, o.maker);
+  if (o.category === "other" && !o.instanceBoardId && o.maker) {
+    acc.unclassifiedHitsSinceStart += 1;
+    bump(acc, acc.unclassifiedMakers, o.maker);
+  }
 }
 
 function top(m: Map<string, number>, n: number): string {
@@ -59,8 +104,24 @@ function top(m: Map<string, number>, n: number): string {
 }
 
 /**
- * A one-line summary, or null when there is nothing to say. Null rather than an empty string so a
- * caller cannot accidentally log a blank warning line every interval.
+ * Format the interval's counts AND reset them, so the next line reports the next interval rather
+ * than everything since process start. Always resets, including when it returns null — otherwise a
+ * quiet interval would carry its (empty) state forward and the since-start totals would drift from
+ * the interval ones.
+ */
+export function drainResolutionWarning(acc: ResolutionWarnings, topN = 5): string | null {
+  const msg = formatResolutionWarning(acc, topN);
+  acc.unresolvedInstances.clear();
+  acc.unclassifiedMakers.clear();
+  acc.totalActions = 0;
+  acc.droppedKeys = 0;
+  return msg;
+}
+
+/**
+ * A one-line summary of the CURRENT interval, or null when there is nothing to say. Null rather than
+ * an empty string so a caller cannot accidentally log a blank warning line every interval. Pure —
+ * see {@link drainResolutionWarning} for the reset.
  */
 export function formatResolutionWarning(acc: ResolutionWarnings, topN = 5): string | null {
   if (acc.unresolvedInstances.size === 0 && acc.unclassifiedMakers.size === 0) return null;
@@ -77,5 +138,12 @@ export function formatResolutionWarning(acc: ResolutionWarnings, topN = 5): stri
       `${acc.unclassifiedMakers.size} unclassified maker(s) over ${hits} instance-less offers [${top(acc.unclassifiedMakers, topN)}] — candidates for MAKER_CATEGORY if unique to one contract`
     );
   }
-  return `[offer-category] ${parts.join("; ")} (of ${acc.totalActions} actions)`;
+  if (acc.droppedKeys > 0) {
+    parts.push(`${acc.droppedKeys} further distinct key(s) dropped at the ${MAX_TRACKED_KEYS}-key ceiling`);
+  }
+  const since =
+    acc.totalActionsSinceStart > acc.totalActions
+      ? `; since start ${acc.unresolvedHitsSinceStart} unresolved / ${acc.unclassifiedHitsSinceStart} unclassified of ${acc.totalActionsSinceStart}`
+      : "";
+  return `[offer-category] ${parts.join("; ")} (of ${acc.totalActions} actions this interval${since})`;
 }

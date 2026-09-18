@@ -76,7 +76,25 @@ describe("categoryAutomation", () => {
       classifyOfferCategory({ kind: "zoe_offer", source: "continuing", instanceName: null, maker, targetName: null });
     expect(continuing("Deposit")).toBe("other");
     expect(continuing("Withdraw")).toBe("other");
+  });
+
+  it("leaves Rebalance unclassified: a common word, unlike the distinctive coinages we do match", () => {
+    // The fourth PortfolioContinuingInvitationMaker, superseded by SimpleRebalance and with zero
+    // actions in indexed history. Uniqueness is checkable inside agoric-sdk but not across every
+    // contract on mainnet, so the bar is a distinctive name — which "Rebalance" is not.
+    const continuing = (maker: string) =>
+      classifyOfferCategory({ kind: "zoe_offer", source: "continuing", instanceName: null, maker, targetName: null });
     expect(continuing("Rebalance")).toBe("other");
+  });
+
+  it("does not treat inherited object members as categories", () => {
+    // `maker` is chain-controlled, so an object-literal lookup would return Object.prototype members
+    // as truthy "categories" and write them out as rollup dimensions.
+    const continuing = (maker: string) =>
+      classifyOfferCategory({ kind: "zoe_offer", source: "continuing", instanceName: null, maker, targetName: null });
+    for (const evil of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__", "isPrototypeOf"]) {
+      expect(continuing(evil), `${evil} must not classify`).toBe("other");
+    }
   });
 
   it("still prefers a resolvable instance over the maker name", () => {

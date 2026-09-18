@@ -80,6 +80,14 @@ const YMAX_USER_INVOKE_TARGETS = new Set(["evmWalletHandler"]);
  *    the planner acts through invokeEntry, recorded as `invoke_target`, and `offer_maker` is only
  *    written for `zoe_offer` (walletOfferRollup.ts) — the two paths are mutually exclusive.
  *
+ * DELIBERATELY ABSENT: `Rebalance`, the fourth name in `PortfolioContinuingInvitationMaker`. It is
+ * portfolio-contract's legacy rebalance path, superseded by `SimpleRebalance` and with zero actions
+ * in indexed history, so adding it buys nothing measurable — while `Rebalance` is an ordinary word
+ * that a contract outside agoric-sdk (Crabble, KREAd, anything deployed later) could plausibly use
+ * as a maker name. Uniqueness is checkable inside agoric-sdk and NOT across every contract on
+ * mainnet, so the bar is a distinctive coinage: `SimpleRebalance` and `SubmitEvidence` clear it and
+ * `Rebalance` does not.
+ *
  * DELIBERATELY ABSENT: `Deposit` and `Withdraw`, the sibling makers on that same portfolio facet.
  * `packages/orchestration/src/exos/local-orchestration-account.js` declares an `invitationMakers`
  * interface carrying `CloseAccount, Delegate, Deposit, Send, SendAll, Transfer, Undelegate,
@@ -88,11 +96,11 @@ const YMAX_USER_INVOKE_TARGETS = new Set(["evmWalletHandler"]);
  * resolved by the seat it acts on (`invitationSpec.previousOffer`) rather than by a name, which is
  * decoded today but discarded in walletOfferSummary.ts.
  */
-const MAKER_CATEGORY: Readonly<Record<string, OfferCategory>> = {
-  SettleTransaction: "fast_usdc",
-  SubmitEvidence: "fast_usdc",
-  SimpleRebalance: "ymax",
-};
+const MAKER_CATEGORY: ReadonlyMap<string, OfferCategory> = new Map([
+  ["SettleTransaction", "fast_usdc"],
+  ["SubmitEvidence", "fast_usdc"],
+  ["SimpleRebalance", "ymax"],
+] as const);
 
 /** Exactly one functional category per wallet action (objective; baked into offer_category). */
 export function classifyOfferCategory(input: OfferCategoryInput): OfferCategory {
@@ -107,8 +115,10 @@ export function classifyOfferCategory(input: OfferCategoryInput): OfferCategory 
   // No resolvable instance (continuing / tryExitOffer): fall back to the invitation maker.
   const maker = input.maker ?? "";
   if (/pushprice/i.test(maker)) return "oracle";
-  if (MAKER_CATEGORY[maker]) return MAKER_CATEGORY[maker];
-  return "other";
+  // A Map, not an object literal: `maker` is chain-controlled (invitationMakerName off the decoded
+  // offer), and an object lookup for `constructor`, `toString`, `valueOf`, `hasOwnProperty` or
+  // `__proto__` returns an inherited member — truthy — which would be written out as the category.
+  return MAKER_CATEGORY.get(maker) ?? "other";
 }
 
 /**
