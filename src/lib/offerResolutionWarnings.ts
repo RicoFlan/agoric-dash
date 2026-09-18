@@ -31,8 +31,13 @@ export interface ResolutionWarnings {
   readonly unclassifiedMakers: Map<string, number>;
   /** Actions considered this interval, so a count can be read as a share. */
   totalActions: number;
-  /** Distinct keys dropped this interval after hitting {@link MAX_TRACKED_KEYS}. */
-  droppedKeys: number;
+  /**
+   * OBSERVATIONS dropped this interval after the map hit {@link MAX_TRACKED_KEYS} — not distinct
+   * keys. An overflow key seen ten times counts ten, because it is never stored and so can never be
+   * recognised as already-seen. Counting distinct keys past the ceiling would need the very
+   * unbounded set the ceiling exists to avoid.
+   */
+  droppedObservations: number;
   /** Since process start, for context in the log line. */
   totalActionsSinceStart: number;
   unresolvedHitsSinceStart: number;
@@ -51,7 +56,7 @@ export function newResolutionWarnings(): ResolutionWarnings {
     unresolvedInstances: new Map(),
     unclassifiedMakers: new Map(),
     totalActions: 0,
-    droppedKeys: 0,
+    droppedObservations: 0,
     totalActionsSinceStart: 0,
     unresolvedHitsSinceStart: 0,
     unclassifiedHitsSinceStart: 0,
@@ -68,14 +73,31 @@ export interface ResolutionObservation {
   readonly category: string;
 }
 
-/** Increment `k`, or count a drop once the map is at its ceiling. Returns whether it was counted. */
+/** Increment `k`, or count a dropped observation once the map is at its ceiling. */
 function bump(acc: ResolutionWarnings, m: Map<string, number>, k: string): void {
   const seen = m.get(k);
   if (seen === undefined && m.size >= MAX_TRACKED_KEYS) {
-    acc.droppedKeys += 1;
+    acc.droppedObservations += 1;
     return;
   }
   m.set(k, (seen ?? 0) + 1);
+}
+
+/** Control characters, including the C1 range that some terminals still act on. */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
+
+/**
+ * Render a chain-controlled key safely for a log line.
+ *
+ * Board ids and maker names come off the decoded offer, so they are attacker-chosen. Interpolating
+ * one raw lets a crafted name inject newlines — forging whole log lines, which is how log-based
+ * alerting gets fooled — or terminal escape sequences that rewrite what an operator sees (CWE-117).
+ * Control characters become visible escapes, and the result is capped so one key cannot crowd out
+ * the rest of the line.
+ */
+export function sanitizeLogKey(k: string, maxLen = 48): string {
+  const escaped = k.replace(CONTROL_CHARS, (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"));
+  return escaped.length > maxLen ? escaped.slice(0, maxLen) + "\u2026" : escaped;
 }
 
 /** Record one classified action. Cheap enough to call per action. */
@@ -99,7 +121,7 @@ function top(m: Map<string, number>, n: number): string {
   return [...m.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, n)
-    .map(([k, v]) => `${k}×${v}`)
+    .map(([k, v]) => `${sanitizeLogKey(k)}×${v}`)
     .join(", ");
 }
 
@@ -114,7 +136,7 @@ export function drainResolutionWarning(acc: ResolutionWarnings, topN = 5): strin
   acc.unresolvedInstances.clear();
   acc.unclassifiedMakers.clear();
   acc.totalActions = 0;
-  acc.droppedKeys = 0;
+  acc.droppedObservations = 0;
   return msg;
 }
 
@@ -138,8 +160,8 @@ export function formatResolutionWarning(acc: ResolutionWarnings, topN = 5): stri
       `${acc.unclassifiedMakers.size} unclassified maker(s) over ${hits} instance-less offers [${top(acc.unclassifiedMakers, topN)}] — candidates for MAKER_CATEGORY if unique to one contract`
     );
   }
-  if (acc.droppedKeys > 0) {
-    parts.push(`${acc.droppedKeys} further distinct key(s) dropped at the ${MAX_TRACKED_KEYS}-key ceiling`);
+  if (acc.droppedObservations > 0) {
+    parts.push(`${acc.droppedObservations} further observation(s) dropped at the ${MAX_TRACKED_KEYS}-key ceiling`);
   }
   const since =
     acc.totalActionsSinceStart > acc.totalActions

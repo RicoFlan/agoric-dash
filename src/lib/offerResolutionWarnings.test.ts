@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_TRACKED_KEYS,
   drainResolutionWarning,
+  sanitizeLogKey,
   formatResolutionWarning,
   newResolutionWarnings,
   recordResolution,
@@ -104,11 +105,42 @@ describe("offer resolution warnings", () => {
     const acc = newResolutionWarnings();
     for (let i = 0; i < MAX_TRACKED_KEYS + 25; i++) recordResolution(acc, obs({ maker: `junk${i}` }));
     expect(acc.unclassifiedMakers.size).toBe(MAX_TRACKED_KEYS);
-    expect(acc.droppedKeys).toBe(25);
+    expect(acc.droppedObservations).toBe(25);
     expect(formatResolutionWarning(acc)).toContain("dropped at the 200-key ceiling");
     // A key already being tracked still counts after the ceiling is reached.
     recordResolution(acc, obs({ maker: "junk0" }));
     expect(acc.unclassifiedMakers.get("junk0")).toBe(2);
-    expect(acc.droppedKeys).toBe(25);
+    expect(acc.droppedObservations).toBe(25);
+  });
+
+  it("counts dropped OBSERVATIONS, not distinct keys", () => {
+    // An overflow key is never stored, so it can never be recognised as already-seen: every
+    // occurrence counts. The earlier test used distinct keys and so could not tell the two apart.
+    const acc = newResolutionWarnings();
+    for (let i = 0; i < MAX_TRACKED_KEYS; i++) recordResolution(acc, obs({ maker: `k${i}` }));
+    expect(acc.droppedObservations).toBe(0);
+    for (let i = 0; i < 7; i++) recordResolution(acc, obs({ maker: "sameOverflowKey" }));
+    expect(acc.droppedObservations).toBe(7);
+    expect(formatResolutionWarning(acc)).toContain("7 further observation(s) dropped");
+  });
+
+  it("escapes control characters in chain-controlled keys so a log line cannot be forged", () => {
+    // Maker names come off the decoded offer, so they are attacker-chosen. A newline would let a
+    // crafted name fabricate an entire log line, which is how log-based alerting gets fooled.
+    const acc = newResolutionWarnings();
+    recordResolution(acc, obs({ maker: "evil\n[offer-category] all clear" }));
+    const msg = formatResolutionWarning(acc)!;
+    expect(msg).not.toContain("\n");
+    expect(msg).toContain("evil\\x0a");
+  });
+
+  it("neutralises terminal escape sequences and caps key length", () => {
+    expect(sanitizeLogKey("\u001b[31mred")).toBe("\\x1b[31mred");
+    expect(sanitizeLogKey("\u009bC1")).toBe("\\x9bC1");
+    const long = sanitizeLogKey("x".repeat(80));
+    expect(long.length).toBeLessThanOrEqual(49);
+    expect(long.endsWith("\u2026")).toBe(true);
+    // Ordinary names are untouched.
+    expect(sanitizeLogKey("SimpleRebalance")).toBe("SimpleRebalance");
   });
 });
