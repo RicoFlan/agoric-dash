@@ -9,6 +9,7 @@ import { allDenoms, denomToCoinIdMap } from "@/lib/denomPrices";
 import { loadDailyPriceTable } from "@/lib/loadDailyPriceTable";
 import { queryAddressFeeTotalsByDay, queryDistinctUnionPerDay, queryRetentionCounts } from "@/lib/participationQueries";
 import { queryProvisioningSnapshots } from "@/lib/provisioningQuery";
+import { queryContractLandings } from "@/lib/contractLandingQuery";
 import { queryOfferCategoryParticipantsRange } from "@/lib/offersQuery";
 import { queryYmaxSnapshot } from "@/lib/ymaxQueries";
 import { buildQuestions } from "@/lib/questionsPayload";
@@ -93,7 +94,7 @@ export async function GET(req: NextRequest) {
     const windowDays = utcDaysInclusive(fromDay, toDay).length;
     const prevPrevToDay = shiftDay(prevFromDay, -1);
     const prevPrevFromDay = shiftDay(prevPrevToDay, -(windowDays - 1));
-    const [feeByDayContext, distinctUnionPerDay, retentionCur, retentionPrev, catPartCur, catPartPrev, ymax, provisioning] = await Promise.all([
+    const [feeByDayContext, distinctUnionPerDay, retentionCur, retentionPrev, catPartCur, catPartPrev, ymax, provisioning, contractLandings] = await Promise.all([
       queryAddressFeeTotalsByDay(contextFromDay, toDay),
       queryDistinctUnionPerDay(contextFromDay, toDay),
       queryRetentionCounts(fromDay, toDay, prevFromDay, prevToDay),
@@ -102,6 +103,7 @@ export async function GET(req: NextRequest) {
       queryOfferCategoryParticipantsRange(prevFromDay, prevToDay),
       queryYmaxSnapshot(fromDay, toDay),
       queryProvisioningSnapshots(fromDay, toDay),
+      queryContractLandings(fromDay, toDay),
     ]);
     for (const byAddr of feeByDayContext.values()) for (const byDenom of byAddr.values()) for (const d of byDenom.keys()) pricedDenoms.add(d);
     for (const v of ymax.byVenue) if (v.denom) pricedDenoms.add(v.denom);
@@ -133,6 +135,7 @@ export async function GET(req: NextRequest) {
       table,
       distinctUnionPerDay,
       provisioning,
+      contractLandings,
       retention: { current: retentionCur, previous: retentionPrev },
       categoryParticipants: { current: catPartCur, previous: catPartPrev },
       ymax,

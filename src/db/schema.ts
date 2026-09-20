@@ -165,6 +165,49 @@ export const provisionPoolDay = pgTable(
   (t) => [primaryKey({ columns: [t.day] })]
 );
 
+/**
+ * One row per bundle-install transaction.
+ *
+ * Keyed by TX HASH, not by day, and that is the whole point. Every other per-event rollup here is
+ * additive and double-counts on replay; this one cannot, because re-indexing a block rewrites the
+ * same primary key with the same values. The live indexer and the backfill can both write the same
+ * transaction with no coordination and no checkpoint arithmetic.
+ *
+ * Volume makes that affordable: 30 installs over 2026-01-10..2026-09-10. A per-transaction table
+ * is the cheap option here, not the expensive one.
+ *
+ * ONLY SUCCESSFUL INSTALLS APPEAR. A failed tx discards its message events and the indexer skips
+ * decoding its body, so a failed install is invisible from both directions — and `tx_search` by
+ * `message.action` cannot find one either, for the same reason. There is deliberately no
+ * `succeeded` column: it could never be false, and a column that cannot vary invites the reader to
+ * believe failures were checked for. A failed install pays gas and no storage fee, because nothing
+ * was stored.
+ */
+export const bundleInstall = pgTable(
+  "bundle_install",
+  {
+    /** Upper-case hex sha256 of the tx bytes, as Cosmos reports it. */
+    txHash: varchar("tx_hash", { length: 64 }).notNull(),
+    height: bigint("height", { mode: "bigint" }).notNull(),
+    /** UTC day of the block, for day-grain aggregation without re-deriving it. */
+    day: date("day").notNull(),
+    /** Fee payer bech32, which is the closest thing to "who landed this contract". */
+    installer: varchar("installer", { length: 128 }),
+    /** Ordinary gas fee in ubld — already inside `fee_paid`, kept so the split is legible. */
+    gasFeeUbld: numeric("gas_fee_ubld", { precision: 78, scale: 0 }).notNull(),
+    /**
+     * Swingset storage fee in ubld. NOT in `fee_paid` — see bundleInstallFees.ts.
+     *
+     * NULL when the tx carried other messages too: the fee is measured as what the payer spent
+     * beyond the gas fee, and a sibling message's spend lands in the same total with no way to
+     * separate it. Null is "cannot attribute", never zero.
+     */
+    storageFeeUbld: numeric("storage_fee_ubld", { precision: 78, scale: 0 }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.txHash] })]
+);
+
 export const ymaxPortfolio = pgTable(
   "ymax_portfolio",
   {

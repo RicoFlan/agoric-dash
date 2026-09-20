@@ -86,6 +86,7 @@ export function Q4Base({
 
   const r = q?.retention;
   const prov = q?.provisioning;
+  const land = q?.contractLandings;
   const p = data.participation;
   const c = data.concentration;
 
@@ -249,6 +250,57 @@ export function Q4Base({
                 ? "Daily minted-vs-wallets deltas disagreed with the 10 BLD fee on these days; a mint and its provisioning either side of UTC midnight does this too"
                 : undefined
             }
+          />
+        </div>
+      </div>
+      <div>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+          Contracts landed
+        </h3>
+        <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+          Whether the base is broadening in deployed contracts and not only in addresses. These are counts, not
+          rates: contracts land a handful of times a month at most, too rarely for a percentage change to mean
+          anything. The storage fee beside them is a separate matter — it is charged by the swingset module during
+          execution, so it is <em>not</em> included in the fee figures below or anywhere else on this page.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SupportFigure
+            label="Contracts landed"
+            value={land?.available ? fmtInt(land.summary.installs) : "\u2014"}
+            definition={DEFINITIONS.q4_contract_landings}
+            note={
+              land?.available
+                ? land.summary.installs > 0
+                  ? `${fmtInt(land.summary.distinctInstallers)} distinct installer(s) on ${fmtInt(land.summary.daysWithLandings)} day(s)`
+                  : "No contracts landed in this range"
+                : land?.unavailableReason === "range-exceeds-coverage"
+                  ? `Searched only through ${land.coveredThroughDay}; this range extends past it.`
+                  : "Available after the bundle-install backfill."
+            }
+          />
+          <SupportFigure
+            label="Storage fees (BLD)"
+            value={
+              land?.available
+                ? Number(ubldToWholeBld(land.summary.storageFeeUbld)).toLocaleString("en-US")
+                : "\u2014"
+            }
+            definition={DEFINITIONS.q4_bundle_storage_fee}
+            note={
+              land?.available && land.summary.ambiguousInstalls > 0
+                ? `Charged per byte on install; not in the fees line. ${fmtInt(land.summary.ambiguousInstalls)} install(s) shared a transaction with other messages, so their fee is not attributable and is excluded.`
+                : "Charged per byte on install; not counted in the fees line"
+            }
+          />
+          <SupportFigure
+            label="Share of all BLD fees"
+            value={
+              land?.available && land.summary.shareOfTotalBldFeesPct !== null
+                ? `${land.summary.shareOfTotalBldFeesPct.toFixed(1)}%`
+                : "\u2014"
+            }
+            definition={DEFINITIONS.q4_bundle_storage_fee}
+            note="Storage fees over recorded fees plus storage"
           />
         </div>
       </div>
