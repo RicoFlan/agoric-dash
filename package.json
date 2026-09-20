@@ -35,7 +35,8 @@
     "parity:rollup": "tsx scripts/verifyRollupParity.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:ensure": "tsx scripts/ensureSchema.ts"
+    "db:ensure": "tsx scripts/ensureSchema.ts",
+    "check:denom-drift": "tsx scripts/checkDenomDrift.ts"
   },
   "dependencies": {
     "@agoric/cosmic-proto": "^0.5.0",
