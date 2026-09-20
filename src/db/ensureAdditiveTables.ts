@@ -97,7 +97,7 @@ export const PROVISION_POOL_DAY_CREATE_SQL = `CREATE TABLE IF NOT EXISTS provisi
   day date NOT NULL,
   wallets_provisioned bigint NOT NULL,
   total_minted_provided numeric(78,0) NOT NULL,
-  total_minted_converted numeric(78,0) NOT NULL,
+  total_minted_converted numeric(78,0),
   brand_board_id varchar(64),
   updated_height bigint NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),

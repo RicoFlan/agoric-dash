@@ -25,6 +25,7 @@ import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { chartTheme } from "@/lib/chartTheme";
 import { effectiveNumberFromHhi } from "@/lib/concentrationMath";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { ubldToWholeBld } from "@/lib/provisioningSeries";
 import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
@@ -223,14 +224,16 @@ export function Q4Base({
                 ? prov.summary.closingWalletsProvisioned !== null
                   ? `${fmtInt(prov.summary.closingWalletsProvisioned)} since genesis`
                   : undefined
-                : "Available after the provision-pool backfill."
+                : prov?.unavailableReason === "range-exceeds-coverage"
+                  ? `Backfilled only through ${prov.coveredThroughDay}; this range extends past it.`
+                  : "Available after the provision-pool backfill."
             }
           />
           <SupportFigure
             label="Pool minted (BLD)"
             value={
               prov?.available && prov.summary.mintedUbld !== null
-                ? fmtNum(Number(prov.summary.mintedUbld) / 1e6, 0)
+                ? Number(ubldToWholeBld(prov.summary.mintedUbld)).toLocaleString("en-US")
                 : "—"
             }
             definition={DEFINITIONS.q4_provisioning_funding}

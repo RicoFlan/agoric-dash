@@ -21,7 +21,8 @@ export interface ProvisionPoolDayRow {
   day: string;
   walletsProvisioned: number;
   totalMintedProvided: string;
-  totalMintedConverted: string;
+  /** Null when the publication omitted it — an omitted counter is not an observed zero. */
+  totalMintedConverted: string | null;
   brandBoardId: string | null;
   updatedHeight: bigint;
 }
@@ -34,10 +35,17 @@ export class ProvisionPoolAccumulator {
     return this.days.size;
   }
 
-  /** Keep the reading from the greatest height; blocks may arrive out of order under concurrency. */
+  /**
+   * Keep the LAST reading at the greatest height.
+   *
+   * `>` not `>=`: blocks arrive out of order under concurrency, so a lower height must lose — but a
+   * block can emit this path in several `state_change` events, and those arrive in order with the
+   * SAME height. Rejecting an equal height would keep the first event of the block instead of the
+   * block-final state, which is what a cumulative counter means.
+   */
   observe(row: ProvisionPoolDayRow): void {
     const prev = this.days.get(row.day);
-    if (prev && prev.updatedHeight >= row.updatedHeight) return;
+    if (prev && prev.updatedHeight > row.updatedHeight) return;
     this.days.set(row.day, row);
   }
 }
@@ -63,7 +71,7 @@ export function accumulateProvisionPoolFromBlock(
       day,
       walletsProvisioned: snap.walletsProvisioned,
       totalMintedProvided: snap.totalMintedProvided,
-      totalMintedConverted: snap.totalMintedConverted ?? "0",
+      totalMintedConverted: snap.totalMintedConverted,
       brandBoardId: snap.brandBoardId,
       updatedHeight: height,
     });
@@ -101,7 +109,11 @@ export async function persistProvisionPool(db: Db, acc: ProvisionPoolAccumulator
             updatedHeight: sql`excluded.updated_height`,
             updatedAt: sql`now()`,
           },
-          setWhere: sql`excluded.updated_height > ${schema.provisionPoolDay.updatedHeight}`,
+          // `>=` for the same reason `observe` uses `>`: a block emitting this path twice produces
+          // two writes at one height, and the later must win. A strictly-greater guard would keep
+          // the first. Replaying an already-written height rewrites identical values, so allowing
+          // equality costs nothing and preserves within-block ordering.
+          setWhere: sql`excluded.updated_height >= ${schema.provisionPoolDay.updatedHeight}`,
         });
     }
   });

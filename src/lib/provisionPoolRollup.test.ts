@@ -49,6 +49,29 @@ describe("ProvisionPoolAccumulator", () => {
     expect(acc.days.get("2026-09-20")?.walletsProvisioned).toBe(1453);
   });
 
+  it("keeps the LAST of several events at the same height, not the first", () => {
+    // The bug my earlier test missed: it put both values in ONE cell, where the extractor already
+    // returns only the last. Two separate state_change events in one block arrive as two
+    // observations at the SAME height, and a `>=` guard would have kept the first.
+    const acc = new ProvisionPoolAccumulator();
+    const twoEvents = {
+      finalize_block_events: [
+        block(cap(1452, "3710000000")).finalize_block_events![0],
+        block(cap(1453, "3710000000")).finalize_block_events![0],
+      ],
+    } as unknown as RpcBlockResultsResponse;
+    accumulateProvisionPoolFromBlock(twoEvents, BigInt(7), "2026-09-20T00:00:00Z", acc);
+    expect(acc.days.get("2026-09-20")?.walletsProvisioned).toBe(1453);
+  });
+
+  it("preserves an omitted converted counter as null rather than an observed zero", () => {
+    const acc = new ProvisionPoolAccumulator();
+    const noConverted =
+      '{"body":"#{\\"totalMintedProvided\\":{\\"brand\\":\\"$0.Alleged: BLD brand\\",\\"value\\":\\"+5\\"},\\"walletsProvisioned\\":\\"+2\\"}","slots":["board0566"]}';
+    accumulateProvisionPoolFromBlock(block(noConverted), BigInt(1), "2026-09-20T00:00:00Z", acc);
+    expect(acc.days.get("2026-09-20")?.totalMintedConverted).toBeNull();
+  });
+
   it("takes the last publication when a block carries several", () => {
     const acc = new ProvisionPoolAccumulator();
     accumulateProvisionPoolFromBlock(block(cap(1452, "3710000000"), cap(1453, "3710000000")), BigInt(5), "2026-09-20T00:00:00Z", acc);

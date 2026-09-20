@@ -63,6 +63,16 @@ export const SMART_WALLET_FEE_UBLD = 10_000_000;
 
 const MS_PER_DAY = 86_400_000;
 
+const absDiff = (a: bigint, b: bigint) => (a > b ? a - b : b - a);
+
+/** Whole BLD from an atomic ubld string, exact for any magnitude (6 decimals, truncated). */
+export function ubldToWholeBld(ubld: string): string {
+  const n = BigInt(ubld);
+  const neg = n < BigInt(0);
+  const whole = (neg ? -n : n) / BigInt(1_000_000);
+  return (neg ? "-" : "") + whole.toString();
+}
+
 function dayDiff(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / MS_PER_DAY);
 }
@@ -98,16 +108,20 @@ export function buildProvisioningDays(
     // A cumulative counter going backwards means the source reset or was mis-read; report the day
     // rather than a negative "new wallets", which would be nonsense on the page.
     const sane = newWallets >= 0 && minted >= BigInt(0);
-    const implied = sane && newWallets > 0 ? Number(minted) / newWallets / 1e6 : null;
+    // Divide in bigint first so a ubld total beyond 2^53 cannot lose precision before the compare;
+    // only the already-small per-wallet ubld figure becomes a Number for display.
+    const impliedUbld = sane && newWallets > 0 ? minted / BigInt(newWallets) : null;
+    const implied = impliedUbld === null ? null : Number(impliedUbld) / 1e6;
     out.push({
       day: cur.day,
       newWallets: sane ? newWallets : null,
       mintedUbld: sane ? minted.toString() : null,
       impliedBldPerWallet: implied,
+      // Compared on the bigint ubld figure, not the floated BLD one, so the boundary is exact.
       matchesFee:
-        implied === null
+        impliedUbld === null
           ? null
-          : Math.abs(implied * 1e6 - SMART_WALLET_FEE_UBLD) <= SMART_WALLET_FEE_UBLD * tolerance,
+          : absDiff(impliedUbld, BigInt(SMART_WALLET_FEE_UBLD)) <= BigInt(Math.round(SMART_WALLET_FEE_UBLD * tolerance)),
       gapDays: Math.max(0, dayDiff(prev.day, cur.day) - 1),
     });
   }

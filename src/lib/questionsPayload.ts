@@ -162,6 +162,10 @@ export interface QuestionsPayload {
      */
     provisioning: {
       available: boolean;
+      /** Why the figures are withheld, so the page can say which rather than just "—". */
+      unavailableReason: "not-backfilled" | "range-exceeds-coverage" | null;
+      /** UTC day the backfill has replayed through, when it has run. */
+      coveredThroughDay: string | null;
       summary: ProvisioningSummary;
       /** Per-day, excluding the leading prior snapshot that exists only to difference against. */
       daily: ProvisioningDay[];
@@ -497,6 +501,8 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
       usdPricingMeta: q4Pricer.meta(),
       provisioning: {
         available: input.provisioning.available,
+        unavailableReason: input.provisioning.unavailableReason,
+        coveredThroughDay: input.provisioning.coveredThroughDay,
         summary: provisioningSummary,
         daily: provisioningDaily,
       },

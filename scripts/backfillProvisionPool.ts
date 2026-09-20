@@ -69,25 +69,59 @@ async function latestHeight(): Promise<bigint> {
   return BigInt(st.sync_info.latest_block_height);
 }
 
-async function blockTimeMs(height: bigint): Promise<number> {
-  const b = await rpcCallWithFallback<{ block: { header: { time: string } } }>(RPC_URLS, "block", {
-    height: height.toString(),
-  });
-  const ms = new Date(b.block.header.time).getTime();
-  if (!Number.isFinite(ms)) throw new Error(`invalid block time at ${height}`);
-  return ms;
+/** A height the node will never serve because it is below its retention, as opposed to a bad call. */
+function isUnservableHeight(e: unknown): boolean {
+  const msg = String((e as { message?: unknown } | null)?.message ?? e ?? "");
+  // CometBFT's pruned-height error names the lowest height it has; Agoric's archive answers
+  // genesis-era heights with a bare "Internal error". Anything else is transient and must NOT be
+  // read as "this height is early".
+  return /lowest height|is not available|height .* is below|Internal error/i.test(msg);
 }
 
-/** First height at or after `targetMs`, by binary search over the chain's own timestamps. */
+/** Block time at a height, retried — a transient failure must not be mistaken for an answer. */
+async function blockTimeMs(height: bigint): Promise<number> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= RPC_RETRIES; attempt++) {
+    try {
+      const b = await rpcCallWithFallback<{ block: { header: { time: string } } }>(RPC_URLS, "block", {
+        height: height.toString(),
+      });
+      const ms = new Date(b?.block?.header?.time ?? "").getTime();
+      if (!Number.isFinite(ms)) throw new Error(`invalid block time at ${height}`);
+      return ms;
+    } catch (e) {
+      lastErr = e;
+      // An unservable height is a real answer ("not this one"), so stop retrying and report it.
+      if (isUnservableHeight(e)) throw e;
+      if (attempt < RPC_RETRIES) await sleep(Math.min(30_000, 400 * 2 ** (attempt - 1)));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * First height at or after `targetMs`, by binary search over the chain's own timestamps.
+ *
+ * A failed probe must never be silently read as "too early". Doing so advances `lo` past a height
+ * the search never actually evaluated, so the scan can begin above real history — and because the
+ * run then persists rows and checkpoints normally, the omission is invisible and a later resume
+ * skips it too. Only an explicitly unservable height counts as "before the node's history";
+ * everything else is retried and then propagated, failing the run loudly instead.
+ */
 async function findStartHeight(targetMs: number, tip: bigint): Promise<bigint> {
   let lo = BigInt(1);
   let hi = tip;
   while (lo < hi) {
     const mid = (lo + hi) / BigInt(2);
-    // A height the archive cannot serve (genesis-era answers a generic Internal error) is treated
-    // as "too early" so the search moves up rather than aborting the run.
-    const ok = await blockTimeMs(mid).then((ms) => ms >= targetMs, () => false);
-    if (ok) hi = mid;
+    let ms: number;
+    try {
+      ms = await blockTimeMs(mid);
+    } catch (e) {
+      if (!isUnservableHeight(e)) throw e;
+      lo = mid + BigInt(1); // genuinely below the node's retention: the answer is above it
+      continue;
+    }
+    if (ms >= targetMs) hi = mid;
     else lo = mid + BigInt(1);
   }
   return lo;

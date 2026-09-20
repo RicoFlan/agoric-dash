@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SMART_WALLET_FEE_UBLD,
+  ubldToWholeBld,
   buildProvisioningDays,
   summarizeProvisioning,
   type ProvisionPoolDaySnapshot,
@@ -98,5 +99,29 @@ describe("summarizeProvisioning", () => {
 
   it("is empty-safe", () => {
     expect(summarizeProvisioning([], [])).toMatchObject({ newWallets: null, closingWalletsProvisioned: null });
+  });
+});
+
+describe("bigint safety", () => {
+  it("keeps a ubld total exact past Number.MAX_SAFE_INTEGER", () => {
+    // 2^53 ubld is ~9.0e9 BLD — implausible today, but the arithmetic should not be the reason
+    // a future figure is wrong, and a silently-rounded total is the hardest kind to notice.
+    const big = "9007199254740993000000"; // 2^53 + 1, in ubld
+    expect(ubldToWholeBld(big)).toBe("9007199254740993");
+    expect(Number(big) / 1e6).not.toBe(9007199254740993); // what the float path would have given
+  });
+
+  it("truncates sub-BLD remainders rather than rounding up", () => {
+    expect(ubldToWholeBld("9999999")).toBe("9");
+    expect(ubldToWholeBld("10000000")).toBe("10");
+    expect(ubldToWholeBld("0")).toBe("0");
+  });
+
+  it("compares the fee on exact ubld, so the tolerance boundary is not a float", () => {
+    // 1% of 10 BLD is exactly 100000 ubld: 10.1 BLD per wallet is outside, 10.09 inside.
+    const at = buildProvisioningDays([snap("d1", 0, "0"), snap("d2", 100, "1010000000")]);
+    expect(at[1]!.matchesFee).toBe(true);
+    const past = buildProvisioningDays([snap("d1", 0, "0"), snap("d2", 100, "1010000100")]);
+    expect(past[1]!.matchesFee).toBe(false);
   });
 });

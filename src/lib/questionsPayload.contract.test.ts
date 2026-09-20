@@ -87,7 +87,7 @@ function build(curCats?: Record<string, number>, over?: Partial<Parameters<typeo
     },
     grossUsdHhi: 0.25,
     top10FeeSharePct: 74.5,
-    provisioning: { snapshots: [], priorDay: null, available: false },
+    provisioning: { snapshots: [], priorDay: null, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
     multiDayInRange: 7,
     ...over,
   });
@@ -149,6 +149,8 @@ describe("questions payload (contract)", () => {
     const q = build(undefined, {
       provisioning: {
         available: true,
+        unavailableReason: null,
+        coveredThroughDay: "2026-08-04",
         priorDay: "2026-08-02",
         snapshots: [
           { day: "2026-08-02", walletsProvisioned: 100, totalMintedProvided: "1000000000" },
@@ -220,7 +222,7 @@ describe("questions payload (contract)", () => {
         toDay: D[3],
         prevFromDay: "2025-12-30",
         prevToDay: "2025-12-31",
-        provisioning: { snapshots: [], priorDay: null, available: false },
+        provisioning: { snapshots: [], priorDay: null, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
         contextFromDay: D[0],
         dailyContext,
         curBuckets: dailyContext,

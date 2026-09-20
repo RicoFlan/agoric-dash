@@ -154,7 +154,8 @@ export const provisionPoolDay = pgTable(
     walletsProvisioned: bigint("wallets_provisioned", { mode: "number" }).notNull(),
     /** Cumulative minted-and-provided in ubld. A FUNDING total, not a per-wallet cost. */
     totalMintedProvided: numeric("total_minted_provided", { precision: 78, scale: 0 }).notNull(),
-    totalMintedConverted: numeric("total_minted_converted", { precision: 78, scale: 0 }).notNull(),
+    /** Nullable: a publication that omitted the counter is not an observed zero. */
+    totalMintedConverted: numeric("total_minted_converted", { precision: 78, scale: 0 }),
     /** Brand Board id the minted amounts carry (BLD on agoric-3), for denom resolution at read time. */
     brandBoardId: varchar("brand_board_id", { length: 64 }),
     /** Height of the publication this row came from; a later height for the same day wins. */
