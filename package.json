@@ -29,6 +29,7 @@
     "backfill:offer-categories": "tsx scripts/backfillOfferCategories.ts",
     "seed:ymax": "tsx scripts/seedYmaxSnapshot.ts",
     "backfill:endblock": "tsx scripts/backfillEndBlock.ts",
+    "backfill:provision-pool": "tsx scripts/backfillProvisionPool.ts",
     "backfill:failed-fees": "tsx scripts/backfillFailedTxFees.ts",
     "enumerate:module-accounts": "tsx scripts/enumerateModuleAccounts.ts",
     "parity:rollup": "tsx scripts/verifyRollupParity.ts",

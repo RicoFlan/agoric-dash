@@ -93,6 +93,21 @@ export async function ensureBackfillCheckpointTable(db: Db): Promise<void> {
  * price refresh loop first runs. Before this list existed, a fresh deployment failed its schema
  * check on that table before the indexer had a chance to create it.
  */
+export const PROVISION_POOL_DAY_CREATE_SQL = `CREATE TABLE IF NOT EXISTS provision_pool_day (
+  day date NOT NULL,
+  wallets_provisioned bigint NOT NULL,
+  total_minted_provided numeric(78,0) NOT NULL,
+  total_minted_converted numeric(78,0) NOT NULL,
+  brand_board_id varchar(64),
+  updated_height bigint NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (day)
+)`;
+
+export async function ensureProvisionPoolDayTable(db: Db): Promise<void> {
+  await db.execute(sql.raw(PROVISION_POOL_DAY_CREATE_SQL));
+}
+
 export const ADDITIVE_TABLE_NAMES = [
   "offer_category_participant_day",
   "ymax_portfolio",
@@ -100,12 +115,14 @@ export const ADDITIVE_TABLE_NAMES = [
   "ymax_flow",
   "backfill_checkpoint",
   "denom_price_day",
+  "provision_pool_day",
 ] as const;
 
 /** Create every additive table if missing. Idempotent: each statement is CREATE TABLE IF NOT EXISTS. */
 export async function ensureAllAdditiveTables(db: Db): Promise<void> {
   await ensureOfferCategoryParticipantDayTable(db);
   await ensureYmaxTables(db);
+  await ensureProvisionPoolDayTable(db);
   await ensureBackfillCheckpointTable(db);
   await ensureDenomPriceDayTable(db);
 }

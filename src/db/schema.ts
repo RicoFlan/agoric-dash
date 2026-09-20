@@ -138,6 +138,32 @@ export const offerCategoryParticipantDay = pgTable(
  * Σ(total_in − total_out) is principal currently deployed (not marked to yield). Created idempotently
  * (ensureAdditiveTables.ts); never part of reindex:reset.
  */
+/**
+ * Last cumulative `published.provisionPool.metrics` reading on each UTC day.
+ *
+ * A SNAPSHOT table, deliberately, where every other rollup here is additive. The source counters
+ * are cumulative since genesis, so `value + excluded.value` would multiply them on any replay;
+ * upserting the latest reading per day is idempotent by construction instead. Daily activity is a
+ * read-time difference of consecutive rows (provisioningSeries.ts).
+ */
+export const provisionPoolDay = pgTable(
+  "provision_pool_day",
+  {
+    day: date("day").notNull(),
+    /** Cumulative wallets provisioned since genesis, as of `updatedHeight`. */
+    walletsProvisioned: bigint("wallets_provisioned", { mode: "number" }).notNull(),
+    /** Cumulative minted-and-provided in ubld. A FUNDING total, not a per-wallet cost. */
+    totalMintedProvided: numeric("total_minted_provided", { precision: 78, scale: 0 }).notNull(),
+    totalMintedConverted: numeric("total_minted_converted", { precision: 78, scale: 0 }).notNull(),
+    /** Brand Board id the minted amounts carry (BLD on agoric-3), for denom resolution at read time. */
+    brandBoardId: varchar("brand_board_id", { length: 64 }),
+    /** Height of the publication this row came from; a later height for the same day wins. */
+    updatedHeight: bigint("updated_height", { mode: "bigint" }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.day] })]
+);
+
 export const ymaxPortfolio = pgTable(
   "ymax_portfolio",
   {
