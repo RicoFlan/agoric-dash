@@ -59,11 +59,20 @@ export async function fetchVbankAssets(rpcUrls: readonly string[]): Promise<Vban
     };
     const last = cell.values?.at(-1);
     if (!last) return null;
-    return {
-      entries: summarizeVbankAssets(parseCapData(last)),
-      publishedHeight: cell.blockHeight ?? null,
-      fetchedAt: new Date(),
-    };
+    const decoded = parseCapData(last);
+    // An unreadable publication must not become an EMPTY one. `summarizeVbankAssets` returns [] for
+    // anything that is not the pair array, and a caller reconciling against [] finds no drift and
+    // reports a clean bill of health — the same mistake as reading an unindexed day as zero.
+    if (!Array.isArray(decoded)) {
+      console.warn("[vbankAsset] publication is not the expected pair array; treating as unreadable");
+      return null;
+    }
+    const entries = summarizeVbankAssets(decoded);
+    if (decoded.length > 0 && entries.length === 0) {
+      console.warn(`[vbankAsset] all ${decoded.length} published row(s) were malformed; treating as unreadable`);
+      return null;
+    }
+    return { entries, publishedHeight: cell.blockHeight ?? null, fetchedAt: new Date() };
   } catch (e) {
     console.warn("[vbankAsset] undecodable payload:", e instanceof Error ? e.message : e);
     return null;

@@ -11,14 +11,23 @@ describe("localDenomRegistries", () => {
     expect(got.every((r) => r.entries.length > 0)).toBe(true);
   });
 
-  it("the two copies agree with each other on every denom they share", () => {
+  it("every generated entry is present in the hand-maintained copy, with the same decimals", () => {
     // They disagreed on upoc26 (0 vs 6) until this was checked; a regression here means one copy
     // was regenerated and the other was not.
+    //
+    // Absence counts as a conflict in this direction only. A registered denom missing from
+    // denoms.json does not resolve in Q3 at all, which is worse than a wrong divisor. The reverse
+    // is NOT checked: 107 of the hand-maintained entries are pass-through IBC denoms that vbank
+    // never registers, so their absence from the generated copy is correct.
     const [hand, generated] = localDenomRegistries();
     const byDenom = new Map(hand!.entries.map((e) => [e.match, e.decimals]));
     const conflicts = generated!.entries
-      .filter((e) => byDenom.has(e.match) && byDenom.get(e.match) !== e.decimals)
-      .map((e) => `${e.match}: generated ${e.decimals} vs hand-maintained ${byDenom.get(e.match)}`);
+      .filter((e) => byDenom.get(e.match) !== e.decimals)
+      .map((e) =>
+        byDenom.has(e.match)
+          ? `${e.match}: generated ${e.decimals} vs hand-maintained ${byDenom.get(e.match)}`
+          : `${e.match}: registered on chain, absent from denoms.json`
+      );
     expect(conflicts).toEqual([]);
   });
 });
