@@ -79,12 +79,39 @@ offer_instance 88 · invoke_target 1759 · offer_outcome 2665     — all unchan
 `tx_success`, `gas_used`, `fee_paid` and `block_gas_limit` did move. Those are written every block by
 the live indexer and 9.1 hours elapsed; unrelated to the rebuild.
 
-**Coverage floors unchanged.** `offer_category` still first at 2026-05-30 00:00, `wallet_actions` at
-07:00. The documented split-floor offsets survive exactly: `offer_category − wallet_actions = 16`,
-`offer_outcome_category − offer_outcome = 10`. Drift guard and rule tests pass (38 tests).
+**Coverage floors unchanged**, and the distinction matters here as much as anywhere:
 
-Independently re-run by the reviewer against a baseline they captured separately at
-2026-09-18 04:24:24Z; passed on every check.
+| Series | Declared floor (`coverageFloors.ts`) | First observed row |
+|---|---|---|
+| `offer_category` | 2026-05-30T00:00:05Z, h25669513 | 2026-05-30 00:00 |
+| `wallet_actions` | **2026-05-30T06:51:13Z, h25673978** | 2026-05-30 07:00 |
+
+Both are unchanged by the rebuild. `wallet_actions`' 07:00 is the hour of the first wallet *action*;
+its coverage begins at 06:51:13Z, nine minutes earlier, which is when the base indexer wrote its
+first block. Calling 07:00 the floor is the observed-versus-declared conflation this project spent a
+whole phase dismantling — and an earlier draft of this very document did exactly that, which is why
+the table is here rather than a sentence.
+
+No `offer_category` row exists before 2026-05-30 (verified: 0 rows), so the `INDEXER_START_DATE`
+hazard above did not occur. The documented split-floor offsets survive exactly:
+`offer_category − wallet_actions = 16`, `offer_outcome_category − offer_outcome = 10`. Drift guard
+and rule tests pass (38 tests).
+
+**No double-count in the overlap window.** The FULL-mode delete ran at the start and the live
+indexer kept writing for the whole 9.1 hours, so the two could in principle both have written the
+same buckets — additive writes double-count silently, which is this repository's standing hazard.
+Per day across the boundary, `offer_category` against `wallet_actions` and `offer_outcome_category`
+against `offer_outcome`:
+
+```
+2026-09-17   32 / 32   diff 0      18 / 18   diff 0
+2026-09-18   14 / 14   diff 0       8 /  8   diff 0     <- delete + replay + live writes
+2026-09-19   11 / 11   diff 0       8 /  8   diff 0     <- run finished 06:38Z
+2026-09-20   10 / 10   diff 0       7 /  7   diff 0
+```
+
+Raised by the reviewer, whose own acceptance check stopped at 2026-09-17 and so had not covered the
+overlap; reproduced here independently.
 
 ### Where the prediction was off
 
