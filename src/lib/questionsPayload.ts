@@ -28,6 +28,8 @@ import {
   type ProvisioningSummary,
 } from "@/lib/provisioningSeries";
 import type { ProvisioningSnapshots } from "@/lib/provisioningQuery";
+import type { ContractLandingDay, ContractLandings } from "@/lib/contractLandingQuery";
+import { summarizeContractLandings, type ContractLandingSummary } from "@/lib/contractLandingSummary";
 import { buildRetention, type Retention } from "@/lib/retention";
 import type { YmaxSnapshot } from "@/lib/ymaxQueries";
 import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, SERIES } from "@/lib/semantics";
@@ -170,6 +172,22 @@ export interface QuestionsPayload {
       /** Per-day, excluding the leading prior snapshot that exists only to difference against. */
       daily: ProvisioningDay[];
     };
+    /**
+     * Contract landings: bundle installs, and the swingset STORAGE fee they paid.
+     *
+     * Two distinct things in one block because they come from one table. The count answers
+     * whether the base is broadening in deployed contracts rather than only in addresses —
+     * deliberately as counts, since 30 events over nine months cannot carry a growth rate. The
+     * storage fee is an economic flow `fee_paid` does not contain at all, so a range's true BLD
+     * fee total is the recorded one plus this.
+     */
+    contractLandings: {
+      available: boolean;
+      unavailableReason: "not-backfilled" | "range-exceeds-coverage" | null;
+      coveredThroughDay: string | null;
+      summary: ContractLandingSummary;
+      daily: ContractLandingDay[];
+    };
   };
 }
 
@@ -198,6 +216,8 @@ export interface QuestionsBuildInput {
   multiDayInRange: number;
   /** Provision-pool cumulative snapshots for the range, plus the one before it (provisioningQuery). */
   provisioning: ProvisioningSnapshots;
+  /** Bundle installs in range and their storage fees (contractLandingQuery). */
+  contractLandings: ContractLandings;
   /** YMax snapshot (positions are cumulative, so latest-state; flows scoped to the range). */
   ymax: YmaxSnapshot;
   anomalyOptions?: AnomalyOptions;
@@ -398,6 +418,13 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
   const provisioningAll = buildProvisioningDays(input.provisioning.snapshots);
   const provisioningDaily = provisioningAll.filter((d) => d.day >= input.fromDay);
   const provisioningSummary = summarizeProvisioning(input.provisioning.snapshots, provisioningDaily);
+  // The share is taken against recorded fees PLUS storage, because fee_paid excludes storage.
+  const contractLandingSummary = summarizeContractLandings(input.contractLandings.daily, {
+    distinctInstallers: input.contractLandings.distinctInstallers,
+    // `fee_paid` for the range in ubld, from the same series Q1's fee figure uses. The share is
+    // taken against this PLUS storage, because this series excludes storage entirely.
+    recordedFeePaidUbld: String(seriesOverDays(dailyContext, days, SERIES.FEE_PAID, FEE_DENOM_UBLB)),
+  });
   const q4Pricer = table.pricer();
   const effNCur = feeEffectiveN(input.feeByDay, days, display, denomToCoinId, q4Pricer);
   const effNPrev = feeEffectiveN(input.feeByDay, prevDays, display, denomToCoinId, q4Pricer);
@@ -505,6 +532,13 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
         coveredThroughDay: input.provisioning.coveredThroughDay,
         summary: provisioningSummary,
         daily: provisioningDaily,
+      },
+      contractLandings: {
+        available: input.contractLandings.available,
+        unavailableReason: input.contractLandings.unavailableReason,
+        coveredThroughDay: input.contractLandings.coveredThroughDay,
+        summary: contractLandingSummary,
+        daily: [...input.contractLandings.daily],
       },
     },
   };

@@ -108,6 +108,26 @@ export async function ensureProvisionPoolDayTable(db: Db): Promise<void> {
   await db.execute(sql.raw(PROVISION_POOL_DAY_CREATE_SQL));
 }
 
+export const BUNDLE_INSTALL_CREATE_SQL = `CREATE TABLE IF NOT EXISTS bundle_install (
+  tx_hash varchar(64) NOT NULL,
+  height bigint NOT NULL,
+  day date NOT NULL,
+  installer varchar(128),
+  gas_fee_ubld numeric(78,0) NOT NULL,
+  storage_fee_ubld numeric(78,0) NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tx_hash)
+)`;
+
+/** Day lookups scan this constantly and the table has no natural day index from its PK. */
+export const BUNDLE_INSTALL_DAY_INDEX_SQL =
+  `CREATE INDEX IF NOT EXISTS bundle_install_day_idx ON bundle_install (day)`;
+
+export async function ensureBundleInstallTable(db: Db): Promise<void> {
+  await db.execute(sql.raw(BUNDLE_INSTALL_CREATE_SQL));
+  await db.execute(sql.raw(BUNDLE_INSTALL_DAY_INDEX_SQL));
+}
+
 export const ADDITIVE_TABLE_NAMES = [
   "offer_category_participant_day",
   "ymax_portfolio",
@@ -116,6 +136,7 @@ export const ADDITIVE_TABLE_NAMES = [
   "backfill_checkpoint",
   "denom_price_day",
   "provision_pool_day",
+  "bundle_install",
 ] as const;
 
 /** Create every additive table if missing. Idempotent: each statement is CREATE TABLE IF NOT EXISTS. */
@@ -125,4 +146,5 @@ export async function ensureAllAdditiveTables(db: Db): Promise<void> {
   await ensureProvisionPoolDayTable(db);
   await ensureBackfillCheckpointTable(db);
   await ensureDenomPriceDayTable(db);
+  await ensureBundleInstallTable(db);
 }

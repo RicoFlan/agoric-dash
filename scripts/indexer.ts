@@ -17,7 +17,8 @@ import "dotenv/config";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { EncodeObject } from "@cosmjs/proto-signing";
-import { fromBase64 } from "@cosmjs/encoding";
+import { fromBase64, toHex } from "@cosmjs/encoding";
+import { sha256 } from "@cosmjs/crypto";
 import pg from "pg";
 import * as schema from "../src/db/schema";
 import { decodeMsg, decodeTxRawTx, extractFeePayerFromEvents, extractPaidFeesFromEvents } from "../src/lib/cosmos";
@@ -51,6 +52,11 @@ import {
   persistProvisionPool,
   ProvisionPoolAccumulator,
 } from "../src/lib/provisionPoolRollup";
+import {
+  accumulateBundleInstall,
+  BundleInstallAccumulator,
+  persistBundleInstalls,
+} from "../src/lib/bundleInstallRollup";
 import { endBlockIbcSends } from "../src/lib/endBlockIbc";
 import { decodeWalletAction, offerCategoryOf } from "../src/lib/walletActionDecode";
 import { outcomeCategoryDim, OUTCOME_CATEGORY_UNCLASSIFIED } from "../src/lib/offerOutcomeCategory";
@@ -456,7 +462,8 @@ function accumulateBlock(
   offerParticipantTriples: Set<string>,
   offerCategoryParticipantTriples: Set<string>,
   ymaxAcc: YmaxAccumulator,
-  provisionAcc: ProvisionPoolAccumulator
+  provisionAcc: ProvisionPoolAccumulator,
+  bundleAcc: BundleInstallAccumulator
 ) {
   const hStr = block.block.header.height;
   const iso = block.block.header.time;
@@ -555,11 +562,28 @@ function accumulateBlock(
     // transfer_volume, ibc out count/amount: decoded Msg* intent — see SERIES_ROLLUP_SOURCE.
     const msgs = decoded.body.messages;
 
+    const typeUrls: string[] = [];
     for (const msg of msgs) {
       const t = (msg as EncodeObject).typeUrl;
+      typeUrls.push(t);
       if (noteFirstSeenTypeUrl(observedTypeUrls, t)) {
         console.warn(formatNewTypeUrlLog(t, hStr, i));
       }
+    }
+
+    // Bundle installs: one row per tx, keyed by hash, carrying the swingset STORAGE fee that
+    // `fee_paid` does not contain (bundleInstallFees.ts). Reached only for successful txs, which
+    // is the only kind an install can be observed as.
+    if (
+      accumulateBundleInstall(bundleAcc, {
+        txHash: toHex(sha256(raw)).toUpperCase(),
+        height: BigInt(hStr),
+        day,
+        typeUrls,
+        events: eventsPerTx[i] ?? [],
+      })
+    ) {
+      console.warn(`[indexer] bundle install at height ${hStr} tx_idx ${i}`);
     }
 
     let recvPacketCount = 0;
@@ -787,6 +811,7 @@ async function loop(startFloorHeight: bigint) {
     const offerCategoryParticipantTriples = new Set<string>();
     const ymaxAcc = new YmaxAccumulator();
     const provisionAcc = new ProvisionPoolAccumulator();
+    const bundleAcc = new BundleInstallAccumulator();
     for (const p of pairs) {
       accumulateBlock(
         p.block,
@@ -799,7 +824,8 @@ async function loop(startFloorHeight: bigint) {
         offerParticipantTriples,
         offerCategoryParticipantTriples,
         ymaxAcc,
-        provisionAcc
+        provisionAcc,
+        bundleAcc
       );
     }
     const lastH = heights[heights.length - 1]!;
@@ -807,6 +833,8 @@ async function loop(startFloorHeight: bigint) {
     // cursor advances: a crash in between re-applies them with the next chunk instead of losing them.
     await persistYmax(db, ymaxAcc);
     await persistProvisionPool(db, provisionAcc);
+    // Keyed by tx hash, so like the two above it is safe to write before the cursor moves.
+    await persistBundleInstalls(db, bundleAcc);
     await persistIndexedChunk(
       daily,
       hourly,
