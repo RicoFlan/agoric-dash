@@ -32,7 +32,7 @@ import * as schema from "../src/db/schema";
 import { backfillCheckpoint } from "../src/db/schema";
 import { ensureBackfillCheckpointTable, ensureBundleInstallTable } from "../src/db/ensureAdditiveTables";
 import { BundleInstallAccumulator, accumulateBundleInstall, persistBundleInstalls } from "../src/lib/bundleInstallRollup";
-import { MSG_INSTALL_BUNDLE } from "../src/lib/bundleInstallFees";
+import { MSG_INSTALL_BUNDLE, typeUrlsFromEvents } from "../src/lib/bundleInstallFees";
 import { rpcCall, rpcCallWithFallback } from "../src/lib/rpc";
 
 const TAG = "[backfillBundleInstalls]";
@@ -81,60 +81,77 @@ function eventKVs(events: TxEvent[] | undefined): Array<{ type: string; attribut
 /**
  * The endpoints whose transaction index can be trusted for this range.
  *
- * `earliest_block_height` of 0 or absent is treated as a refusal, not as genesis: the node that
- * reports 0 here is the one whose index returned 2 of the 101 matches on chain. Endpoints that
- * cannot vouch are DROPPED rather than fatal — a pruned fallback behind an archive primary is a
- * normal configuration, and the run only needs one endpoint that can answer completely. It is
- * fatal only when none can, because then every answer would be a short list with no error.
+ * Checked against the START DAY'S TIME, not against a height derived from an endpoint. Deriving
+ * the height first was self-defeating: the binary search ran over `[earliest, tip]` of the FIRST
+ * endpoint, so a pruned one converged on its own pruning point, and the check `earliest <=
+ * fromHeight` then compared it against itself and passed. The endpoint vouched for itself and the
+ * run wrote a short set — the exact failure the guard exists to prevent.
+ *
+ * An endpoint qualifies when the block it says is its earliest is dated at or before the start of
+ * the requested range. `earliest_block_height` of 0 or absent is a refusal, not genesis: the node
+ * reporting 0 is the one whose index returned 2 of the 101 matches on chain.
+ *
+ * Endpoints that cannot vouch are DROPPED, not fatal — a pruned fallback behind an archive primary
+ * is a normal configuration. It is fatal only when none can vouch.
  */
-async function verifiedEndpoints(fromHeight: bigint): Promise<{ urls: string[]; tip: bigint }> {
+async function verifiedEndpoints(startDay: string): Promise<{ urls: string[]; floor: bigint; tip: bigint }> {
+  const startMs = Date.parse(`${startDay}T00:00:00Z`);
   const urls: string[] = [];
+  let floor = BigInt(0);
   let tip = BigInt(0);
+
   for (const url of RPC_URLS) {
-    let st: StatusResponse;
+    let why: string;
     try {
-      st = await rpcCall<StatusResponse>(url, "status", {});
+      const st = await rpcCall<StatusResponse>(url, "status", {});
+      const earliest = BigInt(st.sync_info.earliest_block_height ?? "0");
+      const latest = BigInt(st.sync_info.latest_block_height);
+      if (earliest > BigInt(0)) {
+        const b = await rpcCall<{ block: { header: { time: string } } }>(url, "block", {
+          height: earliest.toString(),
+        });
+        const earliestMs = new Date(b.block.header.time).getTime();
+        if (Number.isFinite(earliestMs) && earliestMs <= startMs) {
+          urls.push(url);
+          if (earliest > floor) floor = earliest;
+          if (latest > tip) tip = latest;
+          continue;
+        }
+        why = `its earliest block ${earliest} is dated ${new Date(earliestMs).toISOString().slice(0, 10)}, after ${startDay}`;
+      } else {
+        why = "reports no earliest_block_height, so its transaction index cannot be vouched for";
+      }
+      if (ALLOW_UNVERIFIED) {
+        console.error(`${TAG} WARNING: keeping ${url} although ${why} (BACKFILL_ALLOW_UNVERIFIED_INDEX=1)`);
+        urls.push(url);
+        if (earliest > floor) floor = earliest;
+        if (latest > tip) tip = latest;
+      } else {
+        console.error(`${TAG} dropping ${url}: ${why}`);
+      }
     } catch (e) {
-      console.error(`${TAG} dropping ${url}: status failed (${e instanceof Error ? e.message : String(e)})`);
-      continue;
-    }
-    const earliest = BigInt(st.sync_info.earliest_block_height ?? "0");
-    const latest = BigInt(st.sync_info.latest_block_height);
-    if (earliest > BigInt(0) && earliest <= fromHeight) {
-      urls.push(url);
-      if (latest > tip) tip = latest;
-      continue;
-    }
-    const why =
-      earliest === BigInt(0)
-        ? "reports no earliest_block_height, so its transaction index cannot be vouched for"
-        : `retains only from height ${earliest}, above the requested start ${fromHeight}`;
-    if (ALLOW_UNVERIFIED) {
-      console.error(`${TAG} WARNING: keeping ${url} although it ${why} (BACKFILL_ALLOW_UNVERIFIED_INDEX=1)`);
-      urls.push(url);
-      if (latest > tip) tip = latest;
-    } else {
-      console.error(`${TAG} dropping ${url}: it ${why}`);
+      console.error(`${TAG} dropping ${url}: status/block failed (${e instanceof Error ? e.message : String(e)})`);
     }
   }
-  if (urls.length === 0) {
-    console.error(`${TAG} no endpoint can vouch for a complete transaction index at or after ${fromHeight}.`);
+
+  if (urls.length === 0 || tip === BigInt(0)) {
+    console.error(`${TAG} no endpoint can vouch for a complete transaction index covering ${startDay}.`);
     console.error(`${TAG} A pruned index answers with a SHORT list and no error, so this is fatal.`);
     console.error(`${TAG} Point RPC_URL at an archive, or set BACKFILL_ALLOW_UNVERIFIED_INDEX=1 to accept gaps.`);
     process.exit(1);
   }
-  return { urls, tip };
+  return { urls, floor: floor > BigInt(0) ? floor : BigInt(1), tip };
 }
 
-/** First height at or after the start day, by binary search over retained blocks. */
-async function heightAtStartOfDay(day: string, floor: bigint, tip: bigint): Promise<bigint> {
+/** First height at or after the start of `day`, searched only over verified endpoints. */
+async function heightAtStartOfDay(day: string, floor: bigint, tip: bigint, urls: readonly string[]): Promise<bigint> {
   const target = Date.parse(`${day}T00:00:00Z`);
   let lo = floor;
   let hi = tip;
   let best = tip;
   while (lo <= hi) {
     const mid = (lo + hi) / BigInt(2);
-    const b = await rpcCallWithFallback<{ block: { header: { time: string } } }>(RPC_URLS, "block", {
+    const b = await rpcCallWithFallback<{ block: { header: { time: string } } }>(urls, "block", {
       height: mid.toString(),
     });
     const ms = new Date(b.block.header.time).getTime();
@@ -149,6 +166,34 @@ async function heightAtStartOfDay(day: string, floor: bigint, tip: bigint): Prom
   return best;
 }
 
+/**
+ * Confirm the search really landed on the first block of `day`.
+ *
+ * Belt and braces over the endpoint check above: `fromHeight` is only meaningful if the block
+ * before it predates the day. If the two disagree the search was bounded by something other than
+ * the chain's own history, and continuing would silently narrow the query.
+ */
+async function assertFirstBlockOfDay(fromHeight: bigint, day: string, urls: readonly string[]): Promise<void> {
+  const startMs = Date.parse(`${day}T00:00:00Z`);
+  const at = await rpcCallWithFallback<{ block: { header: { time: string } } }>(urls, "block", {
+    height: fromHeight.toString(),
+  });
+  const atMs = new Date(at.block.header.time).getTime();
+  if (!(atMs >= startMs)) {
+    throw new Error(`height ${fromHeight} is dated before ${day}; the start search did not converge`);
+  }
+  const prev = await rpcCallWithFallback<{ block: { header: { time: string } } }>(urls, "block", {
+    height: (fromHeight - BigInt(1)).toString(),
+  });
+  const prevMs = new Date(prev.block.header.time).getTime();
+  if (!(prevMs < startMs)) {
+    throw new Error(
+      `height ${fromHeight} is not the first block of ${day} — ${fromHeight - BigInt(1)} is also at or after it, ` +
+        `so the search was bounded by endpoint retention rather than by the chain`
+    );
+  }
+}
+
 async function blockDay(height: string, urls: readonly string[]): Promise<string> {
   const b = await rpcCallWithFallback<{ block: { header: { time: string } } }>(urls, "block", { height });
   return b.block.header.time.slice(0, 10);
@@ -158,11 +203,11 @@ async function main() {
   await ensureBackfillCheckpointTable(db);
   await ensureBundleInstallTable(db);
 
-  const firstStatus = await rpcCall<StatusResponse>(RPC_URLS[0]!, "status", {});
-  const floor = BigInt(firstStatus.sync_info.earliest_block_height ?? "1") || BigInt(1);
-  const tipEarly = BigInt(firstStatus.sync_info.latest_block_height);
-  const fromHeight = await heightAtStartOfDay(START_DAY, floor, tipEarly);
-  const { urls: searchUrls, tip } = await verifiedEndpoints(fromHeight);
+  // Verify endpoints FIRST, then derive the start height using only the verified ones. The other
+  // order lets a pruned endpoint define the bound it is then checked against.
+  const { urls: searchUrls, floor, tip } = await verifiedEndpoints(START_DAY);
+  const fromHeight = await heightAtStartOfDay(START_DAY, floor, tip, searchUrls);
+  await assertFirstBlockOfDay(fromHeight, START_DAY, searchUrls);
 
   const query = `message.action='${MSG_INSTALL_BUNDLE}' AND tx.height>=${fromHeight}`;
   const acc = new BundleInstallAccumulator();
@@ -193,13 +238,17 @@ async function main() {
         day = await blockDay(tx.height, searchUrls);
         dayCache.set(tx.height, day);
       }
+      const events = eventKVs(tx.tx_result.events);
+      // The REAL message list, from the tx's own `message` events — not an assumed
+      // [MSG_INSTALL_BUNDLE]. A mixed tx must be recognised here exactly as the indexer
+      // recognises it, or the two writers would disagree about the same transaction.
+      const typeUrls = typeUrlsFromEvents(events);
       accumulateBundleInstall(acc, {
         txHash: tx.hash.toUpperCase(),
         height: BigInt(tx.height),
         day,
-        // tx_search matched on message.action, which only a successful tx emits.
-        typeUrls: [MSG_INSTALL_BUNDLE],
-        events: eventKVs(tx.tx_result.events),
+        typeUrls: typeUrls.includes(MSG_INSTALL_BUNDLE) ? typeUrls : [...typeUrls, MSG_INSTALL_BUNDLE],
+        events,
       });
       seen += 1;
     }
@@ -216,10 +265,14 @@ async function main() {
     .values({ job: JOB, lastHeight: tip, updatedAt: new Date() })
     .onConflictDoUpdate({ target: backfillCheckpoint.job, set: { lastHeight: tip, updatedAt: new Date() } });
 
-  const storage = [...acc.rows.values()].reduce((n, r) => n + BigInt(r.storageFeeUbld), BigInt(0));
-  const gas = [...acc.rows.values()].reduce((n, r) => n + BigInt(r.gasFeeUbld), BigInt(0));
+  const rows = [...acc.rows.values()];
+  const storage = rows.reduce((n, r) => n + BigInt(r.storageFeeUbld ?? "0"), BigInt(0));
+  const gas = rows.reduce((n, r) => n + BigInt(r.gasFeeUbld), BigInt(0));
+  const ambiguous = rows.filter((r) => r.storageFeeUbld === null).length;
   console.error(
-    `${TAG} done — ${acc.size} installs, gas ${gas} ubld, storage ${storage} ubld, checkpoint ${tip}`
+    `${TAG} done — ${acc.size} installs, gas ${gas} ubld, storage ${storage} ubld` +
+      (ambiguous > 0 ? `, ${ambiguous} mixed tx(s) with no attributable storage fee` : "") +
+      `, checkpoint ${tip}`
   );
   await pool.end();
 }

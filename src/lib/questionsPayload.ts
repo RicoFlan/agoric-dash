@@ -423,7 +423,12 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
     distinctInstallers: input.contractLandings.distinctInstallers,
     // `fee_paid` for the range in ubld, from the same series Q1's fee figure uses. The share is
     // taken against this PLUS storage, because this series excludes storage entirely.
-    recordedFeePaidUbld: String(seriesOverDays(dailyContext, days, SERIES.FEE_PAID, FEE_DENOM_UBLB)),
+    // Summed as bigint, not via seriesOverDays, which returns a Number: ubld totals are small
+    // today but a Number loses integer precision past 2^53 and stringifies to exponent notation
+    // past 1e21, which BigInt() then throws on.
+    recordedFeePaidUbld: days
+      .reduce((t, d) => t + (dailyContext.get(d)?.get(SERIES.FEE_PAID)?.get(FEE_DENOM_UBLB) ?? BigInt(0)), BigInt(0))
+      .toString(),
   });
   const q4Pricer = table.pricer();
   const effNCur = feeEffectiveN(input.feeByDay, days, display, denomToCoinId, q4Pricer);

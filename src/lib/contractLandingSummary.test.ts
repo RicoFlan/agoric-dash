@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { summarizeContractLandings } from "@/lib/contractLandingSummary";
 
-const day = (d: string, installs: number, storage: string, gas: string) => ({
-  day: d, installs, storageFeeUbld: storage, gasFeeUbld: gas,
+const day = (d: string, installs: number, storage: string, gas: string, ambiguous = 0) => ({
+  day: d, installs, storageFeeUbld: storage, gasFeeUbld: gas, ambiguousInstalls: ambiguous,
 });
 
 describe("summarizeContractLandings", () => {
@@ -17,8 +17,17 @@ describe("summarizeContractLandings", () => {
       storageFeeUbld: "288000000",
       gasFeeUbld: "4440430",
       daysWithLandings: 2,
+      ambiguousInstalls: 0,
       shareOfTotalBldFeesPct: null,
     });
+  });
+
+  it("counts a mixed tx toward installs but leaves its fee out of the total", () => {
+    // The row stores null for an unattributable fee; the count still reflects that a contract
+    // landed. Reporting both is what keeps "3 installs, 1 fee missing" from reading as "3 installs
+    // that between them paid this much".
+    const s = summarizeContractLandings([day("2026-01-10", 3, "88000000", "1440430", 1)], { distinctInstallers: 1 });
+    expect(s).toMatchObject({ installs: 3, ambiguousInstalls: 1, storageFeeUbld: "88000000" });
   });
 
   it("takes the share against recorded PLUS storage, since fee_paid excludes storage", () => {

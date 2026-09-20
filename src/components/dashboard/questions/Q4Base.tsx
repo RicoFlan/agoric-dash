@@ -258,8 +258,8 @@ export function Q4Base({
           Contracts landed
         </h3>
         <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
-          Whether the base is broadening in deployed contracts and not only in addresses. These are counts, not rates:
-          there have been 30 bundle installs since January, which is far too few for a percentage change to mean
+          Whether the base is broadening in deployed contracts and not only in addresses. These are counts, not
+          rates: contracts land a handful of times a month at most, too rarely for a percentage change to mean
           anything. The storage fee beside them is a separate matter — it is charged by the swingset module during
           execution, so it is <em>not</em> included in the fee figures below or anywhere else on this page.
         </p>
@@ -286,7 +286,11 @@ export function Q4Base({
                 : "\u2014"
             }
             definition={DEFINITIONS.q4_bundle_storage_fee}
-            note="Charged per byte on install; not counted in the fees line"
+            note={
+              land?.available && land.summary.ambiguousInstalls > 0
+                ? `Charged per byte on install; not in the fees line. ${fmtInt(land.summary.ambiguousInstalls)} install(s) shared a transaction with other messages, so their fee is not attributable and is excluded.`
+                : "Charged per byte on install; not counted in the fees line"
+            }
           />
           <SupportFigure
             label="Share of all BLD fees"

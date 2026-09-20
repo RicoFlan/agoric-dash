@@ -19,10 +19,12 @@ export const BUNDLE_INSTALL_BACKFILL_JOB = "bundle_install";
 export interface ContractLandingDay {
   readonly day: string;
   readonly installs: number;
-  /** Swingset storage fee for the day, atomic ubld integer string. */
+  /** Swingset storage fee for the day, atomic ubld. Excludes mixed txs, which store null. */
   readonly storageFeeUbld: string;
   /** Ordinary gas fee on those same txs, ubld — already inside `fee_paid`. */
   readonly gasFeeUbld: string;
+  /** Installs whose storage fee could not be attributed because the tx was mixed. */
+  readonly ambiguousInstalls: number;
 }
 
 export interface ContractLandings {
@@ -30,6 +32,7 @@ export interface ContractLandings {
   readonly installs: number;
   readonly storageFeeUbld: string;
   readonly gasFeeUbld: string;
+  readonly ambiguousInstalls: number;
   /** Distinct fee payers that landed a contract in the range. */
   readonly distinctInstallers: number;
   readonly available: boolean;
@@ -45,6 +48,7 @@ const unavailable = (
   installs: 0,
   storageFeeUbld: "0",
   gasFeeUbld: "0",
+  ambiguousInstalls: 0,
   distinctInstallers: 0,
   available: false,
   unavailableReason: reason,
@@ -58,17 +62,20 @@ export async function queryContractLandings(fromDay: string, toDay: string): Pro
     // Deriving the day from the newest install instead would end coverage at the last landing and
     // report every quiet day since as unknown, which is the opposite of what was observed.
     const cov = await pool.query<{ covered: string | null }>(
-      `SELECT updated_at::date::text AS covered FROM backfill_checkpoint WHERE job = $1`,
+      `SELECT (updated_at AT TIME ZONE 'UTC')::date::text AS covered FROM backfill_checkpoint WHERE job = $1`,
       [BUNDLE_INSTALL_BACKFILL_JOB]
     );
     const coveredThroughDay = cov.rows[0]?.covered ? String(cov.rows[0].covered).slice(0, 10) : null;
     if (!coveredThroughDay) return unavailable("not-backfilled");
     if (toDay > coveredThroughDay) return unavailable("range-exceeds-coverage", coveredThroughDay);
 
-    const res = await pool.query<{ d: string; n: string; s: string; g: string }>(
+    // SUM ignores NULL storage fees, which is the point: a mixed tx contributes its install to
+    // the count and nothing to the fee, and `a` says how many were left out.
+    const res = await pool.query<{ d: string; n: string; s: string; g: string; a: string }>(
       `SELECT day::text AS d, COUNT(*)::text AS n,
               COALESCE(SUM(storage_fee_ubld), 0)::text AS s,
-              COALESCE(SUM(gas_fee_ubld), 0)::text AS g
+              COALESCE(SUM(gas_fee_ubld), 0)::text AS g,
+              COUNT(*) FILTER (WHERE storage_fee_ubld IS NULL)::text AS a
          FROM bundle_install
         WHERE day >= $1::date AND day <= $2::date
         GROUP BY day ORDER BY day`,
@@ -86,6 +93,7 @@ export async function queryContractLandings(fromDay: string, toDay: string): Pro
       installs: Number(r.n),
       storageFeeUbld: String(r.s),
       gasFeeUbld: String(r.g),
+      ambiguousInstalls: Number(r.a),
     }));
     const sum = (pick: (d: ContractLandingDay) => string) =>
       daily.reduce((n, d) => n + BigInt(pick(d)), BigInt(0)).toString();
@@ -95,6 +103,7 @@ export async function queryContractLandings(fromDay: string, toDay: string): Pro
       installs: daily.reduce((n, d) => n + d.installs, 0),
       storageFeeUbld: sum((d) => d.storageFeeUbld),
       gasFeeUbld: sum((d) => d.gasFeeUbld),
+      ambiguousInstalls: daily.reduce((n, d) => n + d.ambiguousInstalls, 0),
       distinctInstallers: Number(installers.rows[0]?.n ?? "0"),
       available: true,
       unavailableReason: null,

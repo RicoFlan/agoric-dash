@@ -114,7 +114,7 @@ export const BUNDLE_INSTALL_CREATE_SQL = `CREATE TABLE IF NOT EXISTS bundle_inst
   day date NOT NULL,
   installer varchar(128),
   gas_fee_ubld numeric(78,0) NOT NULL,
-  storage_fee_ubld numeric(78,0) NOT NULL,
+  storage_fee_ubld numeric(78,0),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (tx_hash)
 )`;

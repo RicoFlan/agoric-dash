@@ -23,6 +23,12 @@ export interface ContractLandingSummary {
   readonly gasFeeUbld: string;
   /** Days in the range on which at least one contract landed. */
   readonly daysWithLandings: number;
+  /**
+   * Installs whose storage fee is not in the total, because the tx carried other messages and the
+   * charge cannot be separated from what they spent. Zero so far; non-zero means the fee figures
+   * describe fewer installs than the count does.
+   */
+  readonly ambiguousInstalls: number;
   /** Storage fee as a share of total BLD fees once it is included. Null when there are no fees. */
   readonly shareOfTotalBldFeesPct: number | null;
 }
@@ -49,6 +55,7 @@ export function summarizeContractLandings(
     storageFeeUbld: storage.toString(),
     gasFeeUbld: gas.toString(),
     daysWithLandings: daily.filter((d) => d.installs > 0).length,
+    ambiguousInstalls: daily.reduce((n, d) => n + (d.ambiguousInstalls ?? 0), 0),
     shareOfTotalBldFeesPct: share,
   };
 }

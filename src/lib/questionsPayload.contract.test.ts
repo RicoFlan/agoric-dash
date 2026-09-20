@@ -88,7 +88,7 @@ function build(curCats?: Record<string, number>, over?: Partial<Parameters<typeo
     grossUsdHhi: 0.25,
     top10FeeSharePct: 74.5,
     provisioning: { snapshots: [], priorDay: null, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
-    contractLandings: { daily: [], installs: 0, storageFeeUbld: "0", gasFeeUbld: "0", distinctInstallers: 0, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
+    contractLandings: { daily: [], installs: 0, storageFeeUbld: "0", gasFeeUbld: "0", ambiguousInstalls: 0, distinctInstallers: 0, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
     multiDayInRange: 7,
     ...over,
   });
@@ -224,7 +224,7 @@ describe("questions payload (contract)", () => {
         prevFromDay: "2025-12-30",
         prevToDay: "2025-12-31",
         provisioning: { snapshots: [], priorDay: null, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
-        contractLandings: { daily: [], installs: 0, storageFeeUbld: "0", gasFeeUbld: "0", distinctInstallers: 0, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
+        contractLandings: { daily: [], installs: 0, storageFeeUbld: "0", gasFeeUbld: "0", ambiguousInstalls: 0, distinctInstallers: 0, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
         contextFromDay: D[0],
         dailyContext,
         curBuckets: dailyContext,

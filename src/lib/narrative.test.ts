@@ -45,7 +45,7 @@ function fixture(over: Partial<{ q1: Partial<QuestionsPayload["q1"]>; q2: Partia
     q4: {
       id: "base",
       provisioning: { available: false, unavailableReason: "not-backfilled", coveredThroughDay: null, summary: { newWallets: null, mintedUbld: null, daysOffFee: 0, daysRateChecked: 0, closingWalletsProvisioned: null, closingTotalMintedProvided: null }, daily: [] },
-      contractLandings: { available: false, unavailableReason: "not-backfilled", coveredThroughDay: null, summary: { installs: 0, distinctInstallers: 0, storageFeeUbld: "0", gasFeeUbld: "0", daysWithLandings: 0, shareOfTotalBldFeesPct: null }, daily: [] },
+      contractLandings: { available: false, unavailableReason: "not-backfilled", coveredThroughDay: null, summary: { installs: 0, distinctInstallers: 0, storageFeeUbld: "0", gasFeeUbld: "0", daysWithLandings: 0, ambiguousInstalls: 0, shareOfTotalBldFeesPct: null }, daily: [] },
       headline: { current: 14.2, previous: 12.9, pctChange: 10.08 },
       effectiveNGross: 9,
       retention: {

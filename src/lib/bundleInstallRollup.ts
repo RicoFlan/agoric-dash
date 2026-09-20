@@ -12,7 +12,7 @@
 import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@/db/schema";
-import { amountOf, extractBundleInstallCharge, hasBundleInstall } from "@/lib/bundleInstallFees";
+import { amountOf, extractBundleInstallCharge, hasBundleInstall, isAmbiguousInstallTx } from "@/lib/bundleInstallFees";
 import type { EventKV } from "@/lib/cosmos";
 
 type Db = NodePgDatabase<typeof schema>;
@@ -23,7 +23,8 @@ export interface BundleInstallRow {
   day: string;
   installer: string | null;
   gasFeeUbld: string;
-  storageFeeUbld: string;
+  /** Null when the tx was mixed and the fee cannot be attributed to the install. */
+  storageFeeUbld: string | null;
 }
 
 export class BundleInstallAccumulator {
@@ -65,7 +66,8 @@ export function accumulateBundleInstall(
     day: params.day,
     installer: charge.feePayer,
     gasFeeUbld: amountOf(charge.gasFee).toString(),
-    storageFeeUbld: amountOf(charge.storageFee).toString(),
+    // A mixed tx records the install but withholds the fee, rather than inflating it.
+    storageFeeUbld: isAmbiguousInstallTx(params.typeUrls) ? null : amountOf(charge.storageFee).toString(),
   });
   return true;
 }

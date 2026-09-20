@@ -195,8 +195,14 @@ export const bundleInstall = pgTable(
     installer: varchar("installer", { length: 128 }),
     /** Ordinary gas fee in ubld — already inside `fee_paid`, kept so the split is legible. */
     gasFeeUbld: numeric("gas_fee_ubld", { precision: 78, scale: 0 }).notNull(),
-    /** Swingset storage fee in ubld. NOT in `fee_paid` — see bundleInstallFees.ts. */
-    storageFeeUbld: numeric("storage_fee_ubld", { precision: 78, scale: 0 }).notNull(),
+    /**
+     * Swingset storage fee in ubld. NOT in `fee_paid` — see bundleInstallFees.ts.
+     *
+     * NULL when the tx carried other messages too: the fee is measured as what the payer spent
+     * beyond the gas fee, and a sibling message's spend lands in the same total with no way to
+     * separate it. Null is "cannot attribute", never zero.
+     */
+    storageFeeUbld: numeric("storage_fee_ubld", { precision: 78, scale: 0 }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.txHash] })]

@@ -47,6 +47,32 @@ export function hasBundleInstall(typeUrls: readonly string[]): boolean {
   return typeUrls.includes(MSG_INSTALL_BUNDLE);
 }
 
+/**
+ * True when the storage fee cannot be attributed, because the tx carried other messages too.
+ *
+ * The rule below measures what the payer spent beyond the gas fee. In a tx that ALSO does
+ * something costing coins — a MsgSend alongside the install — that spend lands in the same total
+ * and `coin_spent` carries no message association to separate it with. Two installs in one tx are
+ * NOT ambiguous: the whole remainder is still storage, just for both.
+ *
+ * Such a tx is recorded with a null storage fee rather than an inflated one. None of the 30
+ * installs on chain to date is mixed, so this excludes nothing today; it keeps a wrong number from
+ * appearing the first time one is.
+ */
+export function isAmbiguousInstallTx(typeUrls: readonly string[]): boolean {
+  return typeUrls.some((t) => t !== MSG_INSTALL_BUNDLE);
+}
+
+/** Message typeUrls a successful tx emitted, from its `message` events' `action` attributes. */
+export function typeUrlsFromEvents(events: readonly EventKV[]): string[] {
+  const out: string[] = [];
+  for (const ev of events) {
+    if (ev.type !== "message") continue;
+    for (const a of ev.attributes) if (a.key === "action") out.push(a.value);
+  }
+  return out;
+}
+
 function addInto(target: Map<string, bigint>, source: ReadonlyMap<string, bigint>): void {
   for (const [denom, amt] of source) target.set(denom, (target.get(denom) ?? BigInt(0)) + amt);
 }
