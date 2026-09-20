@@ -19,9 +19,13 @@
  * Reading that gap as evidence against the check — which an earlier version of this comment did —
  * confuses a total since genesis with the window the dashboard reports.
  *
- * One ordering caveat, visible but harmless: the pool mints and provisions in separate blocks, so
- * two publications minutes apart can show a wallet with no minting and then minting with no wallet.
- * That washes out at day granularity, which is the granularity stored.
+ * One ordering caveat, which the day granularity only partly absorbs: the pool mints and
+ * provisions in separate blocks, so two publications minutes apart can show a wallet with no
+ * minting and then minting with no wallet. WITHIN a day that washes out, because only the day's
+ * last snapshot is stored. ACROSS UTC midnight it does not — a mint at 23:59 and the provisioning
+ * it funds at 00:01 fall in different days, leaving one day funded above the fee and the next
+ * below it with nothing actually wrong. A `matchesFee` false is therefore a mismatch between a
+ * day's two deltas, not a confirmed departure from the fee.
  *
  * `matchesFee` therefore reads true on every day so far. It is kept because a future divergence is
  * exactly what a reader would want flagged — it would mean the pool had stopped funding every
@@ -49,8 +53,11 @@ export interface ProvisioningDay {
   readonly impliedBldPerWallet: number | null;
   /**
    * True when the implied rate is within tolerance of the on-chain fee. Null when not computable.
-   * True on every day of indexed history so far; a `false` would mean the pool had stopped funding
-   * every wallet at 10 BLD, or the fee had changed.
+   * True on every day of indexed history so far. A `false` is a mismatch between the day's two
+   * deltas, and has two possible meanings: the pool really did stop funding every wallet at 10 BLD
+   * (or the fee changed), or a mint and the provisioning it funds fell on opposite sides of UTC
+   * midnight. The second shows up as an adjacent pair — one day high, the next low — and the two
+   * cannot be told apart from the daily rows alone.
    */
   readonly matchesFee: boolean | null;
   /** UTC days skipped between this snapshot and the previous one (no publication on those days). */

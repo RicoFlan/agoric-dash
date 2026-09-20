@@ -246,7 +246,7 @@ export function Q4Base({
             upIsGood={false}
             note={
               prov?.available && prov.summary.daysOffFee > 0
-                ? "Pool funding departed from the 10 BLD fee on these days"
+                ? "Daily minted-vs-wallets deltas disagreed with the 10 BLD fee on these days; a mint and its provisioning either side of UTC midnight does this too"
                 : undefined
             }
           />
