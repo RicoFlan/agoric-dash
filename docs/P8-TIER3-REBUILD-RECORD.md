@@ -10,8 +10,8 @@ way to tell a planned rebuild from something that went wrong. Raised in review, 
 |---|---|
 | Script | `scripts/backfillOfferCategories.ts`, FULL mode |
 | Code | `main` @ `9a60f7f` (PR #18 — the two audited maker rules) |
-| Started | 2026-09-18 ≈06:40Z |
-| Finished | 2026-09-19 06:37:52Z — **32,912 s (9.1 h)**, exit 0 |
+| Started | **2026-09-18 21:29:01Z** |
+| Finished | **2026-09-19 06:37:52Z** — wall clock 32,931 s; the script's own counter reported **32,912 s** (9 h 08 m), the 19 s difference being `npx`/`tsx` startup, the DB connect and the height probe before its timer starts. Exit 0 |
 | Range | heights **25669513 → 27404585**, 1,735,073 blocks |
 | Concurrency | 12 |
 | Checkpoint left | `offer_categories = 27404585` |
@@ -124,7 +124,8 @@ unchanged, controls frozen.
 
 ## One operational note
 
-A run was started and killed about a minute in, before this one. The startup routine
+A run was started at **21:27:51Z** and killed at **21:28:28Z**, about 37 seconds in; the run
+recorded above was launched 33 seconds later. The startup routine
 (`findEarliestQueryableHeight`) binary-searches from height 1, and the archive answers genesis-era
 heights with a generic `Internal error` — twelve such lines before the range banner. That was
 misread as the pruned-fallback hazard the brief warns about and the run was stopped.
@@ -133,6 +134,14 @@ It was a false alarm: `backfillOfferCategories.ts:125` already treats a null blo
 attempt so the retry returns to the archive, exactly as the brief requires. The FULL-mode delete had
 already run, so the only cost was a few minutes with the category series empty. **Those `Internal
 error` lines at startup are expected and benign.**
+
+Both runs' times above are observed, not derived: the completed run's start is when its process was
+launched and its finish is the checkpoint write, which matches the last log line. An earlier draft
+of this record gave the start as ≈06:40Z — that was the *end* time (the watcher reported "rebuild
+process ended at 06:39:31Z") written into the start cell, which made the row disagree with its own
+duration by about 24 hours. Caught in review by checking the arithmetic against the elapsed counter,
+which is a good reason to record a duration alongside two timestamps rather than trusting any one of
+the three.
 
 ## Not done, and deliberately
 
