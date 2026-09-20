@@ -21,6 +21,13 @@ import { buildOrganicActivity, unclassifiedSharePct, type DayBucketMap, type Org
 import type { OfferCategoryParticipantStats } from "@/lib/offersQuery";
 import { outcomesByCategory, type OutcomeByCategory } from "@/lib/offerOutcomeCategory";
 import type { RetentionCounts } from "@/lib/participationQueries";
+import {
+  buildProvisioningDays,
+  summarizeProvisioning,
+  type ProvisioningDay,
+  type ProvisioningSummary,
+} from "@/lib/provisioningSeries";
+import type { ProvisioningSnapshots } from "@/lib/provisioningQuery";
 import { buildRetention, type Retention } from "@/lib/retention";
 import type { YmaxSnapshot } from "@/lib/ymaxQueries";
 import { FEE_DENOM_UBLB, INDEXED_HISTORY_FROM_DAY, SERIES } from "@/lib/semantics";
@@ -147,6 +154,22 @@ export interface QuestionsPayload {
     daily: DayValue[];
     anomalies: AnomalyPoint[];
     usdPricingMeta: UsdPricingMeta;
+    /**
+     * Smart wallets provisioned in range, from the provision pool's own cumulative counters.
+     * The one participation signal a single actor cannot inflate: a provisioned wallet costs a
+     * real fee, so the count is bounded by spend in a way distinct-address counts are not.
+     * `available` is false until the table exists and has been backfilled.
+     */
+    provisioning: {
+      available: boolean;
+      /** Why the figures are withheld, so the page can say which rather than just "—". */
+      unavailableReason: "not-backfilled" | "range-exceeds-coverage" | null;
+      /** UTC day the backfill has replayed through, when it has run. */
+      coveredThroughDay: string | null;
+      summary: ProvisioningSummary;
+      /** Per-day, excluding the leading prior snapshot that exists only to difference against. */
+      daily: ProvisioningDay[];
+    };
   };
 }
 
@@ -173,6 +196,8 @@ export interface QuestionsBuildInput {
   grossUsdHhi: number | null;
   top10FeeSharePct: number | null;
   multiDayInRange: number;
+  /** Provision-pool cumulative snapshots for the range, plus the one before it (provisioningQuery). */
+  provisioning: ProvisioningSnapshots;
   /** YMax snapshot (positions are cumulative, so latest-state; flows scoped to the range). */
   ymax: YmaxSnapshot;
   anomalyOptions?: AnomalyOptions;
@@ -368,6 +393,11 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
   const anyPricedFlow = flowsInRange.some((f) => (f.flowType === "deposit" || f.flowType === "withdraw") && f.amountUsd !== null);
 
   // Q4 — base
+  // Provisioning: difference the cumulative snapshots, then drop the leading prior snapshot, which
+  // exists only so the first in-range day has something to difference against.
+  const provisioningAll = buildProvisioningDays(input.provisioning.snapshots);
+  const provisioningDaily = provisioningAll.filter((d) => d.day >= input.fromDay);
+  const provisioningSummary = summarizeProvisioning(input.provisioning.snapshots, provisioningDaily);
   const q4Pricer = table.pricer();
   const effNCur = feeEffectiveN(input.feeByDay, days, display, denomToCoinId, q4Pricer);
   const effNPrev = feeEffectiveN(input.feeByDay, prevDays, display, denomToCoinId, q4Pricer);
@@ -469,6 +499,13 @@ export function buildQuestions(input: QuestionsBuildInput): QuestionsPayload {
       daily: effNDaily,
       anomalies: flags(effNDaily),
       usdPricingMeta: q4Pricer.meta(),
+      provisioning: {
+        available: input.provisioning.available,
+        unavailableReason: input.provisioning.unavailableReason,
+        coveredThroughDay: input.provisioning.coveredThroughDay,
+        summary: provisioningSummary,
+        daily: provisioningDaily,
+      },
     },
   };
   return priorWindowHasData ? payload : withoutPriorComparisons(payload);

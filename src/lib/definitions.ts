@@ -57,6 +57,10 @@ export const DEFINITIONS = {
   q4_new_addresses:
     `Share of this window's active addresses with no earlier appearance in indexed history (since ${INDEXED_HISTORY_FROM_DAY}).`,
   q4_active_multi_day: "Addresses that appeared on two or more UTC calendar days within the range.",
+  q4_new_wallets_provisioned:
+    "Smart wallets the provision pool provisioned in range, differenced from its own cumulative `walletsProvisioned` counter. Unlike distinct addresses this cannot be inflated by one actor: provisioning charges a real fee, so the count is bounded by spend. A day on which the pool published nothing has no row and is omitted rather than counted as zero.",
+  q4_provisioning_funding:
+    "BLD the provision pool MINTED in range, differenced from its cumulative `totalMintedProvided`. It is the pool's funding, NOT the cost of the wallets beside it: the pool tops itself up and spends later, and a wallet funded from an existing balance advances the wallet count alone. On agoric-3 the two counters disagree roughly fourfold over all history, so do not read this as wallets \u00d7 the 10 BLD fee.",
   q4_top10_fee_share: "Share of day-priced fee USD paid by the ten largest fee payers in range.",
 } as const;
 

@@ -41,7 +41,7 @@ function feeByDay() {
   ]);
 }
 
-function build(curCats?: Record<string, number>) {
+function build(curCats?: Record<string, number>, over?: Partial<Parameters<typeof buildQuestions>[0]>) {
   const table = new DailyPriceTable(new Map([["agoric", new Map(D.map((d) => [d, 1]))]]), D[0], D[3], D[3]);
   const dailyContext = ctx(curCats);
   return buildQuestions({
@@ -87,7 +87,9 @@ function build(curCats?: Record<string, number>) {
     },
     grossUsdHhi: 0.25,
     top10FeeSharePct: 74.5,
+    provisioning: { snapshots: [], priorDay: null, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
     multiDayInRange: 7,
+    ...over,
   });
 }
 
@@ -141,6 +143,40 @@ describe("questions payload (contract)", () => {
     expect(build({}).q2.support.unclassifiedSharePct).toBeNull();
   });
 
+  it("Q4: provisioning differences the snapshots and drops the leading prior one", () => {
+    // 08-02 is BEFORE the range (08-03..08-04). It exists only so 08-03 has something to
+    // difference against; without it 08-03's two wallets would vanish from the range total.
+    const q = build(undefined, {
+      provisioning: {
+        available: true,
+        unavailableReason: null,
+        coveredThroughDay: "2026-08-04",
+        priorDay: "2026-08-02",
+        snapshots: [
+          { day: "2026-08-02", walletsProvisioned: 100, totalMintedProvided: "1000000000" },
+          { day: "2026-08-03", walletsProvisioned: 102, totalMintedProvided: "1020000000" },
+          { day: "2026-08-04", walletsProvisioned: 105, totalMintedProvided: "1030000000" },
+        ],
+      },
+    });
+    const p = q.q4.provisioning;
+    expect(p.available).toBe(true);
+    // Only in-range days are reported, but the out-of-range snapshot still fed the first delta.
+    expect(p.daily.map((d) => d.day)).toEqual(["2026-08-03", "2026-08-04"]);
+    expect(p.daily[0]).toMatchObject({ newWallets: 2, mintedUbld: "20000000" });
+    expect(p.summary.newWallets).toBe(5);
+    // 08-03 was exactly 10 BLD each; 08-04 was 3 wallets for 10 BLD, so it is flagged.
+    expect(p.daily[0]!.matchesFee).toBe(true);
+    expect(p.daily[1]!.matchesFee).toBe(false);
+    expect(p.summary).toMatchObject({ daysOffFee: 1, daysRateChecked: 2, closingWalletsProvisioned: 105 });
+  });
+
+  it("Q4: provisioning reads unavailable, not zero, before the backfill", () => {
+    const q = build();
+    expect(q.q4.provisioning.available).toBe(false);
+    expect(q.q4.provisioning.summary.newWallets).toBeNull();
+  });
+
   it("Q3: net IBC USD, day-priced, with its own pricing meta", () => {
     const { q3 } = build();
     expect(q3.headline).toMatchObject({ netUsd: 4, previousNetUsd: 2, deltaUsd: 2, inUsd: 4, outUsd: null });
@@ -186,6 +222,7 @@ describe("questions payload (contract)", () => {
         toDay: D[3],
         prevFromDay: "2025-12-30",
         prevToDay: "2025-12-31",
+        provisioning: { snapshots: [], priorDay: null, available: false, unavailableReason: "not-backfilled", coveredThroughDay: null },
         contextFromDay: D[0],
         dailyContext,
         curBuckets: dailyContext,

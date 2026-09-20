@@ -25,6 +25,7 @@ import { UsdBasisNote } from "@/components/dashboard/UsdBasisNote";
 import { chartTheme } from "@/lib/chartTheme";
 import { effectiveNumberFromHhi } from "@/lib/concentrationMath";
 import { dashboardSectionIds } from "@/lib/dashboardNav";
+import { ubldToWholeBld } from "@/lib/provisioningSeries";
 import { buildVerdicts } from "@/lib/narrative";
 import { DEFINITIONS } from "@/lib/definitions";
 import { filledDistinctAccountsPerDay } from "@/lib/filledDistinctAccountsSeries";
@@ -84,6 +85,7 @@ export function Q4Base({
   }, [from, to, data.participation?.distinctUnionPerDay]);
 
   const r = q?.retention;
+  const prov = q?.provisioning;
   const p = data.participation;
   const c = data.concentration;
 
@@ -201,6 +203,53 @@ export function Q4Base({
           value={fmtInt(q?.support.multiDayInRange ?? (p ? Number(p.multiDayInRange) : null))}
           definition={DEFINITIONS.q4_active_multi_day}
         />
+        </div>
+      </div>
+      <div>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+          New smart wallets
+        </h3>
+        <p className="mb-3 text-xs leading-snug text-[var(--muted)]">
+          From the provision pool&apos;s own counters. The one participation figure here a single actor cannot inflate:
+          provisioning charges a real fee, so the count is bounded by spend rather than by how many addresses someone
+          cares to create.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SupportFigure
+            label="Wallets provisioned"
+            value={prov?.available ? fmtInt(prov.summary.newWallets) : "—"}
+            definition={DEFINITIONS.q4_new_wallets_provisioned}
+            note={
+              prov?.available
+                ? prov.summary.closingWalletsProvisioned !== null
+                  ? `${fmtInt(prov.summary.closingWalletsProvisioned)} since genesis`
+                  : undefined
+                : prov?.unavailableReason === "range-exceeds-coverage"
+                  ? `Backfilled only through ${prov.coveredThroughDay}; this range extends past it.`
+                  : "Available after the provision-pool backfill."
+            }
+          />
+          <SupportFigure
+            label="Pool minted (BLD)"
+            value={
+              prov?.available && prov.summary.mintedUbld !== null
+                ? Number(ubldToWholeBld(prov.summary.mintedUbld)).toLocaleString("en-US")
+                : "—"
+            }
+            definition={DEFINITIONS.q4_provisioning_funding}
+            note="Pool funding, not the cost of those wallets"
+          />
+          <SupportFigure
+            label="Days off the 10 BLD fee"
+            value={prov?.available ? `${prov.summary.daysOffFee} of ${prov.summary.daysRateChecked}` : "—"}
+            definition={DEFINITIONS.q4_provisioning_funding}
+            upIsGood={false}
+            note={
+              prov?.available && prov.summary.daysOffFee > 0
+                ? "Minting and provisioning are decoupled; expected, not an error"
+                : undefined
+            }
+          />
         </div>
       </div>
       <div>

@@ -46,6 +46,11 @@ import { extractWalletStreamCells, summarizeOfferStatus } from "../src/lib/walle
 import { refreshDailyPrices } from "../src/lib/coingecko/priceRefresh";
 import { ensureOfferCategoryParticipantDayTable, ensureYmaxTables } from "../src/db/ensureAdditiveTables";
 import { accumulateYmaxFromBlock, persistYmax, YmaxAccumulator } from "../src/lib/ymaxRollup";
+import {
+  accumulateProvisionPoolFromBlock,
+  persistProvisionPool,
+  ProvisionPoolAccumulator,
+} from "../src/lib/provisionPoolRollup";
 import { endBlockIbcSends } from "../src/lib/endBlockIbc";
 import { decodeWalletAction, offerCategoryOf } from "../src/lib/walletActionDecode";
 import { outcomeCategoryDim, OUTCOME_CATEGORY_UNCLASSIFIED } from "../src/lib/offerOutcomeCategory";
@@ -450,7 +455,8 @@ function accumulateBlock(
   feeDeltas: Map<string, bigint>,
   offerParticipantTriples: Set<string>,
   offerCategoryParticipantTriples: Set<string>,
-  ymaxAcc: YmaxAccumulator
+  ymaxAcc: YmaxAccumulator,
+  provisionAcc: ProvisionPoolAccumulator
 ) {
   const hStr = block.block.header.height;
   const iso = block.block.header.time;
@@ -477,6 +483,8 @@ function accumulateBlock(
   accumulateBlockOutcomes(results, daily, hourly, day, hour);
   // YMax published state (portfolios / positions / flows) from the same vstorage events.
   accumulateYmaxFromBlock(results, BigInt(hStr), iso, ymaxAcc);
+  // Provision-pool cumulative counters — snapshotted per day, not accumulated (they are cumulative).
+  accumulateProvisionPoolFromBlock(results, BigInt(hStr), iso, provisionAcc);
   // Orchestration IBC sends (EndBlock send_packet) — outside tx scope, disjoint from MsgTransfer.
   for (const s of endBlockIbcSends(results.finalize_block_events ?? results.end_block_events)) {
     addRollupDelta(daily, hourly, day, hour, SERIES.IBC_TRANSFER_AMOUNT_OUT_ORCH, s.denom, s.amount);
@@ -778,6 +786,7 @@ async function loop(startFloorHeight: bigint) {
     const offerParticipantTriples = new Set<string>();
     const offerCategoryParticipantTriples = new Set<string>();
     const ymaxAcc = new YmaxAccumulator();
+    const provisionAcc = new ProvisionPoolAccumulator();
     for (const p of pairs) {
       accumulateBlock(
         p.block,
@@ -789,13 +798,15 @@ async function loop(startFloorHeight: bigint) {
         feeDeltas,
         offerParticipantTriples,
         offerCategoryParticipantTriples,
-        ymaxAcc
+        ymaxAcc,
+        provisionAcc
       );
     }
     const lastH = heights[heights.length - 1]!;
     // YMax latest-state upserts are idempotent (latest-wins by height), so they go BEFORE the
     // cursor advances: a crash in between re-applies them with the next chunk instead of losing them.
     await persistYmax(db, ymaxAcc);
+    await persistProvisionPool(db, provisionAcc);
     await persistIndexedChunk(
       daily,
       hourly,
