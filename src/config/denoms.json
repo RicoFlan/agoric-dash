@@ -623,8 +623,8 @@
     },
     {
       "match": "upoc26",
-      "displaySymbol": "Poc26",
-      "decimals": 6
+      "displaySymbol": "PoC26",
+      "decimals": 0
     }
   ]
 }
