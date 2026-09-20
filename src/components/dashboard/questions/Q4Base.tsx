@@ -237,7 +237,7 @@ export function Q4Base({
                 : "—"
             }
             definition={DEFINITIONS.q4_provisioning_funding}
-            note="Pool funding, not the cost of those wallets"
+            note="Matches wallets × 10 BLD across indexed history"
           />
           <SupportFigure
             label="Days off the 10 BLD fee"
@@ -246,7 +246,7 @@ export function Q4Base({
             upIsGood={false}
             note={
               prov?.available && prov.summary.daysOffFee > 0
-                ? "Minting and provisioning are decoupled; expected, not an error"
+                ? "Daily minted-vs-wallets deltas disagreed with the 10 BLD fee on these days; a mint and its provisioning either side of UTC midnight does this too"
                 : undefined
             }
           />

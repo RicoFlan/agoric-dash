@@ -1,32 +1,35 @@
 /**
  * Turns the provision pool's cumulative snapshots into per-day new wallets and pool funding, and
- * reports how the two relate to the on-chain fee — which is NOT the validation the brief expected.
+ * cross-checks the two against the on-chain SMART_WALLET fee.
  *
  * The stored rows are the LAST cumulative counter observed on each day (see
  * provisionPoolVstorage.ts for why a cumulative source is snapshotted rather than accumulated). A
  * day's activity is therefore the difference from the previous day that has a snapshot — not the
  * previous calendar day, since a day with no publication has no row and must not be read as zero.
  *
- * **The fee cross-check does NOT work, and this is the finding.** `power_flag_fees` for
- * `SMART_WALLET` is 10 BLD, so the brief proposed that minted-BLD ÷ wallets should be 10 and the
- * two counters would validate each other. Checked against mainnet on 2026-09-20, they do not:
+ * **The fee cross-check works, within indexed history.** `power_flag_fees` for `SMART_WALLET` is
+ * 10 BLD, and the brief proposed that minted BLD ÷ new wallets should equal it. Verified against
+ * mainnet over 2026-01-01..2026-09-20: wallets 1,184 → 1,453 (+269) against minted
+ * 1,020,000,000 → 3,710,000,000 ubld (+2,690,000,000). 269 × 10 BLD is 2,690,000,000 — exact to the
+ * ubld, and every one of the 72 days with a new wallet sits at the fee.
  *
- *   - **Cumulatively they disagree by 3.9×** — 1,453 wallets against 3,710,000,000 ubld minted,
- *     i.e. 2.55 BLD per wallet, where 10 BLD each would be 14,530,000,000.
- *   - **They do not even move together.** One `metrics` StreamCell holds two consecutive
- *     publications: 1452 wallets / 3,710,000,000 ubld, then 1453 wallets / 3,710,000,000 ubld. A
- *     wallet was provisioned with no minting at all, and the 10 BLD before it was minted with no
- *     wallet. The pool tops itself up and spends later, so the counters are decoupled in time as
- *     well as in total.
+ * **The cumulative totals still disagree, and that is a separate fact about pre-2026 history.**
+ * 1,453 wallets against 3,710,000,000 ubld is 2.55 BLD per wallet, a 3.9× gap. All of it predates
+ * the indexed window: wallets provisioned before 2026 were not funded by pool minting at 10 BLD.
+ * Reading that gap as evidence against the check — which an earlier version of this comment did —
+ * confuses a total since genesis with the window the dashboard reports.
  *
- * `totalMintedProvided` is a FUNDING counter, not a per-wallet cost: it records what the pool had
- * to mint, and a wallet funded from an existing balance advances the wallet count alone. It cannot
- * validate `walletsProvisioned`, at any granularity.
+ * One ordering caveat, which the day granularity only partly absorbs: the pool mints and
+ * provisions in separate blocks, so two publications minutes apart can show a wallet with no
+ * minting and then minting with no wallet. WITHIN a day that washes out, because only the day's
+ * last snapshot is stored. ACROSS UTC midnight it does not — a mint at 23:59 and the provisioning
+ * it funds at 00:01 fall in different days, leaving one day funded above the fee and the next
+ * below it with nothing actually wrong. A `matchesFee` false is therefore a mismatch between a
+ * day's two deltas, not a confirmed departure from the fee.
  *
- * The implied rate is still computed and still worth showing — as a disclosed observation about the
- * pool's funding, never as a check that either number is right. `matchesFee` records where it
- * departs from 10 BLD so a reader sees the disagreement rather than a smoothed average; on this
- * chain it will depart often, and that is the true picture rather than a fault.
+ * `matchesFee` therefore reads true on every day so far. It is kept because a future divergence is
+ * exactly what a reader would want flagged — it would mean the pool had stopped funding every
+ * wallet, or the fee had changed — and a check that has never fired is still the thing that would.
  */
 
 /** Cumulative counters as of the last publication on a given UTC day. */
@@ -50,8 +53,11 @@ export interface ProvisioningDay {
   readonly impliedBldPerWallet: number | null;
   /**
    * True when the implied rate is within tolerance of the on-chain fee. Null when not computable.
-   * Expect plenty of `false`: the counters are decoupled (see the module comment), so this marks
-   * where the pool's funding and its provisioning diverged, not where the data is wrong.
+   * True on every day of indexed history so far. A `false` is a mismatch between the day's two
+   * deltas, and has two possible meanings: the pool really did stop funding every wallet at 10 BLD
+   * (or the fee changed), or a mint and the provisioning it funds fell on opposite sides of UTC
+   * midnight. The second shows up as an adjacent pair — one day high, the next low — and the two
+   * cannot be told apart from the daily rows alone.
    */
   readonly matchesFee: boolean | null;
   /** UTC days skipped between this snapshot and the previous one (no publication on those days). */
