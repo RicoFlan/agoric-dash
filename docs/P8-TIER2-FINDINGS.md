@@ -415,6 +415,13 @@ drift, and the acceptance test must not read them as regressions.
 
 ## What this means for Tier 3
 
+> **Tier 3 has since run.** The rules landed in PR #18 and the rebuild completed 2026-09-19 —
+> unclassified 12.8% → 1.4%, user-initiated 13.3% → 14.5%. See
+> [P8-TIER3-REBUILD-RECORD.md](P8-TIER3-REBUILD-RECORD.md) for the run, the acceptance test and what
+> 3.1 did *not* achieve. The predictions below are kept as written, for comparison against what
+> actually happened.
+
+
 - **3.1 (refresh the name map) still stands** and is still the main lever on the unclassified share.
 - **3.2 has no Tier 2 rule changes to apply.** Governance needs no rule change (2.1); compute needs
   no rule at all (2.2); YMax identity is a presentation decision, not an index-time one (2.3c).
